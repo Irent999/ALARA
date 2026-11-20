@@ -9,19 +9,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig(() => {
-  // WebXR и автономные гарнитуры (HTC Vive / SteamVR / Meta Quest) требуют безопасный HTTPS-контекст.
-  // Флаг активируется при запуске с флагом --https или переменными окружения HTTPS=true / VITE_HTTPS=true.
-  const isHttps =
-    process.env.HTTPS === 'true' ||
-    process.env.VITE_HTTPS === 'true' ||
-    process.argv.includes('--https');
-
   return {
     base: './',
     plugins: [
       react(),
       tailwindcss(),
-      ...(isHttps ? [basicSsl()] : []),
+      // WebXR (HTC Vive / SteamVR) требует безопасный HTTPS-контекст для navigator.xr по локальной сети
+      basicSsl(),
     ],
     resolve: {
       alias: {
@@ -29,9 +23,18 @@ export default defineConfig(() => {
       },
     },
     server: {
+      host: '0.0.0.0',
+      port: 3000,
+      // Для @vitejs/plugin-basic-ssl >=2.x пустой объект https: {} активирует HTTPS-сервер (cert/key подставляются плагином)
+      https: {},
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+    preview: {
+      host: '0.0.0.0',
+      port: 3000,
+      https: {},
     },
   };
 });
