@@ -767,7 +767,10 @@ export const HUD: React.FC<HUDProps> = ({
           {/* Бейдж состояния ОУ-5 для Сценария #4 */}
           {isScenario4 && scenario4Snapshot && (
             <div className="ml-1 px-2 py-1 rounded-xl text-[10px] font-mono bg-slate-900 border border-slate-800 text-cyan-300 hidden md:flex items-center gap-1">
-              <span>ОУ-5: {scenario4Snapshot.extinguisherChargePct}%</span>
+              <span>
+                ОУ-5: {scenario4Snapshot.extinguisherChargePct}%
+                {scenario4Snapshot.extinguisherLifecycleState === 'STOWED' ? ' (убран)' : ''}
+              </span>
             </div>
           )}
         </div>

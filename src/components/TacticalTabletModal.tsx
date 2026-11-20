@@ -444,8 +444,11 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                       <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                         {SCENARIO4_STEP_ORDER.map((stepKey, idx) => {
                           const curIdx = SCENARIO4_STEP_ORDER.indexOf(scenario4Snapshot.stepId);
-                          const isDone = idx < curIdx || Boolean(scenario4Snapshot.debrief);
-                          const isCurrent = idx === curIdx && !scenario4Snapshot.debrief;
+                          const isCompletedOutcome = scenario4Snapshot.debrief?.outcome === 'COMPLETED';
+                          const isFailedOutcome = scenario4Snapshot.debrief?.outcome === 'FAILED';
+                          const isDone = isCompletedOutcome || (curIdx >= 0 && idx < curIdx);
+                          const isCurrent =
+                            !scenario4Snapshot.debrief && idx === curIdx;
                           return (
                             <div
                               key={stepKey}
@@ -454,6 +457,8 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                                   ? 'bg-sky-950/60 border-sky-400/60 text-white'
                                   : isDone
                                   ? 'bg-emerald-950/25 border-emerald-500/30 text-emerald-300'
+                                  : isFailedOutcome && idx === SCENARIO4_STEP_ORDER.length - 1
+                                  ? 'bg-rose-950/35 border-rose-500/40 text-rose-300'
                                   : 'bg-slate-950 border-slate-800 text-slate-400'
                               }`}
                             >
@@ -461,7 +466,13 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                                 {idx + 1}. {SCENARIO4_STEPS[stepKey].titleRu}
                               </span>
                               <span className="text-[10px] font-mono">
-                                {isDone ? 'ГОТОВО' : isCurrent ? 'АКТИВНО' : 'ОЖИДАНИЕ'}
+                                {isDone
+                                  ? 'ГОТОВО'
+                                  : isCurrent
+                                  ? 'АКТИВНО'
+                                  : isFailedOutcome && idx === SCENARIO4_STEP_ORDER.length - 1
+                                  ? 'ПРОВАЛ'
+                                  : 'ОЖИДАНИЕ'}
                               </span>
                             </div>
                           );

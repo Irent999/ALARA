@@ -17,6 +17,7 @@ import type { RemoteToolId } from '../physics/gostPhysics';
 
 export type MchsToolId = 'dp5' | 'flashlight' | 'extinguisher' | 'hands' | 'shovel' | 'tongs' | 'wrench';
 export type NozzleSprayMode = 'SOLID' | 'SPRAY';
+export type ToolExtinguisherState = 'IDLE_HOLSTERED' | 'EQUIPPED' | 'SPRAYING' | 'STOWED';
 
 export interface ToolSlotDefinition {
   slot: 1 | 2 | 3 | 4 | 5 | 6;
@@ -404,7 +405,9 @@ function buildExtinguisherMesh(): {
   nozzleAnchor.position.set(0.0, 0.03, -0.37);
   group.add(nozzleAnchor);
 
-  group.position.set(0.0, -0.03, -0.03);
+  // Опускаем и отводим баллон вправо-вниз от центральной оси обзора, чтобы не перекрывать экран
+  group.position.set(0.075, -0.16, -0.05);
+  group.rotation.set(-0.2, -0.06, 0);
   return { group, lever, nozzleAnchor };
 }
 
@@ -456,6 +459,10 @@ export class ToolManager {
   private readonly scene: THREE.Scene;
   private activeToolId: Exclude<MchsToolId, 'wrench'> = 'dp5';
   private nozzleSprayMode: NozzleSprayMode = 'SOLID';
+  private extinguisherState: ToolExtinguisherState = 'IDLE_HOLSTERED';
+  private extinguisherIdleTimerSec = 0;
+  private hasExtinguisherSprayed = false;
+  private suppressExtinguisherMesh = false;
   private mounts = new Map<string, RigToolMount>();
 
   // Состояние удержания / зажима для процедурных анимаций
@@ -606,14 +613,105 @@ export class ToolManager {
   public selectTool(toolId: MchsToolId): ToolSlotDefinition {
     const normalizedId = toolId === 'wrench' ? 'hands' : toolId;
     const slot = TOOL_SLOTS.find(s => s.id === normalizedId) || TOOL_SLOTS[0];
-    if (this.activeToolId !== slot.id) {
-      this.activeToolId = slot.id;
-      this.applyActiveToolVisibility();
+    const changed = this.activeToolId !== slot.id;
+    this.activeToolId = slot.id;
+
+    if (slot.id === 'extinguisher') {
+      this.extinguisherState = this.suppressExtinguisherMesh ? 'STOWED' : 'EQUIPPED';
+      this.extinguisherIdleTimerSec = 0;
+      this.hasExtinguisherSprayed = false;
+    } else {
+      this.extinguisherState = 'IDLE_HOLSTERED';
+      this.extinguisherIdleTimerSec = 0;
+      this.hasExtinguisherSprayed = false;
+    }
+
+    this.applyActiveToolVisibility();
+    if (changed) {
       this.onToolChanged?.(slot);
+    }
+    return slot;
+  }
+
+  public setSuppressExtinguisherMesh(suppress: boolean): void {
+    this.suppressExtinguisherMesh = suppress;
+    if (suppress) {
+      this.parkExtinguisher(false);
     } else {
       this.applyActiveToolVisibility();
     }
-    return slot;
+  }
+
+  public getExtinguisherState(): ToolExtinguisherState {
+    return this.extinguisherState;
+  }
+
+  /**
+   * Чистая парковка/убирание огнетушителя (STOWED), сброс рычага, локального сдвига и матрицы,
+   * остановка частиц CO₂. При switchToDp5=true переключает активный слот обратно на [1] ДП-5В.
+   */
+  public parkExtinguisher(switchToDp5 = false): void {
+    this.extinguisherState = this.activeToolId === 'extinguisher' ? 'STOWED' : 'IDLE_HOLSTERED';
+    this.extinguisherIdleTimerSec = 0;
+    this.hasExtinguisherSprayed = false;
+
+    this.mounts.forEach(m => {
+      m.extinguisherLever.rotation.x = 0;
+      m.toolMeshes.extinguisher.visible = false;
+      m.toolMeshes.extinguisher.position.set(0.075, -0.16, -0.05);
+      m.toolMeshes.extinguisher.rotation.set(-0.2, -0.06, 0);
+      m.toolMeshes.extinguisher.updateMatrix();
+      m.toolMeshes.extinguisher.updateMatrixWorld(true);
+    });
+
+    if (switchToDp5 && this.activeToolId === 'extinguisher') {
+      this.selectTool('dp5');
+    } else {
+      this.applyActiveToolVisibility();
+    }
+  }
+
+  public toggleParkExtinguisher(): ToolExtinguisherState {
+    if (this.activeToolId !== 'extinguisher') {
+      this.selectTool('extinguisher');
+      return this.extinguisherState;
+    }
+    if (this.extinguisherState === 'STOWED' || this.extinguisherState === 'IDLE_HOLSTERED') {
+      if (!this.suppressExtinguisherMesh) {
+        this.extinguisherState = 'EQUIPPED';
+        this.extinguisherIdleTimerSec = 0;
+        this.applyActiveToolVisibility();
+      }
+      return this.extinguisherState;
+    }
+    this.parkExtinguisher(false);
+    return this.extinguisherState;
+  }
+
+  /**
+   * Полный сброс инструментов и частиц при переключении/перезапуске сценариев 1–4.
+   */
+  public resetOnScenarioLoad(suppressToolExtinguisher: boolean): void {
+    this.suppressExtinguisherMesh = suppressToolExtinguisher;
+    this.hasExtinguisherSprayed = false;
+    this.extinguisherIdleTimerSec = 0;
+    this.setTongsClosure(0);
+
+    for (let i = 0; i < this.co2Count; i++) {
+      this.co2Ages[i] = 99;
+      this.co2Positions[i * 3 + 1] = -999;
+    }
+    this.co2Points.visible = false;
+    this.co2Geo.attributes.position.needsUpdate = true;
+
+    for (let i = 0; i < this.sandCount; i++) {
+      this.sandAges[i] = 99;
+      this.sandPositions[i * 3 + 1] = -999;
+    }
+    this.sandPoints.visible = false;
+    this.sandGeo.attributes.position.needsUpdate = true;
+
+    this.parkExtinguisher(this.activeToolId === 'extinguisher');
   }
 
   public selectSlot(slotNumber: 1 | 2 | 3 | 4 | 5 | 6): ToolSlotDefinition {
@@ -645,12 +743,18 @@ export class ToolManager {
 
   private applyActiveToolVisibility(): void {
     const isDp5 = this.activeToolId === 'dp5';
+    const showExt =
+      !this.suppressExtinguisherMesh &&
+      this.activeToolId === 'extinguisher' &&
+      (this.extinguisherState === 'EQUIPPED' || this.extinguisherState === 'SPRAYING');
+
     this.mounts.forEach(mount => {
       mount.radiometerGroup.visible = isDp5;
       mount.toolMeshes.shovel.visible = this.activeToolId === 'shovel';
       mount.toolMeshes.tongs.visible = this.activeToolId === 'tongs';
-      mount.toolMeshes.extinguisher.visible = this.activeToolId === 'extinguisher';
+      mount.toolMeshes.extinguisher.visible = showExt;
       mount.toolMeshes.wrench.visible = false;
+      mount.mountGroup.updateMatrixWorld(true);
     });
   }
 
@@ -686,7 +790,39 @@ export class ToolManager {
       this.mounts.get('desktop') ||
       this.mounts.get('vr');
 
-    // 1. Процедурные анимации инструментов при зажатом действии
+    // 1. Обновление стейт-машины и процедурных анимаций инструментов при зажатом действии
+    const isSprayingNow =
+      !this.suppressExtinguisherMesh &&
+      this.activeToolId === 'extinguisher' &&
+      isHoldingAction &&
+      holdKind === 'extinguish';
+
+    if (this.activeToolId === 'extinguisher') {
+      if (isSprayingNow) {
+        this.extinguisherState = 'SPRAYING';
+        this.hasExtinguisherSprayed = true;
+        this.extinguisherIdleTimerSec = 0;
+      } else if (this.extinguisherState === 'SPRAYING') {
+        this.extinguisherState = this.suppressExtinguisherMesh ? 'STOWED' : 'EQUIPPED';
+        this.extinguisherIdleTimerSec = 0;
+      } else if (
+        this.extinguisherState === 'EQUIPPED' &&
+        this.hasExtinguisherSprayed &&
+        !isHoldingAction
+      ) {
+        // Автоматическая парковка после отпускания кнопки/триггера распыления
+        this.extinguisherIdleTimerSec += dt;
+        if (this.extinguisherIdleTimerSec >= 0.45) {
+          this.parkExtinguisher(false);
+        }
+      }
+    }
+
+    const showExtMesh =
+      !this.suppressExtinguisherMesh &&
+      this.activeToolId === 'extinguisher' &&
+      (this.extinguisherState === 'EQUIPPED' || this.extinguisherState === 'SPRAYING');
+
     this.mounts.forEach(m => {
       // Лопата: цикличное копание и сброс сорбента
       if (this.activeToolId === 'shovel' && isHoldingAction && holdKind === 'decontaminate') {
@@ -698,11 +834,18 @@ export class ToolManager {
         m.shovelPivot.position.z *= Math.max(0, 1 - dt * 10);
       }
 
-      // Огнетушитель: сжатие пускового рычага
-      const isSpraying =
-        this.activeToolId === 'extinguisher' && isHoldingAction && holdKind === 'extinguish';
-      const targetLeverRot = isSpraying ? 0.22 : 0;
-      m.extinguisherLever.rotation.x += (targetLeverRot - m.extinguisherLever.rotation.x) * Math.min(1, dt * 16);
+      // Огнетушитель: строгий гард видимости и плавная поза прицеливания vs походное положение
+      m.toolMeshes.extinguisher.visible = showExtMesh;
+      if (showExtMesh) {
+        const targetLeverRot = isSprayingNow ? 0.22 : 0;
+        m.extinguisherLever.rotation.x +=
+          (targetLeverRot - m.extinguisherLever.rotation.x) * Math.min(1, dt * 16);
+        const targetPitchX = isSprayingNow ? -0.04 : -0.22;
+        m.toolMeshes.extinguisher.rotation.x +=
+          (targetPitchX - m.toolMeshes.extinguisher.rotation.x) * Math.min(1, dt * 12);
+      } else {
+        m.extinguisherLever.rotation.x = 0;
+      }
 
       // Ключ / руки: показываем компактный арматурный ключ при удержании вентиля/рубильника
       const wrenchActive =
@@ -729,11 +872,7 @@ export class ToolManager {
     }
 
     // 2. Обновление струи частиц огнетушителя / ствола (сплошная или распылённая струя)
-    const sprayingNow =
-      Boolean(activeMount) &&
-      this.activeToolId === 'extinguisher' &&
-      isHoldingAction &&
-      holdKind === 'extinguish';
+    const sprayingNow = Boolean(activeMount) && isSprayingNow && showExtMesh;
 
     if (sprayingNow && activeMount) {
       activeMount.extinguisherNozzleAnchor.updateWorldMatrix(true, false);

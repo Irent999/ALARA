@@ -423,6 +423,8 @@ export default function App() {
   const lastScen4SnapKeyRef = useRef<string>('');
   const lastScen4StepNumRef = useRef<number>(1);
   const resetDesktopLookRef = useRef<() => void>(() => {});
+  const setDesktopLookTargetRef = useRef<(from: THREE.Vector3, target: THREE.Vector3) => void>(() => {});
+  const desktopOverviewYRef = useRef<number | null>(null);
   const lastHudDoseKeyRef = useRef<string>('');
   const lastHudCumDoseKeyRef = useRef<string>('');
   const lastHudMissionSecRef = useRef<number>(-1);
@@ -1076,6 +1078,9 @@ export default function App() {
         setIsInVR(false);
         vrRightHoldRef.current.active = false;
         vrRightHoldRef.current.raycaster = null;
+        scenario4ControllerRef.current?.onStopSpray();
+        scenario4ControllerRef.current?.stowExtinguisher();
+        toolManagerRef.current?.parkExtinguisher(false);
         // Скрываем VR UI, закрываем модалки и сбрасываем тосты
         if (vrUiSystemRef.current) {
           vrUiSystemRef.current.rootGroup.visible = false;
@@ -1128,7 +1133,19 @@ export default function App() {
       },
       onSqueezeStart: (controller, idx) => {
         tryGrabOrInteractRef.current('vr', controller, true, idx);
-        return Boolean(interactionSystemRef.current?.grabbedObject);
+        const grabbed = Boolean(interactionSystemRef.current?.grabbedObject);
+        if (!grabbed && scenario4ControllerRef.current) {
+          const handedness = xrManagerRef.current?.getControllerHandedness(idx);
+          if (handedness === 'right' || idx === 0) {
+            if (scenario4ControllerRef.current.onPullPinShortcut()) {
+              return false;
+            }
+            if (scenario4ControllerRef.current.isExtinguisherArmed()) {
+              scenario4ControllerRef.current.toggleStowExtinguisher();
+            }
+          }
+        }
+        return grabbed;
       },
       onSqueezeEnd: (controller, idx) => {
         // Если пользователь удерживал предмет этим контроллером и отпустил хват (squeezeend)
@@ -1225,6 +1242,27 @@ export default function App() {
     resetDesktopLookRef.current = () => {
       playerRotY = 0;
       cameraPitch = 0;
+    };
+    setDesktopLookTargetRef.current = (from: THREE.Vector3, target: THREE.Vector3) => {
+      const dx = target.x - from.x;
+      const dy = target.y - from.y;
+      const dz = target.z - from.z;
+      if (dx * dx + dy * dy + dz * dz < 1e-6) return;
+      const yaw = Math.atan2(-dx, -dz);
+      const horizDist = Math.hypot(dx, dz);
+      const rawPitch = Math.atan2(dy, Math.max(0.001, horizDist));
+      const clampedPitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, rawPitch));
+      playerRotY = yaw;
+      cameraPitch = clampedPitch;
+      if (playerGroupRef.current) {
+        playerGroupRef.current.rotation.set(0, playerRotY, 0);
+      }
+      if (cameraRef.current) {
+        cameraRef.current.rotation.set(cameraPitch, 0, 0);
+        cameraRef.current.updateMatrixWorld(true);
+      }
+      handRigRef.current?.setDesktopCameraPitch(cameraPitch);
+      leftHandRigDesktopRef.current?.setDesktopCameraPitch(cameraPitch);
     };
 
     const isXrPresentingNow = () =>
@@ -1349,7 +1387,10 @@ export default function App() {
         else if (e.code === 'Digit6' || e.code === 'Numpad6') selectMchsToolRef.current('tongs');
       }
 
-      if (e.code === 'KeyC' && !e.repeat && !isXrPresentingNow()) toggleCrouch();
+      if (e.code === 'KeyC' && !e.repeat && !isXrPresentingNow()) {
+        desktopOverviewYRef.current = null;
+        toggleCrouch();
+      }
       if (e.code === 'KeyR' && !e.repeat && !isXrPresentingNow()) {
         if (activeScenarioIdRef.current === 4 && scenario4ControllerRef.current?.onPullPinShortcut()) {
           // Сорвали предохранительную чеку ОУ-5 в Сценарии 4
@@ -1370,6 +1411,24 @@ export default function App() {
           );
         }
       }
+      if (e.code === 'KeyG' && !e.repeat && !modalOpenRef.current) {
+        if (activeScenarioIdRef.current === 4 && scenario4ControllerRef.current) {
+          scenario4ControllerRef.current.toggleStowExtinguisher();
+        } else if (toolManagerRef.current) {
+          const nextExtState = toolManagerRef.current.toggleParkExtinguisher();
+          const syncedId = toolManagerRef.current.getActiveToolId();
+          activeToolIdRef.current = syncedId;
+          setActiveToolId(syncedId);
+          addToast(
+            'info',
+            nextExtState === 'STOWED' ? 'ОУ-5 УБРАН' : 'ОУ-5 В РУКЕ',
+            nextExtState === 'STOWED'
+              ? 'Огнетушитель убран из поля зрения. Нажмите [G] или [3], чтобы вернуть в руку.'
+              : 'Огнетушитель ОУ-5 переведён в боевую готовность.'
+          );
+        }
+        return;
+      }
       if (e.code === 'KeyE' && !e.repeat && !isXrPresentingNow()) {
         if (scenario4ControllerRef.current && cameraRef.current && !modalOpenRef.current) {
           cameraRef.current.getWorldPosition(tapOriginScratch);
@@ -1385,6 +1444,10 @@ export default function App() {
       }
       if (e.code === 'KeyT' && !e.repeat) toggleTeleport();
       if (e.code === 'KeyF' && !e.repeat) handleToggleFlashlightRef.current();
+      if (e.code === 'KeyK' && !e.repeat && !modalOpenRef.current && activeScenarioIdRef.current === 4) {
+        scenario4ControllerRef.current?.focusCameraOnModel();
+        return;
+      }
       if (e.code === 'KeyV' && !e.repeat) {
         voiceLoggerRef.current?.startPushToTalk();
       }
@@ -1400,12 +1463,21 @@ export default function App() {
       }
     };
 
+    const handleWindowBlur = () => {
+      isMouseDown = false;
+      lmbHoldActiveRef.current = false;
+      holdActionBlockedRef.current = null;
+      keysRef.current = {};
+      scenario4ControllerRef.current?.onStopSpray();
+    };
+
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('wheel', handleWheel, { passive: true });
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
 
     // Главный цикл рендеринга Three.js (Zero-Allocation: все scratch-объекты вынесены за цикл)
     let lastTime = performance.now();
@@ -1419,10 +1491,6 @@ export default function App() {
     const holdRayDir = new THREE.Vector3();
     const holdTargetWorldPos = new THREE.Vector3();
     const loopCarrierPos = new THREE.Vector3();
-    const scen4PlayerPos = new THREE.Vector3();
-    const scen4HandAnchorPos = new THREE.Vector3();
-    const scen4RayOrigin = new THREE.Vector3();
-    const scen4RayDir = new THREE.Vector3();
     const loopFallbackProbePos = new THREE.Vector3();
     const loopOperatorWorldPos = new THREE.Vector3();
     const loopSourceWorldPos = new THREE.Vector3();
@@ -1462,13 +1530,27 @@ export default function App() {
 
       if (playerGroupRef.current && !isVR && !isMovementFrozen && !modalOpenRef.current) {
         const moveSpeed = 3.2 * dt;
+        const hadMoveKey = Boolean(
+          keysRef.current['KeyW'] ||
+            keysRef.current['KeyS'] ||
+            keysRef.current['KeyA'] ||
+            keysRef.current['KeyD']
+        );
+        if (hadMoveKey) {
+          desktopOverviewYRef.current = null;
+        }
         if (keysRef.current['KeyW']) playerGroupRef.current.translateZ(-moveSpeed);
         if (keysRef.current['KeyS']) playerGroupRef.current.translateZ(moveSpeed);
         if (keysRef.current['KeyA']) playerGroupRef.current.translateX(-moveSpeed);
         if (keysRef.current['KeyD']) playerGroupRef.current.translateX(moveSpeed);
 
-        // Фиксация высоты взгляда в desktop (с учетом приседания)
-        const targetY = isCrouched ? 0.95 : 1.65;
+        // Фиксация высоты взгляда в desktop (либо обзорная высота после [K], либо рост оператора)
+        const targetY =
+          desktopOverviewYRef.current !== null
+            ? desktopOverviewYRef.current
+            : isCrouched
+            ? 0.95
+            : 1.65;
         playerGroupRef.current.position.y += (targetY - playerGroupRef.current.position.y) * Math.min(1.0, dt * 10);
         scenario4ControllerRef.current?.clampPlayerPosition(playerGroupRef.current.position, false);
       }
@@ -1631,28 +1713,10 @@ export default function App() {
         );
       }
 
-      // 3.3. Сценарий №4: Комплексный VR-тренажёр МЧС на .glb-модели АЭС
+      // 3.3. Сценарий №4: Аварийно-спасательная операция на комплексе АЭС (/assembly.glb + HTC Vive)
       if (scenario4ControllerRef.current && cameraRef.current) {
         const s4Ctrl = scenario4ControllerRef.current;
         const isMuted = audioEngine.getMuted();
-
-        cameraRef.current.getWorldPosition(scen4PlayerPos);
-        if (isVR && xrManagerRef.current?.rightHandRig?.rootGroup.visible) {
-          xrManagerRef.current.rightHandRig.rootGroup.getWorldPosition(scen4HandAnchorPos);
-          if (vrRightHoldRef.current.raycaster) {
-            scen4RayOrigin.copy(vrRightHoldRef.current.raycaster.ray.origin);
-            scen4RayDir.copy(vrRightHoldRef.current.raycaster.ray.direction);
-          } else {
-            scen4RayOrigin.copy(scen4HandAnchorPos);
-            cameraRef.current.getWorldDirection(scen4RayDir).normalize();
-          }
-        } else {
-          cameraRef.current.getWorldPosition(scen4RayOrigin);
-          cameraRef.current.getWorldDirection(scen4RayDir).normalize();
-          scen4HandAnchorPos.copy(scen4RayOrigin).addScaledVector(scen4RayDir, 0.85);
-          scen4HandAnchorPos.y = Math.max(0.28, scen4HandAnchorPos.y - 0.28);
-        }
-
         const isKeyHold = Boolean(keysRef.current['KeyE']) || Boolean(keysRef.current['Space']);
         const isDesktopSpray =
           !isVR &&
@@ -1660,27 +1724,26 @@ export default function App() {
           (isKeyHold || (s4Ctrl.isExtinguisherArmed() && lmbHoldActiveRef.current));
         const isVrSpray = isVR && vrRightHoldRef.current.active;
 
-        if ((isDesktopSpray || isVrSpray) && !isMovementFrozen) {
-          s4Ctrl.onHoldSpray(scen4RayOrigin, scen4RayDir, dt, isMuted);
-        } else {
-          s4Ctrl.onStopSpray();
-        }
-
-        const s4Snap = s4Ctrl.update(
+        const s4Snap = s4Ctrl.stepWithInput({
           dt,
-          scen4PlayerPos,
-          scen4HandAnchorPos,
-          scen4RayDir,
+          viveInput: {
+            isVR,
+            camera: cameraRef.current,
+            vrRightHandAnchor: xrManagerRef.current?.rightHandRig?.rootGroup ?? null,
+            vrRightRaycaster: vrRightHoldRef.current.raycaster
+          },
+          isSprayingInput: isDesktopSpray || isVrSpray,
           isMuted,
-          cumulativeDoseRef.current
-        );
+          cumulativeDoseMsv: cumulativeDoseRef.current,
+          isMovementFrozen
+        });
 
         if (s4Snap.stepNumber !== lastScen4StepNumRef.current) {
           lastScen4StepNumRef.current = s4Snap.stepNumber;
           setScenarioStep(s4Snap.stepNumber - 1);
         }
 
-        const s4Key = `${s4Snap.isLoadingGlb ? 1 : 0}:${Math.round(s4Snap.loadProgressPct)}:${s4Snap.usingProceduralFallback ? 1 : 0}:${s4Snap.stepId}:${s4Snap.firesExtinguished}:${s4Snap.rescuedCount}:${s4Snap.extinguisherStatus}:${s4Snap.extinguisherChargePct}:${s4Snap.isSpraying ? 1 : 0}:${Math.round(s4Snap.thermalHeatLoad01 * 20)}:${s4Snap.targetPromptRu ?? ''}:${s4Snap.warningBannerRu ?? ''}:${s4Snap.safetyErrorCount}:${s4Snap.debrief ? 1 : 0}`;
+        const s4Key = `${s4Snap.isLoadingGlb ? 1 : 0}:${Math.round(s4Snap.loadProgressPct)}:${s4Snap.loadErrorRu ?? ''}:${s4Snap.stepId}:${s4Snap.firesExtinguished}:${s4Snap.rescuedCount}:${s4Snap.extinguisherStatus}:${s4Snap.extinguisherLifecycleState}:${s4Snap.extinguisherChargePct}:${s4Snap.isSpraying ? 1 : 0}:${Math.round(s4Snap.thermalHeatLoad01 * 20)}:${s4Snap.targetPromptRu ?? ''}:${s4Snap.warningBannerRu ?? ''}:${s4Snap.safetyErrorCount}:${s4Snap.debrief ? 1 : 0}:${s4Snap.activeInputLabelRu}`;
         if (s4Key !== lastScen4SnapKeyRef.current) {
           lastScen4SnapKeyRef.current = s4Key;
           setScenario4Snapshot(s4Snap);
@@ -2521,6 +2584,7 @@ export default function App() {
       window.removeEventListener('wheel', handleWheel);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
       renderer.domElement.removeEventListener('webglcontextlost', handleWebGLContextLost);
       renderer.domElement.removeEventListener('webglcontextrestored', handleWebGLContextRestored);
       if (vrButton && vrButton.parentElement) {
@@ -2733,15 +2797,18 @@ export default function App() {
         }
       }
 
-      // Размещение приборной стойки-ложемента рядом с оператором
-      const standPos = new THREE.Vector3(
-        scen.initialPlayerPos.x - 0.52,
-        0,
-        scen.initialPlayerPos.z - 0.65
-      );
-      const chargingStand = createFlashlightChargingStand();
-      chargingStand.position.copy(standPos);
-      built.envGroup.add(chargingStand);
+      // Размещение приборной стойки-ложемента рядом с оператором (только в сценариях #1–#3; Сценарий 4 рендерит исключительно /assembly.glb)
+      let chargingStand: THREE.Group | null = null;
+      if (scen.id !== 4) {
+        const standPos = new THREE.Vector3(
+          scen.initialPlayerPos.x - 0.52,
+          0,
+          scen.initialPlayerPos.z - 0.65
+        );
+        chargingStand = createFlashlightChargingStand();
+        chargingStand.position.copy(standPos);
+        built.envGroup.add(chargingStand);
+      }
 
       // Жесткая привязка VRFlashlight к иерархии левой руки (НЕ в scene!):
       // Фонарь и его SpotLight + spotLight.target (0, 0, -5) находятся строго в локальной группе левой кисти
@@ -2767,15 +2834,17 @@ export default function App() {
       setIsLowLightMode(initialLowLight);
       isLowLightModeRef.current = initialLowLight;
 
-      built.interactive.push({
-        id: 'tactical_flashlight',
-        nameRu: 'Зарядный пост фонаря ФПС-4ВЗГ',
-        type: 'flashlight',
-        placementType: 'floor',
-        isLargeEquipment: true,
-        mesh: chargingStand,
-        interacted: false
-      });
+      if (chargingStand) {
+        built.interactive.push({
+          id: 'tactical_flashlight',
+          nameRu: 'Зарядный пост фонаря ФПС-4ВЗГ',
+          type: 'flashlight',
+          placementType: 'floor',
+          isLargeEquipment: true,
+          mesh: chargingStand,
+          interacted: false
+        });
+      }
 
       // Применяем параметры освещения (для бункеров, шахт и техподполий — аварийное затемнение)
       applySceneLightingMode(initialLowLight, scen, built.envGroup);
@@ -2811,7 +2880,7 @@ export default function App() {
       });
 
       // Сбор статических твердотельных объектов сцены для проверки коллизий
-      const colliders: THREE.Object3D[] = [chargingStand];
+      const colliders: THREE.Object3D[] = chargingStand ? [chargingStand] : [];
       built.shields.forEach(s => {
         if (s.mesh) colliders.push(s.mesh);
       });
@@ -2822,9 +2891,14 @@ export default function App() {
       });
       sceneCollidersRef.current = colliders;
 
-      // Инициализация системы эвакуации САР, удержания действий и сброс хватов под новый сценарий
+      // Инициализация системы эвакуации САР, удержания действий и сброс хватов/инструментов под новый сценарий
       holdSystemRef.current?.reset();
-      toolManagerRef.current?.setTongsClosure(0);
+      if (toolManagerRef.current) {
+        toolManagerRef.current.resetOnScenarioLoad(scen.id === 4);
+        const syncedToolId = toolManagerRef.current.getActiveToolId();
+        activeToolIdRef.current = syncedToolId;
+        setActiveToolId(syncedToolId);
+      }
       evacuationManagerRef.current?.bindScenario(built.interactive, built.sources);
       setHoldSnapshot(null);
       setCarriedHazard(null);
@@ -2843,21 +2917,62 @@ export default function App() {
       // Изолированная инициализация Сценария №4 (.glb-модель комплекса АЭС) — только при запуске Сценария 4
       lastScen4SnapKeyRef.current = '';
       lastScen4StepNumRef.current = 1;
+      desktopOverviewYRef.current = null;
       if (scen.id === 4 && cameraRef.current && playerGroupRef.current) {
         try {
           const s4Ctrl = new Scenario4Controller({
             envGroup: built.envGroup,
             camera: cameraRef.current,
             playerGroup: playerGroupRef.current,
+            doseLimitMsv: cfg.hLimitMsv,
+            maxDurationSec: cfg.tMaxSec,
             onToast: addToast,
-            onPlayerSpawnReady: spawn => {
+            onPlayerSpawnReady: (spawn, lookTarget, boundsSize) => {
+              desktopOverviewYRef.current = null;
+              const maxDim = Math.max(boundsSize[0], boundsSize[1], boundsSize[2], 30);
+              if (cameraRef.current) {
+                cameraRef.current.far = Math.max(650, maxDim * 5);
+                cameraRef.current.updateProjectionMatrix();
+              }
+              if (mainDirLightRef.current) {
+                const sBound = Math.max(30, Math.min(180, maxDim * 0.75));
+                mainDirLightRef.current.shadow.camera.left = -sBound;
+                mainDirLightRef.current.shadow.camera.right = sBound;
+                mainDirLightRef.current.shadow.camera.top = sBound;
+                mainDirLightRef.current.shadow.camera.bottom = -sBound;
+                mainDirLightRef.current.shadow.camera.far = Math.max(120, maxDim * 2.5);
+                mainDirLightRef.current.shadow.camera.updateProjectionMatrix();
+              }
               if (playerGroupRef.current) {
                 const isVrNow = Boolean(
                   xrManagerRef.current?.isInVR || rendererRef.current?.xr.isPresenting
                 );
                 const vrY =
                   xrManagerRef.current?.activeReferenceSpaceType === 'local-floor' ? 0.0 : 1.65;
-                playerGroupRef.current.position.set(spawn.x, isVrNow ? vrY : spawn.y, spawn.z);
+                const spawnEyeY = isVrNow ? spawn.y + vrY : spawn.y + 1.65;
+                playerGroupRef.current.position.set(spawn.x, spawnEyeY, spawn.z);
+                if (!isVrNow) {
+                  const eyeOrigin = new THREE.Vector3(spawn.x, spawnEyeY, spawn.z);
+                  setDesktopLookTargetRef.current(eyeOrigin, lookTarget);
+                } else {
+                  const yaw = Math.atan2(-(lookTarget.x - spawn.x), -(lookTarget.z - spawn.z));
+                  playerGroupRef.current.rotation.set(0, yaw, 0);
+                }
+              }
+            },
+            onCameraFocusRequested: (focusPos, lookTarget) => {
+              if (!playerGroupRef.current) return;
+              const isVrNow = Boolean(
+                xrManagerRef.current?.isInVR || rendererRef.current?.xr.isPresenting
+              );
+              if (!isVrNow) {
+                desktopOverviewYRef.current = focusPos.y;
+                playerGroupRef.current.position.copy(focusPos);
+                setDesktopLookTargetRef.current(focusPos, lookTarget);
+              } else {
+                playerGroupRef.current.position.set(focusPos.x, focusPos.y, focusPos.z);
+                const yaw = Math.atan2(-(lookTarget.x - focusPos.x), -(lookTarget.z - focusPos.z));
+                playerGroupRef.current.rotation.set(0, yaw, 0);
               }
             }
           });
@@ -3099,12 +3214,20 @@ export default function App() {
         if (evacuationManagerRef.current) setMchsMetrics(evacuationManagerRef.current.getMetrics());
         audioEngineRef.current?.playTaskSuccess();
 
+        // После завершения тушения сразу убираем огнетушитель с экрана в походное положение [1] ДП-5В
+        if (toolManagerRef.current) {
+          toolManagerRef.current.parkExtinguisher(true);
+          const syncedId = toolManagerRef.current.getActiveToolId();
+          activeToolIdRef.current = syncedId;
+          setActiveToolId(syncedId);
+        }
+
         if (fireSim && !fireSim.isPowerEnergized) {
           handleAdvanceScenarioStepRef.current(3);
           addToast(
             'success',
             'ПОЖАР ПОТУШЕН ОУ-5 (CO₂)',
-            'Трасса 6 кВ обесточена, открытое пламя ликвидировано. Эвакуируйте бочку РАО и пострадавшего в САР-2!'
+            'Трасса 6 кВ обесточена, открытое пламя ликвидировано. Огнетушитель убран в кобуру — эвакуируйте бочку РАО и пострадавшего в САР-2!'
           );
         } else {
           addToast(
@@ -4682,6 +4805,8 @@ export default function App() {
             snapshot={scenario4Snapshot}
             isHudVisible={isHudVisible}
             onRestart={handleResetScenario}
+            onRetryLoadGlb={() => scenario4ControllerRef.current?.retryLoadGlb()}
+            onFocusModel={() => scenario4ControllerRef.current?.focusCameraOnModel()}
             onSelectCustomGlbFile={file => {
               void scenario4ControllerRef.current?.loadCustomGlbFile(file);
             }}

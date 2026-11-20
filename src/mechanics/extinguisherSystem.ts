@@ -1,19 +1,28 @@
 /**
- * Подсистема пожаротушения и 3D-огнетушителей ОУ-5 / ОП-5 для Сценария №4 (1:1 м)
- * - 3D-модели огнетушителей на штатных постах (основной у входа + запасной баллон)
- * - Механика: взятие -> срыв пломбы/чеки -> удержание триггера/ЛКМ/E -> распыл CO₂ + расход заряда
- * - Повторное использование / замена пустого баллона на запасном посту
- * - Очаги возгорания с параметрами intensity, smokeDensity, heatRadius, переходом дыма в пар и WebAudio
+ * ALARA — Механика пожаротушения, физики струи CO₂ и очагов возгорания (ОУ-5)
+ * (src/mechanics/extinguisherSystem.ts)
+ *
+ * Реализует:
+ * - Стойки основного и запасного огнетушителя ОУ-5
+ * - Состояния баллона: ON_POST -> HELD_LOCKED (чека) -> ARMED -> EMPTY
+ * - Расчёт конуса/луча распыления, пул частиц CO₂ (Zero-Allocation), расход заряда
+ * - Снижение интенсивности очагов, трансформацию дыма в пар, статус 'ACTIVE' | 'SUPPRESSING' | 'EXTINGUISHED'
  */
 
 import * as THREE from 'three';
-import type { ExtinguisherStatus, FireZoneConfig } from './config';
+import type { FireZoneSpec } from '../npp/nppNodeConfig';
+import type { NamedWorldMarker } from '../npp/nppSceneInspector';
+
+export type ExtinguisherStatus = 'ON_POST' | 'HELD_LOCKED' | 'ARMED' | 'EMPTY';
+export type ExtinguisherLifecycleState = 'IDLE_HOLSTERED' | 'EQUIPPED' | 'SPRAYING' | 'STOWED';
+export type FireZoneStatus = 'ACTIVE' | 'SUPPRESSING' | 'EXTINGUISHED';
 
 export interface FireZoneRuntime {
-  readonly config: FireZoneConfig;
+  readonly config: FireZoneSpec;
   readonly worldPos: THREE.Vector3;
   readonly rootGroup: THREE.Group;
   intensity: number; // 1.0 -> 0.0
+  status: FireZoneStatus;
   steamTimer: number;
   readonly flameCones: THREE.Mesh[];
   readonly smokePuffs: THREE.Mesh[];
@@ -22,27 +31,27 @@ export interface FireZoneRuntime {
 }
 
 export interface SprayHitResult {
-  hitAnyFire: boolean;
-  extinguishedFireId: string | null;
-  targetFireNameRu: string | null;
-  remainingIntensity01: number;
+  readonly hitAnyFire: boolean;
+  readonly extinguishedFireId: string | null;
+  readonly targetFireNameRu: string | null;
+  readonly remainingIntensity01: number;
 }
 
-const SPRAY_PARTICLE_COUNT = 110;
+const SPRAY_PARTICLE_COUNT = 120;
 
-export class FireAndExtinguisherManager {
+export class ExtinguisherSystem {
   public readonly rootGroup = new THREE.Group();
   public readonly fires: FireZoneRuntime[] = [];
 
-  private readonly extinguisherStandPos = new THREE.Vector3();
-  private readonly spareStandPos = new THREE.Vector3();
+  private readonly primaryPostPos = new THREE.Vector3();
+  private readonly sparePostPos = new THREE.Vector3();
 
   private primaryStandMesh!: THREE.Group;
   private spareStandMesh!: THREE.Group;
   private standBottleMesh!: THREE.Group;
   private spareBottleMesh!: THREE.Group;
 
-  // Переносимая модель ОУ-5 (привязывается к руке/якорю оператора)
+  // Переносимая 3D-модель ОУ-5 (крепится к руке HTC Vive или к якорю камеры Desktop)
   public readonly handheldGroup = new THREE.Group();
   private handheldPinRing!: THREE.Mesh;
   private handheldGaugeFill!: THREE.Mesh;
@@ -55,36 +64,41 @@ export class FireAndExtinguisherManager {
   private sprayLifetimes: Float32Array;
   private sprayPosAttr!: THREE.BufferAttribute;
 
-  // Состояние огнетушителя
+  // Состояние огнетушителя (явная стейт-машина жизненного цикла + статус заряда/чеки)
   public status: ExtinguisherStatus = 'ON_POST';
-  public charge01 = 1.0; // 1.0 -> 0.0 (~17 сек непрерывного распыла)
+  public lifecycleState: ExtinguisherLifecycleState = 'IDLE_HOLSTERED';
+  public charge01 = 1.0; // 1.0 -> 0.0 (~18 с непрерывного распыла)
   public cylindersUsed = 1;
   public isSpraying = false;
   private spareAvailable = true;
+  private hasSprayedOnce = false;
+  private idleReleaseTimerSec = 0;
 
-  // WebAudio процедура (шипение CO₂ + треск огня)
+  // WebAudio процедура (шипение CO₂ + потрескивание пожара)
   private audioCtx: AudioContext | null = null;
   private hissGain: GainNode | null = null;
   private crackleGain: GainNode | null = null;
   private noiseSource: AudioBufferSourceNode | null = null;
 
-  // Scratch векторы (Zero-Allocation)
+  // Буферы без аллокаций в игровом цикле
   private readonly scratchVecA = new THREE.Vector3();
   private readonly scratchVecB = new THREE.Vector3();
   private readonly scratchDir = new THREE.Vector3();
   private readonly scratchNozzlePos = new THREE.Vector3();
+  private readonly scratchVrOffset = new THREE.Vector3();
+  private readonly scratchQuat = new THREE.Quaternion();
 
   private elapsedAnimSec = 0;
 
   constructor(
-    fireConfigs: ReadonlyArray<FireZoneConfig>,
-    discoveredFires: ReadonlyArray<{ name: string; pos: THREE.Vector3 }>,
+    fireSpecs: ReadonlyArray<FireZoneSpec>,
+    discoveredFires: ReadonlyArray<NamedWorldMarker>,
     primaryPostPos: THREE.Vector3,
     sparePostPos: THREE.Vector3
   ) {
-    this.rootGroup.name = 'scenario4_fire_extinguisher_system';
-    this.extinguisherStandPos.copy(primaryPostPos);
-    this.spareStandPos.copy(sparePostPos);
+    this.rootGroup.name = 'npp_extinguisher_fire_system';
+    this.primaryPostPos.copy(primaryPostPos);
+    this.sparePostPos.copy(sparePostPos);
 
     this.sprayVelocities = new Float32Array(SPRAY_PARTICLE_COUNT * 3);
     this.sprayLifetimes = new Float32Array(SPRAY_PARTICLE_COUNT);
@@ -92,7 +106,7 @@ export class FireAndExtinguisherManager {
     this.buildExtinguisherPosts();
     this.buildHandheldExtinguisher();
     this.buildSprayParticlePool();
-    this.buildFireZones(fireConfigs, discoveredFires);
+    this.buildFireZones(fireSpecs, discoveredFires);
   }
 
   private buildBottleMesh(withPin: boolean): {
@@ -119,7 +133,6 @@ export class FireAndExtinguisherManager {
       metalness: 0.8
     });
 
-    // Баллон ОУ-5 (высота ~0.58 м, диаметр 0.16 м)
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.082, 0.082, 0.46, 16), bodyMat);
     body.position.y = 0.25;
     body.castShadow = true;
@@ -132,7 +145,6 @@ export class FireAndExtinguisherManager {
     dome.position.y = 0.48;
     g.add(dome);
 
-    // Вентильно-рычажный узел
     const valve = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.07, 10), brassMat);
     valve.position.y = 0.57;
     g.add(valve);
@@ -142,7 +154,6 @@ export class FireAndExtinguisherManager {
     lever.rotation.x = -0.18;
     g.add(lever);
 
-    // Чека с кольцом
     const pinMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
     const pinRing = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.0045, 8, 16), pinMat);
     pinRing.position.set(0.032, 0.585, 0.02);
@@ -150,8 +161,10 @@ export class FireAndExtinguisherManager {
     pinRing.visible = withPin;
     g.add(pinRing);
 
-    // Раструб CO₂ (направлен по -Z от оператора)
-    const horn = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.014, 0.22, 12, 1, true), darkMetalMat);
+    const horn = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.042, 0.014, 0.22, 12, 1, true),
+      darkMetalMat
+    );
     horn.material.side = THREE.DoubleSide;
     horn.rotation.x = Math.PI / 2 - 0.12;
     horn.position.set(0, 0.54, -0.15);
@@ -161,7 +174,6 @@ export class FireAndExtinguisherManager {
     nozzleTip.position.set(0, 0.53, -0.27);
     g.add(nozzleTip);
 
-    // 3D шкала-индикатор остатка на корпусе (видна оператору)
     const gaugeBack = new THREE.Mesh(
       new THREE.BoxGeometry(0.028, 0.18, 0.012),
       new THREE.MeshBasicMaterial({ color: 0x0f172a })
@@ -205,7 +217,12 @@ export class FireAndExtinguisherManager {
 
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(0.42, 0.52, 28),
-        new THREE.MeshBasicMaterial({ color: labelHex, side: THREE.DoubleSide, transparent: true, opacity: 0.6 })
+        new THREE.MeshBasicMaterial({
+          color: labelHex,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.6
+        })
       );
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = 0.018;
@@ -214,18 +231,16 @@ export class FireAndExtinguisherManager {
       return stand;
     };
 
-    // Основной пост ОУ-5 у входа
     this.primaryStandMesh = createStand(0xef4444);
-    this.primaryStandMesh.position.copy(this.extinguisherStandPos);
+    this.primaryStandMesh.position.copy(this.primaryPostPos);
     const primaryBottle = this.buildBottleMesh(true);
     this.standBottleMesh = primaryBottle.group;
     this.standBottleMesh.position.set(0, 0.08, 0.04);
     this.primaryStandMesh.add(this.standBottleMesh);
     this.rootGroup.add(this.primaryStandMesh);
 
-    // Запасной пост перезарядки ОУ-5 внутри корпуса
     this.spareStandMesh = createStand(0xf59e0b);
-    this.spareStandMesh.position.copy(this.spareStandPos);
+    this.spareStandMesh.position.copy(this.sparePostPos);
     const spareBottle = this.buildBottleMesh(true);
     this.spareBottleMesh = spareBottle.group;
     this.spareBottleMesh.position.set(0, 0.08, 0.04);
@@ -235,11 +250,13 @@ export class FireAndExtinguisherManager {
 
   private buildHandheldExtinguisher(): void {
     const built = this.buildBottleMesh(true);
+    // Смещаем пивот внутрь рукоятки/ЗПУ, чтобы баллон свисал вниз под кистью, а не торчал вверх перед глазами
+    built.group.position.set(0, -0.44, 0.02);
     this.handheldGroup.add(built.group);
     this.handheldPinRing = built.pinRing;
     this.handheldGaugeFill = built.gaugeFill;
     this.handheldNozzleTip = built.nozzleTip;
-    this.handheldGroup.scale.setScalar(0.76);
+    this.handheldGroup.scale.setScalar(0.72);
     this.handheldGroup.visible = false;
     this.rootGroup.add(this.handheldGroup);
   }
@@ -268,14 +285,16 @@ export class FireAndExtinguisherManager {
   }
 
   private buildFireZones(
-    fireConfigs: ReadonlyArray<FireZoneConfig>,
-    discoveredFires: ReadonlyArray<{ name: string; pos: THREE.Vector3 }>
+    fireSpecs: ReadonlyArray<FireZoneSpec>,
+    discoveredFires: ReadonlyArray<NamedWorldMarker>
   ): void {
     const flameGeo = new THREE.ConeGeometry(0.42, 1.35, 8);
     const smokeGeo = new THREE.DodecahedronGeometry(0.48, 0);
 
-    fireConfigs.forEach((cfg, idx) => {
-      const matched = discoveredFires.find(d => d.name.toUpperCase().startsWith(cfg.markerName));
+    fireSpecs.forEach((cfg, idx) => {
+      const matched = discoveredFires.find(d =>
+        d.name.toUpperCase().startsWith(cfg.markerName.toUpperCase())
+      ) ?? discoveredFires[idx];
       const worldPos = matched
         ? matched.pos.clone()
         : new THREE.Vector3(cfg.defaultPos[0], cfg.defaultPos[1], cfg.defaultPos[2]);
@@ -284,7 +303,6 @@ export class FireAndExtinguisherManager {
       group.position.copy(worldPos);
       group.name = `fire_zone_${cfg.id}`;
 
-      // Тлеющая кабельная / масляная подложка
       const baseMesh = new THREE.Mesh(
         new THREE.CylinderGeometry(cfg.radiusM * 0.9, cfg.radiusM, 0.14, 16),
         new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.9 })
@@ -351,6 +369,7 @@ export class FireAndExtinguisherManager {
         worldPos,
         rootGroup: group,
         intensity: cfg.initialIntensity,
+        status: cfg.initialIntensity > 0 ? 'ACTIVE' : 'EXTINGUISHED',
         steamTimer: 0,
         flameCones,
         smokePuffs,
@@ -361,11 +380,11 @@ export class FireAndExtinguisherManager {
   }
 
   public getPrimaryPostPos(): THREE.Vector3 {
-    return this.extinguisherStandPos;
+    return this.primaryPostPos;
   }
 
   public getSparePostPos(): THREE.Vector3 {
-    return this.spareStandPos;
+    return this.sparePostPos;
   }
 
   public isSpareAvailable(): boolean {
@@ -375,9 +394,13 @@ export class FireAndExtinguisherManager {
   public grabPrimaryExtinguisher(): boolean {
     if (this.status !== 'ON_POST') return false;
     this.status = 'HELD_LOCKED';
+    this.lifecycleState = 'EQUIPPED';
+    this.idleReleaseTimerSec = 0;
+    this.hasSprayedOnce = false;
     this.standBottleMesh.visible = false;
     this.handheldGroup.visible = true;
     this.handheldPinRing.visible = true;
+    this.handheldGroup.updateMatrixWorld(true);
     this.syncGaugeVisual();
     return true;
   }
@@ -385,22 +408,89 @@ export class FireAndExtinguisherManager {
   public pullSafetyPin(): boolean {
     if (this.status !== 'HELD_LOCKED') return false;
     this.status = 'ARMED';
+    if (this.lifecycleState === 'IDLE_HOLSTERED' || this.lifecycleState === 'STOWED') {
+      this.lifecycleState = 'EQUIPPED';
+      this.handheldGroup.visible = true;
+    }
+    this.idleReleaseTimerSec = 0;
     this.handheldPinRing.visible = false;
+    this.handheldGroup.updateMatrixWorld(true);
     this.syncGaugeVisual();
     return true;
   }
 
   public swapSpareExtinguisher(): boolean {
-    if (!this.spareAvailable) return false;
-    if (this.status === 'ON_POST') return false;
+    if (!this.spareAvailable || this.status === 'ON_POST') return false;
     this.spareAvailable = false;
     this.spareBottleMesh.visible = false;
     this.charge01 = 1.0;
     this.cylindersUsed += 1;
     this.status = 'ARMED';
+    this.lifecycleState = 'EQUIPPED';
+    this.idleReleaseTimerSec = 0;
+    this.hasSprayedOnce = false;
     this.handheldPinRing.visible = false;
+    this.handheldGroup.visible = true;
+    this.handheldGroup.updateMatrixWorld(true);
     this.syncGaugeVisual();
     return true;
+  }
+
+  /**
+   * Возвращает огнетушитель в походное положение / убирает за пояс (STOWED),
+   * сбрасывает локальные сдвиги и матрицу трансформации, останавливает распыл и шипение.
+   */
+  public stowExtinguisher(): boolean {
+    if (this.status === 'ON_POST') {
+      this.lifecycleState = 'IDLE_HOLSTERED';
+      this.resetHandheldTransformToParked();
+      return false;
+    }
+    this.stopSpray();
+    this.lifecycleState = 'STOWED';
+    this.idleReleaseTimerSec = 0;
+    this.resetHandheldTransformToParked();
+    return true;
+  }
+
+  /**
+   * Извлекает огнетушитель из походного положения (STOWED -> EQUIPPED) при готовности к тушению.
+   */
+  public equipExtinguisher(): boolean {
+    if (this.status === 'ON_POST' || this.status === 'EMPTY' || this.charge01 <= 0) {
+      return false;
+    }
+    this.lifecycleState = 'EQUIPPED';
+    this.idleReleaseTimerSec = 0;
+    this.handheldGroup.visible = true;
+    this.handheldGroup.updateMatrixWorld(true);
+    this.syncGaugeVisual();
+    return true;
+  }
+
+  public toggleStow(): 'STOWED' | 'EQUIPPED' | 'UNAVAILABLE' {
+    if (this.status === 'ON_POST' || this.status === 'EMPTY' || this.charge01 <= 0) {
+      return 'UNAVAILABLE';
+    }
+    if (this.lifecycleState === 'STOWED' || this.lifecycleState === 'IDLE_HOLSTERED') {
+      this.equipExtinguisher();
+      return 'EQUIPPED';
+    }
+    this.stowExtinguisher();
+    return 'STOWED';
+  }
+
+  private resetHandheldTransformToParked(): void {
+    this.isSpraying = false;
+    if (this.hissGain) {
+      this.hissGain.gain.value = 0;
+    }
+    this.handheldGroup.visible = false;
+    this.handheldGroup.position.set(0, -10, 0);
+    this.handheldGroup.rotation.set(0, 0, 0);
+    this.handheldGroup.quaternion.identity();
+    this.handheldGroup.updateMatrix();
+    this.handheldGroup.updateMatrixWorld(true);
   }
 
   private syncGaugeVisual(): void {
@@ -416,7 +506,9 @@ export class FireAndExtinguisherManager {
   private ensureAudioInitialized(isMuted: boolean): void {
     if (isMuted) return;
     if (!this.audioCtx) {
-      const AudioCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtor =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtor) return;
       this.audioCtx = new AudioCtor();
 
@@ -432,7 +524,6 @@ export class FireAndExtinguisherManager {
       src.buffer = buf;
       src.loop = true;
 
-      // Фильтр шипения CO₂
       const hissFilter = this.audioCtx.createBiquadFilter();
       hissFilter.type = 'bandpass';
       hissFilter.frequency.value = 1850;
@@ -443,7 +534,6 @@ export class FireAndExtinguisherManager {
       hissFilter.connect(this.hissGain);
       this.hissGain.connect(this.audioCtx.destination);
 
-      // Фильтр потрескивания пожара
       const crackleFilter = this.audioCtx.createBiquadFilter();
       crackleFilter.type = 'lowpass';
       crackleFilter.frequency.value = 420;
@@ -460,37 +550,56 @@ export class FireAndExtinguisherManager {
     }
   }
 
+  /**
+   * Распыление CO₂ по лучу/конусу прицеливания с контролем дальности (0.4..5.4 м)
+   * и снижением интенсивности задетых очагов возгорания.
+   */
   public applySpray(
     aimOrigin: THREE.Vector3,
     aimDir: THREE.Vector3,
     dt: number,
     isMuted: boolean
   ): SprayHitResult {
-    const emptyRes: SprayHitResult = {
-      hitAnyFire: false,
-      extinguishedFireId: null,
-      targetFireNameRu: null,
-      remainingIntensity01: 0
-    };
-
     if (this.status !== 'ARMED' || this.charge01 <= 0) {
       this.isSpraying = false;
-      return emptyRes;
+      if (this.status === 'EMPTY' || this.charge01 <= 0) {
+        this.stowExtinguisher();
+      }
+      return {
+        hitAnyFire: false,
+        extinguishedFireId: null,
+        targetFireNameRu: null,
+        remainingIntensity01: 0
+      };
+    }
+
+    // При повторном нажатии триггера/ЛКМ/[E] автоматически достаём ОУ-5 из поясного держателя
+    if (this.lifecycleState === 'STOWED' || this.lifecycleState === 'IDLE_HOLSTERED') {
+      this.equipExtinguisher();
     }
 
     this.ensureAudioInitialized(isMuted);
+    this.lifecycleState = 'SPRAYING';
     this.isSpraying = true;
-    this.charge01 = Math.max(0, this.charge01 - dt * 0.058);
+    this.hasSprayedOnce = true;
+    this.idleReleaseTimerSec = 0;
+
+    this.charge01 = Math.max(0, this.charge01 - dt * 0.056);
     this.syncGaugeVisual();
 
     if (this.charge01 <= 0) {
       this.status = 'EMPTY';
-      this.isSpraying = false;
+      this.stowExtinguisher();
+      return {
+        hitAnyFire: false,
+        extinguishedFireId: null,
+        targetFireNameRu: null,
+        remainingIntensity01: 0
+      };
     }
 
     this.handheldNozzleTip.getWorldPosition(this.scratchNozzlePos);
 
-    // Спавним частицы CO₂ из раструба
     for (let s = 0; s < 4; s++) {
       const slot = Math.floor(Math.random() * SPRAY_PARTICLE_COUNT);
       this.sprayPositions[slot * 3] = this.scratchNozzlePos.x;
@@ -502,7 +611,6 @@ export class FireAndExtinguisherManager {
       this.sprayLifetimes[slot] = 0.52;
     }
 
-    // Проверка попадания струи по очагам (дальность 1.0..5.2 м, угол конуса ~26 deg)
     let hitAnyFire = false;
     let extinguishedFireId: string | null = null;
     let targetFireNameRu: string | null = null;
@@ -510,26 +618,30 @@ export class FireAndExtinguisherManager {
 
     for (let i = 0; i < this.fires.length; i++) {
       const fire = this.fires[i];
-      if (fire.intensity <= 0) continue;
+      if (fire.status === 'EXTINGUISHED' || fire.intensity <= 0) continue;
 
       this.scratchVecA.copy(fire.worldPos);
       this.scratchVecA.y += 0.65;
       this.scratchDir.subVectors(this.scratchVecA, aimOrigin);
       const dist = this.scratchDir.length();
-      if (dist > 5.4 || dist < 0.4) continue;
+      if (dist > 5.5 || dist < 0.35) continue;
       this.scratchDir.divideScalar(dist);
 
       const dot = this.scratchDir.dot(aimDir);
-      if (dot > 0.87) {
+      if (dot > 0.86) {
         hitAnyFire = true;
+        fire.status = 'SUPPRESSING';
         fire.intensity = Math.max(0, fire.intensity - dt * 0.42);
         targetFireNameRu = fire.config.nameRu;
         remainingIntensity01 = fire.intensity;
         if (fire.intensity <= 0.001) {
           fire.intensity = 0;
+          fire.status = 'EXTINGUISHED';
           fire.steamTimer = 3.2;
           extinguishedFireId = fire.config.id;
         }
+      } else if (fire.status === 'SUPPRESSING') {
+        fire.status = 'ACTIVE';
       }
     }
 
@@ -543,6 +655,18 @@ export class FireAndExtinguisherManager {
 
   public stopSpray(): void {
     this.isSpraying = false;
+    if (this.lifecycleState === 'SPRAYING') {
+      this.lifecycleState =
+        this.status === 'EMPTY' || this.charge01 <= 0 ? 'STOWED' : 'EQUIPPED';
+    }
+    if (this.hissGain) {
+      this.hissGain.gain.value = 0;
+    }
+    for (let i = 0; i < this.fires.length; i++) {
+      if (this.fires[i].status === 'SUPPRESSING' && this.fires[i].intensity > 0) {
+        this.fires[i].status = 'ACTIVE';
+      }
+    }
   }
 
   public update(
@@ -550,19 +674,57 @@ export class FireAndExtinguisherManager {
     playerPos: THREE.Vector3,
     handAnchorPos: THREE.Vector3,
     aimDir: THREE.Vector3,
-    isMuted: boolean
+    isMuted: boolean,
+    handAnchorQuat?: THREE.Quaternion,
+    hasVrHandQuat = false
   ): { thermalHeatLoad01: number; smokeExposure01: number; extinguishedCount: number } {
     this.elapsedAnimSec += dt;
 
-    // Позиционируем ручной ОУ-5 перед рукой / правым углом кадра
-    if (this.handheldGroup.visible) {
-      this.handheldGroup.position.copy(handAnchorPos);
-      this.scratchVecB.copy(handAnchorPos).addScaledVector(aimDir, 2.0);
-      this.handheldGroup.lookAt(this.scratchVecB);
-      this.handheldGroup.rotateY(Math.PI); // т.к. раструб смотрит по -Z
+    // Автоматически убираем ОУ-5 с обзора после отпускания курка/кнопки распыла (через 0.45 с простоя),
+    // при полном разряде или если все очаги ликвидированы
+    if (this.lifecycleState === 'EQUIPPED' && !this.isSpraying) {
+      if (this.status === 'EMPTY' || this.charge01 <= 0) {
+        this.stowExtinguisher();
+      } else if (this.hasSprayedOnce && this.status === 'ARMED') {
+        this.idleReleaseTimerSec += dt;
+        if (this.idleReleaseTimerSec >= 0.45) {
+          this.stowExtinguisher();
+        }
+      }
+    } else if (this.lifecycleState === 'SPRAYING') {
+      this.idleReleaseTimerSec = 0;
     }
 
-    // Обновление пула частиц CO₂
+    // Жёсткий гард рендера: при STOWED / IDLE_HOLSTERED / EMPTY баллон НИКОГДА не притягивается к камере
+    const isActivelyHeldInHand =
+      (this.lifecycleState === 'EQUIPPED' || this.lifecycleState === 'SPRAYING') &&
+      (this.status === 'HELD_LOCKED' || this.status === 'ARMED');
+
+    if (isActivelyHeldInHand) {
+      this.handheldGroup.visible = true;
+      if (hasVrHandQuat && handAnchorQuat) {
+        // В VR (HTC Vive): привязываем к правому контроллеру со смещением рукоятки вправо-вниз
+        this.scratchVrOffset.set(0.035, -0.02, -0.05).applyQuaternion(handAnchorQuat);
+        this.handheldGroup.position.copy(handAnchorPos).add(this.scratchVrOffset);
+        this.handheldGroup.quaternion.copy(handAnchorQuat);
+        if (!this.isSpraying) {
+          this.handheldGroup.rotateX(-0.22);
+        }
+      } else {
+        // В Desktop: боковая нижне-правая позиция, при простое баллон мягко отклонён вниз от прицела
+        this.handheldGroup.position.copy(handAnchorPos);
+        this.scratchVecB.copy(handAnchorPos).addScaledVector(aimDir, 2.0);
+        this.handheldGroup.lookAt(this.scratchVecB);
+        this.handheldGroup.rotateY(Math.PI);
+        if (!this.isSpraying) {
+          this.handheldGroup.rotateX(-0.24);
+        }
+      }
+      this.handheldGroup.updateMatrixWorld(true);
+    } else if (this.handheldGroup.visible) {
+      this.resetHandheldTransformToParked();
+    }
+
     let anySprayAlive = false;
     for (let i = 0; i < SPRAY_PARTICLE_COUNT; i++) {
       if (this.sprayLifetimes[i] > 0) {
@@ -583,7 +745,6 @@ export class FireAndExtinguisherManager {
       this.sprayPosAttr.needsUpdate = true;
     }
 
-    // Обновление очагов возгорания, дыма->пара, теплового поля и звука
     let thermalHeatLoad01 = 0;
     let smokeExposure01 = 0;
     let extinguishedCount = 0;
@@ -593,7 +754,7 @@ export class FireAndExtinguisherManager {
       const fire = this.fires[i];
       const dist = playerPos.distanceTo(fire.worldPos);
 
-      if (fire.intensity <= 0) {
+      if (fire.intensity <= 0 || fire.status === 'EXTINGUISHED') {
         extinguishedCount += 1;
         fire.light.intensity = 0;
         fire.floorRing.visible = false;
@@ -601,7 +762,6 @@ export class FireAndExtinguisherManager {
           c.visible = false;
         });
 
-        // Остаточный белый пар после тушения
         if (fire.steamTimer > 0) {
           fire.steamTimer = Math.max(0, fire.steamTimer - dt);
           const steamRatio = fire.steamTimer / 3.2;
@@ -622,30 +782,32 @@ export class FireAndExtinguisherManager {
 
       if (dist < nearestActiveFireDist) nearestActiveFireDist = dist;
 
-      // Тепловая нагрузка внутри heatRadiusM
       if (dist < fire.config.heatRadiusM) {
         const ratio = (1 - dist / fire.config.heatRadiusM) * fire.intensity;
         if (ratio > thermalHeatLoad01) thermalHeatLoad01 = ratio;
       }
-      // Задымление
       if (dist < fire.config.heatRadiusM * 1.45) {
-        const sRatio = (1 - dist / (fire.config.heatRadiusM * 1.45)) * fire.config.smokeDensity * fire.intensity;
+        const sRatio =
+          (1 - dist / (fire.config.heatRadiusM * 1.45)) *
+          fire.config.smokeDensity *
+          fire.intensity;
         if (sRatio > smokeExposure01) smokeExposure01 = sRatio;
       }
 
-      // Анимация пламени и мерцания света
       const flicker = 0.85 + Math.sin(this.elapsedAnimSec * 17 + i * 2.1) * 0.15;
       fire.light.intensity = 4.5 * fire.intensity * flicker;
       fire.floorRing.visible = true;
       fire.flameCones.forEach(c => {
         c.visible = true;
         const ph = (c.userData.phase as number) || 0;
-        const scaleY = Math.max(0.2, fire.intensity * (0.85 + Math.sin(this.elapsedAnimSec * 14 + ph) * 0.28));
+        const scaleY = Math.max(
+          0.2,
+          fire.intensity * (0.85 + Math.sin(this.elapsedAnimSec * 14 + ph) * 0.28)
+        );
         c.scale.set(0.6 + fire.intensity * 0.45, scaleY, 0.6 + fire.intensity * 0.45);
         c.position.y = 0.62 * scaleY;
       });
 
-      // Анимация чёрного дыма (при низком огне светлеет в пар)
       const isSteamTransition = fire.intensity < 0.28;
       fire.smokePuffs.forEach(p => {
         p.visible = true;
@@ -655,11 +817,13 @@ export class FireAndExtinguisherManager {
         p.scale.setScalar(0.6 + cycle * 0.35);
         const mat = p.material as THREE.MeshStandardMaterial;
         mat.color.setHex(isSteamTransition ? 0xcbd5e1 : 0x1e293b);
-        mat.opacity = Math.min(0.65, fire.config.smokeDensity * (0.35 + fire.intensity * 0.5) * (1 - cycle / 3.0));
+        mat.opacity = Math.min(
+          0.65,
+          fire.config.smokeDensity * (0.35 + fire.intensity * 0.5) * (1 - cycle / 3.0)
+        );
       });
     }
 
-    // Обновление WebAudio громкости
     if (this.hissGain) {
       this.hissGain.gain.value = !isMuted && this.isSpraying ? 0.16 : 0;
     }
@@ -684,7 +848,7 @@ export class FireAndExtinguisherManager {
 
   public isFireExtinguished(id: string): boolean {
     const f = this.getFireById(id);
-    return f ? f.intensity <= 0 : true;
+    return f ? f.status === 'EXTINGUISHED' || f.intensity <= 0 : true;
   }
 
   public getTotalFires(): number {
@@ -692,14 +856,14 @@ export class FireAndExtinguisherManager {
   }
 
   public getExtinguishedCount(): number {
-    return this.fires.filter(f => f.intensity <= 0).length;
+    return this.fires.filter(f => f.status === 'EXTINGUISHED' || f.intensity <= 0).length;
   }
 
   public getNearestActiveFire(pos: THREE.Vector3): FireZoneRuntime | null {
     let best: FireZoneRuntime | null = null;
     let bestD = Infinity;
     for (const f of this.fires) {
-      if (f.intensity <= 0) continue;
+      if (f.status === 'EXTINGUISHED' || f.intensity <= 0) continue;
       const d = pos.distanceTo(f.worldPos);
       if (d < bestD) {
         bestD = d;
