@@ -48,6 +48,7 @@ export interface RadiationSourceInstance {
   isotopeId: string;
   activityMBq: number;
   mesh?: THREE.Object3D;
+  ringFloorY?: number;
   isLineSource?: boolean;
   lineLengthM?: number;
   lineDirection?: THREE.Vector3;
@@ -1422,7 +1423,7 @@ export const SCENARIOS: ScenarioDefinition[] = [
     facilityRu: "Комплекс энергоблоков, градирен и вспомогательных корпусов АЭС (1:1 м)",
     dominantIsotopes: ["Cs-137", "Co-60"],
     recommendedPermitLimitMsv: 0.50,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 21.5),
+    initialPlayerPos: new THREE.Vector3(0, 1.65, 23.8),
     ambientColor: 0x334155,
     isLowLight: false,
     hasAirborneContamination: true,
@@ -1477,33 +1478,11 @@ export const SCENARIOS: ScenarioDefinition[] = [
       envGroup.name = "scenario_4_npp_complex_env";
       scene.add(envGroup);
 
-      // Лёгкий радиационный фон у очагов возгорания (управляется и масштабируется контроллером Сценария 4)
-      const fireMarker1 = new THREE.Object3D();
-      fireMarker1.position.set(-7.5, 0.8, 1.5);
-      envGroup.add(fireMarker1);
-
-      const fireMarker2 = new THREE.Object3D();
-      fireMarker2.position.set(1.5, 0.8, -5.5);
-      envGroup.add(fireMarker2);
-
+      // Источники ИИИ привязываются контроллером Сценария 4 (onRadiationSourcesReady)
+      // строго к реальным мировым координатам очагов после нормализации /assembly.glb.
       return {
         envGroup,
-        sources: [
-          {
-            id: "src_s4_zone1",
-            position: new THREE.Vector3(-7.5, 0.8, 1.5),
-            isotopeId: "Cs-137",
-            activityMBq: 450,
-            mesh: fireMarker1
-          },
-          {
-            id: "src_s4_zone2",
-            position: new THREE.Vector3(1.5, 0.8, -5.5),
-            isotopeId: "Co-60",
-            activityMBq: 320,
-            mesh: fireMarker2
-          }
-        ],
+        sources: [],
         shields: [],
         interactive: []
       };

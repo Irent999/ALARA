@@ -81,6 +81,7 @@ export class NpcEvacuationSystem {
   private readonly scratchScale = new THREE.Vector3(1, 1, 1);
   private readonly upAxis = new THREE.Vector3(0, 1, 0);
 
+  private readonly markerScale: number;
   private animClockSec = 0;
 
   constructor(params: {
@@ -92,8 +93,10 @@ export class NpcEvacuationSystem {
     entrancePos: THREE.Vector3;
     exits: ReadonlyArray<NamedWorldMarker>;
     assemblyPos: THREE.Vector3;
+    markerScale?: number;
   }) {
     this.rootGroup.name = 'npp_npc_evacuation_system';
+    this.markerScale = Math.max(0.35, Math.min(2.0, params.markerScale ?? 0.78));
     this.entrancePos.copy(params.entrancePos);
     this.assemblyPos.copy(params.assemblyPos);
     params.exits.forEach(e => this.exitPositions.push(e.pos.clone()));
@@ -102,6 +105,7 @@ export class NpcEvacuationSystem {
     this.buildTriggerZones(params.triggerSpecs, params.discoveredTriggers);
     this.buildNpcGroups(params.npcSpecs, params.discoveredNpcs, params.discoveredWaypoints);
 
+    const ms = this.markerScale;
     this.activeTargetHalo = new THREE.Group();
     this.activeTargetRingMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
@@ -110,21 +114,21 @@ export class NpcEvacuationSystem {
       opacity: 0.78
     });
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.75, 0.92, 32),
+      new THREE.RingGeometry(0.65 * ms, 0.82 * ms, 32),
       this.activeTargetRingMat
     );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.04;
+    ring.position.y = 0.035;
     const pillar = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.05, 0.05, 2.2, 10),
+      new THREE.CylinderGeometry(0.04 * ms, 0.04 * ms, 1.8 * ms, 10),
       new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35 })
     );
-    pillar.position.y = 1.1;
+    pillar.position.y = 0.9 * ms;
     this.activeTargetHalo.add(ring, pillar);
     this.activeTargetHalo.visible = false;
     this.rootGroup.add(this.activeTargetHalo);
 
-    const arrowGeo = new THREE.ConeGeometry(0.24, 0.55, 3);
+    const arrowGeo = new THREE.ConeGeometry(0.2 * ms, 0.48 * ms, 3);
     arrowGeo.rotateX(Math.PI / 2);
     const arrowMat = new THREE.MeshBasicMaterial({
       color: 0x22c55e,
@@ -165,12 +169,35 @@ export class NpcEvacuationSystem {
     return tex;
   }
 
+  private createDoubleSidedSignBoard(
+    width: number,
+    height: number,
+    tex: THREE.CanvasTexture
+  ): THREE.Group {
+    const board = new THREE.Group();
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(width + 0.05, height + 0.05, 0.03),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.7 })
+    );
+    board.add(frame);
+
+    const faceMat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.FrontSide });
+    const front = new THREE.Mesh(new THREE.PlaneGeometry(width, height), faceMat);
+    front.position.z = 0.018;
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(width, height), faceMat);
+    back.position.z = -0.018;
+    back.rotation.y = Math.PI;
+    board.add(front, back);
+    return board;
+  }
+
   private buildEntranceAndExitSigns(exits: ReadonlyArray<NamedWorldMarker>): void {
+    const ms = this.markerScale;
     const entGroup = new THREE.Group();
     entGroup.position.copy(this.entrancePos);
 
     const entRing = new THREE.Mesh(
-      new THREE.RingGeometry(1.1, 1.32, 32),
+      new THREE.RingGeometry(0.95 * ms, 1.15 * ms, 32),
       new THREE.MeshBasicMaterial({
         color: 0x0ea5e9,
         side: THREE.DoubleSide,
@@ -179,16 +206,18 @@ export class NpcEvacuationSystem {
       })
     );
     entRing.rotation.x = -Math.PI / 2;
-    entRing.position.y = 0.03;
+    entRing.position.y = 0.025;
     entGroup.add(entRing);
 
     const entTex = this.createSignTexture('ВХОД МЧС', 'ОПАСНАЯ ЗОНА АЭС', '#082f49', '#38bdf8');
-    const entSign = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.6, 0.95),
-      new THREE.MeshBasicMaterial({ map: entTex, side: THREE.DoubleSide })
+    const entSign = this.createDoubleSidedSignBoard(2.1 * ms, 0.78 * ms, entTex);
+    entSign.position.set(0, 2.75 * ms, 0);
+    const entPole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04 * ms, 0.045 * ms, 2.35 * ms, 8),
+      new THREE.MeshStandardMaterial({ color: 0x334155 })
     );
-    entSign.position.set(0, 3.85, 0.25);
-    entGroup.add(entSign);
+    entPole.position.set(0, 1.18 * ms, 0);
+    entGroup.add(entPole, entSign);
     this.rootGroup.add(entGroup);
 
     const exitTex = this.createSignTexture(
@@ -197,18 +226,22 @@ export class NpcEvacuationSystem {
       '#052e16',
       '#22c55e'
     );
-    const exitSignMat = new THREE.MeshBasicMaterial({ map: exitTex, side: THREE.DoubleSide });
 
     exits.forEach(ex => {
       const g = new THREE.Group();
       g.position.copy(ex.pos);
 
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.8), exitSignMat);
-      sign.position.set(0, 3.2, 0);
-      g.add(sign);
+      const sign = this.createDoubleSidedSignBoard(1.95 * ms, 0.72 * ms, exitTex);
+      sign.position.set(0, 2.55 * ms, 0);
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04 * ms, 0.045 * ms, 2.2 * ms, 8),
+        new THREE.MeshStandardMaterial({ color: 0x334155 })
+      );
+      pole.position.set(0, 1.1 * ms, 0);
+      g.add(pole, sign);
 
       const portalGlow = new THREE.Mesh(
-        new THREE.RingGeometry(0.95, 1.15, 28),
+        new THREE.RingGeometry(0.85 * ms, 1.05 * ms, 28),
         new THREE.MeshBasicMaterial({
           color: 0x22c55e,
           side: THREE.DoubleSide,
@@ -217,11 +250,11 @@ export class NpcEvacuationSystem {
         })
       );
       portalGlow.rotation.x = -Math.PI / 2;
-      portalGlow.position.y = 0.03;
+      portalGlow.position.y = 0.025;
       g.add(portalGlow);
 
-      const exitLight = new THREE.PointLight(0x22c55e, 1.6, 7.5);
-      exitLight.position.set(0, 2.6, 0);
+      const exitLight = new THREE.PointLight(0x22c55e, 1.4, 6.5 * ms);
+      exitLight.position.set(0, 2.2 * ms, 0);
       g.add(exitLight);
 
       this.rootGroup.add(g);
@@ -231,7 +264,7 @@ export class NpcEvacuationSystem {
     asmGroup.position.copy(this.assemblyPos);
 
     const asmRing = new THREE.Mesh(
-      new THREE.RingGeometry(2.1, 2.4, 36),
+      new THREE.RingGeometry(1.7 * ms, 1.98 * ms, 36),
       new THREE.MeshBasicMaterial({
         color: 0x10b981,
         side: THREE.DoubleSide,
@@ -249,16 +282,13 @@ export class NpcEvacuationSystem {
       '#022c22',
       '#34d399'
     );
-    const asmSign = new THREE.Mesh(
-      new THREE.PlaneGeometry(2.9, 1.0),
-      new THREE.MeshBasicMaterial({ map: asmTex, side: THREE.DoubleSide })
-    );
-    asmSign.position.set(0, 2.7, 0);
+    const asmSign = this.createDoubleSidedSignBoard(2.3 * ms, 0.82 * ms, asmTex);
+    asmSign.position.set(0, 2.55 * ms, 0);
     const pole = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.06, 2.4, 8),
+      new THREE.CylinderGeometry(0.045 * ms, 0.05 * ms, 2.15 * ms, 8),
       new THREE.MeshStandardMaterial({ color: 0x475569 })
     );
-    pole.position.set(0, 1.2, 0);
+    pole.position.set(0, 1.08 * ms, 0);
     asmGroup.add(pole, asmSign);
     this.rootGroup.add(asmGroup);
   }
@@ -371,16 +401,16 @@ export class NpcEvacuationSystem {
       statusBeaconMesh.position.set(0, 2.1, 0);
       groupRoot.add(statusBeaconMesh);
 
-      // Если в .glb присутствуют WAYPOINT_G1_* / WAYPOINT_G2_* — используем их, иначе fallback
+      // Если в .glb или инспекторе есть WAYPOINT_G1_* / WAYPOINT_G2_* — используем их, иначе fallback
       const matchedWaypoints = discoveredWaypoints.filter(w =>
         w.name.toUpperCase().startsWith(cfg.waypointPrefix.toUpperCase())
       );
       const waypoints =
         matchedWaypoints.length > 0
           ? matchedWaypoints.map(w => w.pos.clone())
-          : cfg.evacWaypoints.map(w => new THREE.Vector3(w[0], w[1], w[2]));
+          : cfg.evacWaypoints.map(w => new THREE.Vector3(w[0], startPos.y, w[2]));
 
-      const exitPos = new THREE.Vector3(cfg.exitPoint[0], cfg.exitPoint[1], cfg.exitPoint[2]);
+      const exitPos = (this.exitPositions[0] ?? this.assemblyPos).clone();
 
       this.rootGroup.add(groupRoot);
       this.npcGroups.push({
@@ -486,7 +516,7 @@ export class NpcEvacuationSystem {
       for (let k = 0; k < steps && arrowIdx < this.arrowCount; k++) {
         const t = Math.min(0.95, (k + shift) / steps);
         this.scratchVecA.lerpVectors(p0, p1, t);
-        this.scratchVecA.y = 0.06;
+        this.scratchVecA.y = Math.max(this.assemblyPos.y, this.scratchVecA.y) + 0.06;
         this.scratchMatrix.compose(this.scratchVecA, this.scratchQuat, this.scratchScale);
         this.arrowInstanced.setMatrixAt(arrowIdx, this.scratchMatrix);
         arrowIdx += 1;
@@ -608,7 +638,11 @@ export class NpcEvacuationSystem {
           } else {
             this.setGroupState(grp, 'SAFE');
             const offset = i === 0 ? -1.4 : 1.4;
-            grp.currentPos.set(this.assemblyPos.x + offset, 0, this.assemblyPos.z + 0.6);
+            grp.currentPos.set(
+              this.assemblyPos.x + offset,
+              this.assemblyPos.y,
+              this.assemblyPos.z + 0.6
+            );
             grp.rootGroup.position.copy(grp.currentPos);
             rescuedCount += grp.config.count;
             justEvacuatedGroupNameRu = grp.config.nameRu;
@@ -617,8 +651,9 @@ export class NpcEvacuationSystem {
           this.scratchVecA.divideScalar(dist);
           const step = Math.min(dist, 2.4 * dt);
           grp.currentPos.addScaledVector(this.scratchVecA, step);
+          grp.currentPos.y = THREE.MathUtils.lerp(grp.currentPos.y, target.y, Math.min(1, dt * 6));
           grp.rootGroup.position.copy(grp.currentPos);
-          grp.rootGroup.lookAt(target.x, 0, target.z);
+          grp.rootGroup.lookAt(target.x, grp.currentPos.y, target.z);
           grp.personMeshes.forEach((p, idx) => {
             p.position.y = Math.abs(Math.sin(this.animClockSec * 8 + idx * 1.4)) * 0.055;
           });

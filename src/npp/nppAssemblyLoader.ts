@@ -174,10 +174,14 @@ export class NppAssemblyLoader {
     sourceUrl: string,
     callbacks?: NppLoadCallbacks
   ): NppLoadResult {
+    const tf = this.config.transform;
+
     // 1. Гарантируем видимость всей иерархии и слоёв
     worldRoot.visible = true;
     worldRoot.layers.enableAll();
-    worldRoot.scale.setScalar(this.config.targetUnitScale);
+    worldRoot.position.set(0, 0, 0);
+    worldRoot.rotation.set(0, 0, 0);
+    worldRoot.scale.setScalar(1);
     worldRoot.updateMatrixWorld(true);
 
     let meshCount = 0;
@@ -225,52 +229,109 @@ export class NppAssemblyLoader {
       }
     });
 
-    // 2. Анализ исходного Box3, нормализация масштаба и выравнивание по полу Y = 0
+    // 2. Измеряем исходный Box3 (до поворота и масштабирования)
     const rawBox = new THREE.Box3().setFromObject(worldRoot);
     const rawSize = new THREE.Vector3();
     const rawCenter = new THREE.Vector3();
 
+    let rawMinArr: readonly [number, number, number] = [0, 0, 0];
+    let rawMaxArr: readonly [number, number, number] = [0, 0, 0];
+    let rawSizeArr: readonly [number, number, number] = [0, 0, 0];
+    let appliedRotationDeg: readonly [number, number, number] = [0, 0, 0];
+    let appliedScale = 1.0;
+
     if (!rawBox.isEmpty()) {
       rawBox.getSize(rawSize);
       rawBox.getCenter(rawCenter);
+      rawMinArr = [
+        Number(rawBox.min.x.toFixed(2)),
+        Number(rawBox.min.y.toFixed(2)),
+        Number(rawBox.min.z.toFixed(2))
+      ];
+      rawMaxArr = [
+        Number(rawBox.max.x.toFixed(2)),
+        Number(rawBox.max.y.toFixed(2)),
+        Number(rawBox.max.z.toFixed(2))
+      ];
+      rawSizeArr = [
+        Number(rawSize.x.toFixed(2)),
+        Number(rawSize.y.toFixed(2)),
+        Number(rawSize.z.toFixed(2))
+      ];
+
       console.info('[ALARA GLB] Исходный Box3 до нормализации:', {
-        min: rawBox.min.toArray().map(n => Number(n.toFixed(2))),
-        max: rawBox.max.toArray().map(n => Number(n.toFixed(2))),
-        size: rawSize.toArray().map(n => Number(n.toFixed(2))),
+        min: rawMinArr,
+        max: rawMaxArr,
+        size: rawSizeArr,
         meshCount,
         fixedOpacityCount
       });
 
-      const maxDim = Math.max(rawSize.x, rawSize.y, rawSize.z);
-      if (maxDim > 400) {
-        const autoScale = maxDim > 4000 ? 0.001 : 0.01;
-        worldRoot.scale.multiplyScalar(autoScale);
+      // 2.1. Нормализация ориентации (Z-up -> Y-up): если плита стоит вертикально (X/Y велики, Z тоньше Y)
+      const isFlatVerticalPanel =
+        rawSize.y > 0.001 &&
+        rawSize.z < rawSize.y * 0.85 &&
+        rawSize.x > rawSize.z * 1.15;
+
+      const shouldRotate =
+        tf.orientationMode === 'always' ||
+        (tf.orientationMode === 'auto_z_up' && isFlatVerticalPanel);
+
+      if (shouldRotate) {
+        appliedRotationDeg = tf.rotationDeg;
+        worldRoot.rotation.set(
+          THREE.MathUtils.degToRad(tf.rotationDeg[0]),
+          THREE.MathUtils.degToRad(tf.rotationDeg[1]),
+          THREE.MathUtils.degToRad(tf.rotationDeg[2]),
+          'XYZ'
+        );
         worldRoot.updateMatrixWorld(true);
-        console.info(`[ALARA GLB] Авто-масштабирование (см/мм -> м): ×${autoScale}`);
-      } else if (maxDim > 0 && maxDim < 1.5) {
-        const autoScale = maxDim < 0.25 ? 40 : 10;
-        worldRoot.scale.multiplyScalar(autoScale);
-        worldRoot.updateMatrixWorld(true);
-        console.info(`[ALARA GLB] Авто-масштабирование (миниатюра -> м): ×${autoScale}`);
+        console.info(
+          `[ALARA GLB] Применён поворот ориентации (${tf.orientationMode}): [${tf.rotationDeg.join('°, ')}°]`
+        );
       }
 
+      // 2.2. Единое масштабирование к целевому горизонтальному размеру комплекса (targetFootprintMeters)
+      const orientedBox = new THREE.Box3().setFromObject(worldRoot);
+      const orientedSize = new THREE.Vector3();
+      orientedBox.getSize(orientedSize);
+      const horizMax = Math.max(orientedSize.x, orientedSize.z, 0.001);
+
+      if (tf.targetFootprintMeters > 0) {
+        appliedScale = (tf.targetFootprintMeters / horizMax) * tf.scaleMultiplier;
+      } else {
+        appliedScale = tf.scaleMultiplier;
+      }
+      worldRoot.scale.setScalar(appliedScale);
+      worldRoot.updateMatrixWorld(true);
+
+      // 2.3. Центрирование XZ в (0, 0), выравнивание основания по Y = 0 и пользовательский сдвиг
       const scaledBox = new THREE.Box3().setFromObject(worldRoot);
       const scaledCenter = new THREE.Vector3();
       scaledBox.getCenter(scaledCenter);
 
-      // Ставим основание модели на Y = 0
-      if (this.config.alignBottomToZeroY && Number.isFinite(scaledBox.min.y)) {
-        worldRoot.position.y -= scaledBox.min.y;
-      }
-      // Если модель смещена далеко от начала координат (> 25 м), центрируем в XZ для точности теней и WebXR
-      if (Math.hypot(scaledCenter.x, scaledCenter.z) > 25) {
+      if (tf.centerXZ) {
         worldRoot.position.x -= scaledCenter.x;
         worldRoot.position.z -= scaledCenter.z;
-        console.info(
-          `[ALARA GLB] Центрирование XZ смещённой модели к (0, 0) с (${scaledCenter.x.toFixed(1)}, ${scaledCenter.z.toFixed(1)})`
-        );
       }
+      if (tf.alignBottomToZeroY && Number.isFinite(scaledBox.min.y)) {
+        worldRoot.position.y -= scaledBox.min.y;
+      }
+      worldRoot.position.x += tf.positionOffset[0];
+      worldRoot.position.y += tf.positionOffset[1];
+      worldRoot.position.z += tf.positionOffset[2];
       worldRoot.updateMatrixWorld(true);
+
+      const finalBox = new THREE.Box3().setFromObject(worldRoot);
+      const finalSize = new THREE.Vector3();
+      finalBox.getSize(finalSize);
+      console.info('[ALARA GLB] Итоговый Box3 после нормализации:', {
+        appliedRotationDeg,
+        appliedScale: Number(appliedScale.toFixed(4)),
+        min: finalBox.min.toArray().map(n => Number(n.toFixed(2))),
+        max: finalBox.max.toArray().map(n => Number(n.toFixed(2))),
+        size: finalSize.toArray().map(n => Number(n.toFixed(2)))
+      });
     } else {
       console.warn('[ALARA GLB] Загруженный gltf.scene имеет пустой Box3 (нет видимой геометрии).');
     }
@@ -286,8 +347,14 @@ export class NppAssemblyLoader {
       worldRoot.add(glbFillLight);
     }
 
-    // 4. Инспекция графа сцены и регистрация именованных узлов
-    const report = inspectNppSceneGraph(worldRoot, this.config, sourceKind, sourceUrl);
+    // 4. Инспекция графа сцены и регистрация именованных узлов с мировыми координатами после нормализации
+    const report = inspectNppSceneGraph(worldRoot, this.config, sourceKind, sourceUrl, {
+      rawBoundingBoxMin: rawMinArr,
+      rawBoundingBoxMax: rawMaxArr,
+      rawBoundingBoxSize: rawSizeArr,
+      appliedRotationDeg,
+      appliedScale
+    });
     callbacks?.onProgress?.(100, '3D-модель АЭС загружена');
 
     return {

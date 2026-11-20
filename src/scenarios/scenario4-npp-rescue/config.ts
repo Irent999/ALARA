@@ -2,7 +2,13 @@
  * Реэкспорт конфигурации и типов Сценария №4 из модулей src/npp/, src/state/, src/mechanics/
  */
 
-export { NPP_NODE_CONFIG, type WallColliderBox } from '../../npp/nppNodeConfig';
+export {
+  NPP_NODE_CONFIG,
+  SCENARIO_4_TRANSFORM,
+  type Scenario4TransformConfig,
+  type Scenario4OrientationMode,
+  type WallColliderBox
+} from '../../npp/nppNodeConfig';
 export {
   SCENARIO4_PHASES as SCENARIO4_STEPS,
   SCENARIO4_PHASE_ORDER as SCENARIO4_STEP_ORDER,

@@ -10,9 +10,10 @@
  */
 
 import * as THREE from 'three';
-import { NPP_NODE_CONFIG, type WallColliderBox } from '../../npp/nppNodeConfig';
+import { NPP_NODE_CONFIG, SCENARIO_4_TRANSFORM, type WallColliderBox } from '../../npp/nppNodeConfig';
 import { NppAssemblyLoader } from '../../npp/nppAssemblyLoader';
 import type { NppInspectionReport } from '../../npp/nppSceneInspector';
+import type { RadiationSourceInstance } from '../../scene/scenarios';
 import { ExtinguisherSystem } from '../../mechanics/extinguisherSystem';
 import { NpcEvacuationSystem } from '../../mechanics/npcEvacuationSystem';
 import {
@@ -44,6 +45,7 @@ export interface Scenario4ControllerOptions {
     focusPos: THREE.Vector3,
     lookTarget: THREE.Vector3
   ) => void;
+  readonly onRadiationSourcesReady?: (sources: RadiationSourceInstance[]) => void;
 }
 
 export class Scenario4Controller {
@@ -53,6 +55,7 @@ export class Scenario4Controller {
   private readonly onToast: Scenario4ControllerOptions['onToast'];
   private readonly onPlayerSpawnReady?: Scenario4ControllerOptions['onPlayerSpawnReady'];
   private readonly onCameraFocusRequested?: Scenario4ControllerOptions['onCameraFocusRequested'];
+  private readonly onRadiationSourcesReady?: Scenario4ControllerOptions['onRadiationSourcesReady'];
   private readonly doseLimitMsv: number;
   private readonly maxDurationSec: number;
 
@@ -71,6 +74,7 @@ export class Scenario4Controller {
     new THREE.Vector3(-45, 0, -45),
     new THREE.Vector3(45, 30, 45)
   );
+  private deckSurfaceY = 0;
   private isDisposed = false;
 
   // Состояние асинхронной загрузки /assembly.glb
@@ -118,6 +122,7 @@ export class Scenario4Controller {
     this.onToast = options.onToast;
     this.onPlayerSpawnReady = options.onPlayerSpawnReady;
     this.onCameraFocusRequested = options.onCameraFocusRequested;
+    this.onRadiationSourcesReady = options.onRadiationSourcesReady;
     this.doseLimitMsv = options.doseLimitMsv ?? 0.5;
     this.maxDurationSec = options.maxDurationSec ?? 450;
 
@@ -243,6 +248,7 @@ export class Scenario4Controller {
   ): void {
     this.loadErrorRu = null;
     this.inspectionReport = report;
+    this.deckSurfaceY = report.deckSurfaceY;
     this.modelContainer.add(worldRoot);
     this.modelContainer.updateMatrixWorld(true);
     this.modelBounds.setFromObject(worldRoot);
@@ -272,7 +278,8 @@ export class Scenario4Controller {
       NPP_NODE_CONFIG.fireZones,
       m.fireZones,
       this.primaryPostPos,
-      this.sparePostPos
+      this.sparePostPos,
+      SCENARIO_4_TRANSFORM.effectScale
     );
     this.rootGroup.add(this.fireMgr.rootGroup);
 
@@ -284,9 +291,36 @@ export class Scenario4Controller {
       discoveredTriggers: m.triggers,
       entrancePos: this.entrancePos,
       exits: m.exits,
-      assemblyPos: this.assemblyPos
+      assemblyPos: this.assemblyPos,
+      markerScale: SCENARIO_4_TRANSFORM.markerScale
     });
     this.rootGroup.add(this.evacMgr.rootGroup);
+
+    // Синхронизируем маркеры ИИИ (Cs-137, Co-60) строго с реальными позициями очагов на нормализованной .glb-модели
+    const syncedSources: RadiationSourceInstance[] = [];
+    const fire0 = this.fireMgr.fires[0];
+    if (fire0) {
+      syncedSources.push({
+        id: 'src_s4_zone1',
+        position: new THREE.Vector3(fire0.worldPos.x, fire0.worldPos.y + 0.45, fire0.worldPos.z),
+        isotopeId: 'Cs-137',
+        activityMBq: 450,
+        mesh: fire0.rootGroup,
+        ringFloorY: fire0.worldPos.y + 0.03
+      });
+    }
+    const fire1 = this.fireMgr.fires[1];
+    if (fire1) {
+      syncedSources.push({
+        id: 'src_s4_zone2',
+        position: new THREE.Vector3(fire1.worldPos.x, fire1.worldPos.y + 0.45, fire1.worldPos.z),
+        isotopeId: 'Co-60',
+        activityMBq: 320,
+        mesh: fire1.rootGroup,
+        ringFloorY: fire1.worldPos.y + 0.03
+      });
+    }
+    this.onRadiationSourcesReady?.(syncedSources);
 
     this.elapsedSec = 0;
     this.peakHeatLoad01 = 0;
@@ -305,15 +339,20 @@ export class Scenario4Controller {
    */
   public clampPlayerPosition(pos: THREE.Vector3, isVR: boolean): void {
     const r = 0.42;
-    const floorY = Number.isFinite(this.modelBounds.min.y) ? this.modelBounds.min.y : 0;
-    if (!isVR && pos.y < floorY + 0.9) pos.y = floorY + 1.65;
-    if (isVR && pos.y < floorY) pos.y = floorY;
+    const floorY = Number.isFinite(this.deckSurfaceY) ? this.deckSurfaceY : 0;
+    const minEyeY = floorY + 0.9;
+    if (!isVR && pos.y < minEyeY) {
+      pos.y = floorY + SCENARIO_4_TRANSFORM.spawn.eyeHeightMeters;
+    }
+    if (isVR && pos.y < floorY) {
+      pos.y = floorY;
+    }
 
-    const pad = 28;
-    const minBoundX = Math.min(-45, this.modelBounds.min.x - pad);
-    const maxBoundX = Math.max(45, this.modelBounds.max.x + pad);
-    const minBoundZ = Math.min(-45, this.modelBounds.min.z - pad);
-    const maxBoundZ = Math.max(45, this.modelBounds.max.z + pad);
+    const pad = 22;
+    const minBoundX = Math.min(-25, this.modelBounds.min.x - pad);
+    const maxBoundX = Math.max(25, this.modelBounds.max.x + pad);
+    const minBoundZ = Math.min(-25, this.modelBounds.min.z - pad);
+    const maxBoundZ = Math.max(25, this.modelBounds.max.z + pad);
 
     pos.x = THREE.MathUtils.clamp(pos.x, minBoundX, maxBoundX);
     pos.z = THREE.MathUtils.clamp(pos.z, minBoundZ, maxBoundZ);

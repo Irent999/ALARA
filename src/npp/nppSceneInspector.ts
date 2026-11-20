@@ -1,8 +1,8 @@
 /**
  * ALARA — Инспектор иерархии графа сцены АЭС (.glb)
- * Выполняет scene.traverse по загруженной 3D-модели /assembly.glb,
+ * Выполняет scene.traverse по нормализованной 3D-модели /assembly.glb,
  * регистрирует игровые узлы по префиксам из NPP_NODE_CONFIG,
- * вычисляет мировые координаты, фиксирует отсутствующие узлы и формирует отчёт.
+ * привязывает координаты огня/NPC/точек входа и спавна к реальному Box3 и поверхности модели.
  */
 
 import * as THREE from 'three';
@@ -18,6 +18,20 @@ export interface InspectedNodeEntry {
   readonly nodeName: string;
   readonly worldPosition: readonly [number, number, number];
   readonly usedFallback: boolean;
+}
+
+export interface NamedNodeWorldCoord {
+  readonly name: string;
+  readonly kind: 'Mesh' | 'Node';
+  readonly worldPosition: readonly [number, number, number];
+}
+
+export interface NormalizationMetrics {
+  readonly rawBoundingBoxMin: readonly [number, number, number];
+  readonly rawBoundingBoxMax: readonly [number, number, number];
+  readonly rawBoundingBoxSize: readonly [number, number, number];
+  readonly appliedRotationDeg: readonly [number, number, number];
+  readonly appliedScale: number;
 }
 
 export type NppSceneSourceKind = 'glb_file' | 'custom_upload';
@@ -45,11 +59,18 @@ export interface NppInspectionReport {
   readonly sourceUrl: string;
   readonly totalNodes: number;
   readonly totalMeshes: number;
+  readonly rawBoundingBoxMin: readonly [number, number, number];
+  readonly rawBoundingBoxMax: readonly [number, number, number];
+  readonly rawBoundingBoxSize: readonly [number, number, number];
+  readonly appliedRotationDeg: readonly [number, number, number];
+  readonly appliedScale: number;
+  readonly deckSurfaceY: number;
   readonly boundingBoxMin: readonly [number, number, number];
   readonly boundingBoxMax: readonly [number, number, number];
   readonly boundingBoxCenter: readonly [number, number, number];
   readonly boundingBoxSize: readonly [number, number, number];
   readonly keyNodeNames: ReadonlyArray<string>;
+  readonly namedNodeCoords: ReadonlyArray<NamedNodeWorldCoord>;
   readonly discoveredNodes: ReadonlyArray<InspectedNodeEntry>;
   readonly missingExpectedNodes: ReadonlyArray<string>;
   readonly markers: DiscoveredNppMarkers;
@@ -69,21 +90,97 @@ function roundCoords(v: THREE.Vector3): readonly [number, number, number] {
 }
 
 /**
- * Проводит полный обход графа сцены (.glb), регистрирует ключевые узлы,
- * вычисляет габариты Box3, валидную точку спавна и обзорную позицию камеры,
- * а также выводит структуру узлов и Box3 в консоль.
+ * Определяет высоту горизонтальной площадки/пола модели (.glb) с помощью нисходящих лучей
+ * в пределах разумной высоты цоколя (чтобы не принимать крыши градирен за уровень земли).
+ */
+function sampleGroundDeckY(root: THREE.Object3D, bounds: THREE.Box3, meshes: THREE.Mesh[]): number {
+  const minY = Number.isFinite(bounds.min.y) ? bounds.min.y : 0;
+  if (bounds.isEmpty() || meshes.length === 0) return minY;
+
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  bounds.getSize(size);
+  bounds.getCenter(center);
+
+  const raycaster = new THREE.Raycaster();
+  const origin = new THREE.Vector3();
+  const down = new THREE.Vector3(0, -1, 0);
+  const maxDeckDelta = Math.max(0.6, Math.min(2.4, size.y * 0.16));
+
+  const samples: number[] = [];
+  const offsets = [-0.42, -0.25, 0, 0.25, 0.42];
+  for (let ix = 0; ix < offsets.length; ix++) {
+    for (let iz = 0; iz < offsets.length; iz++) {
+      origin.set(
+        center.x + offsets[ix] * size.x,
+        bounds.max.y + 2.0,
+        center.z + offsets[iz] * size.z
+      );
+      raycaster.set(origin, down);
+      const hits = raycaster.intersectObjects(meshes, false);
+      for (let h = 0; h < hits.length; h++) {
+        const y = hits[h].point.y;
+        if (y >= minY - 0.05 && y <= minY + maxDeckDelta) {
+          samples.push(y);
+          break;
+        }
+      }
+    }
+  }
+
+  if (samples.length === 0) return minY;
+  samples.sort((a, b) => a - b);
+  const idx = Math.floor(samples.length * 0.35);
+  return Number(samples[idx].toFixed(3));
+}
+
+function sampleSurfaceYAt(
+  x: number,
+  z: number,
+  bounds: THREE.Box3,
+  meshes: THREE.Mesh[],
+  deckY: number
+): number {
+  if (meshes.length === 0 || bounds.isEmpty()) return deckY;
+  if (x < bounds.min.x || x > bounds.max.x || z < bounds.min.z || z > bounds.max.z) {
+    return deckY;
+  }
+
+  const sizeY = bounds.max.y - bounds.min.y;
+  const maxStepY = deckY + Math.max(0.5, Math.min(1.6, sizeY * 0.12));
+
+  const raycaster = new THREE.Raycaster(
+    new THREE.Vector3(x, bounds.max.y + 1.5, z),
+    new THREE.Vector3(0, -1, 0)
+  );
+  const hits = raycaster.intersectObjects(meshes, false);
+  for (let i = hits.length - 1; i >= 0; i--) {
+    const hy = hits[i].point.y;
+    if (hy >= bounds.min.y - 0.05 && hy <= maxStepY) {
+      return hy;
+    }
+  }
+  return deckY;
+}
+
+/**
+ * Проводит полный обход графа нормализованной сцены (.glb), регистрирует ключевые узлы,
+ * вычисляет габариты Box3, высоту площадки deckSurfaceY, валидную точку спавна и позиции игровых зон.
  */
 export function inspectNppSceneGraph(
   root: THREE.Object3D,
   config: NppAssemblyConfig,
   sourceKind: NppSceneSourceKind,
-  sourceUrl: string
+  sourceUrl: string,
+  normMetrics?: NormalizationMetrics
 ): NppInspectionReport {
   root.updateMatrixWorld(true);
 
   const discoveredNodes: InspectedNodeEntry[] = [];
   const missingExpectedNodes: string[] = [];
   const keyNodeNames: string[] = [];
+  const namedNodeCoords: NamedNodeWorldCoord[] = [];
+  const allMeshes: THREE.Mesh[] = [];
 
   const spawnCandidates: NamedWorldMarker[] = [];
   const entrances: NamedWorldMarker[] = [];
@@ -107,24 +204,33 @@ export function inspectNppSceneGraph(
   const centerVec = new THREE.Vector3();
   const sizeVec = new THREE.Vector3();
 
-  const { prefixes } = config;
+  const { prefixes, transform } = config;
 
   root.traverse(obj => {
     totalNodes += 1;
     const isMesh = Boolean((obj as THREE.Mesh).isMesh);
     if (isMesh) {
       totalMeshes += 1;
+      allMeshes.push(obj as THREE.Mesh);
     }
 
     const rawName = obj.name?.trim() ?? '';
     if (!rawName) return;
 
+    obj.getWorldPosition(wp);
+
     if (keyNodeNames.length < 80) {
       keyNodeNames.push(isMesh ? `${rawName} [Mesh]` : rawName);
     }
+    if (namedNodeCoords.length < 60) {
+      namedNodeCoords.push({
+        name: rawName,
+        kind: isMesh ? 'Mesh' : 'Node',
+        worldPosition: roundCoords(wp)
+      });
+    }
 
     const upper = rawName.toUpperCase();
-    obj.getWorldPosition(wp);
 
     const record = (category: string, list: NamedWorldMarker[]) => {
       const cloned = wp.clone();
@@ -184,34 +290,50 @@ export function inspectNppSceneGraph(
     sceneBounds.getSize(sizeVec);
     sceneBounds.getCenter(centerVec);
   } else {
-    sceneBounds.min.set(-10, 0, -10);
-    sceneBounds.max.set(10, 5, 10);
-    sizeVec.set(20, 5, 20);
-    centerVec.set(0, 2.5, 0);
+    sceneBounds.min.set(-19, 0, -19);
+    sceneBounds.max.set(19, 12, 19);
+    sizeVec.set(38, 12, 38);
+    centerVec.set(0, 6, 0);
   }
 
   const floorY = Number.isFinite(sceneBounds.min.y) ? sceneBounds.min.y : 0;
-  const horizExtent = Math.max(sizeVec.x, sizeVec.z, 8);
-  const diag = Math.max(sizeVec.length(), 12);
+  const deckSurfaceY = sampleGroundDeckY(root, sceneBounds, allMeshes);
+  const diag = Math.max(sizeVec.length(), 14);
+
+  const resolveRelAnchor = (rel: readonly [number, number, number]): THREE.Vector3 => {
+    const x = centerVec.x + rel[0] * sizeVec.x;
+    const z = centerVec.z + rel[2] * sizeVec.z;
+    const surfY = sampleSurfaceYAt(x, z, sceneBounds, allMeshes, deckSurfaceY);
+    const y = surfY + rel[1] * sizeVec.y;
+    return new THREE.Vector3(x, y, z);
+  };
 
   // Точка обзора всего комплекса (для отладки и клавиши [K])
-  const focusCameraTarget = centerVec.clone();
+  const focusCameraTarget = new THREE.Vector3(
+    centerVec.x,
+    deckSurfaceY + Math.max(1.5, sizeVec.y * transform.spawn.lookAtHeightRatio),
+    centerVec.z
+  );
   const focusCameraPos = new THREE.Vector3(
-    centerVec.x + sizeVec.x * 0.14,
-    floorY + Math.max(3.2, Math.min(45, sizeVec.y * 0.55 + diag * 0.18)),
-    sceneBounds.max.z + Math.max(6.5, Math.min(85, diag * 0.55))
+    centerVec.x + sizeVec.x * 0.12,
+    deckSurfaceY + Math.max(4.5, Math.min(48, diag * transform.spawn.overviewElevationFactor)),
+    sceneBounds.max.z + Math.max(6.5, Math.min(75, diag * transform.spawn.overviewDistanceFactor * 0.55))
   );
 
-  // Валидная стартовая точка игрока: либо узел SPAWN_PLAYER из .glb, либо перед входом в модель Box3
+  // Валидная стартовая точка игрока: либо узел SPAWN_PLAYER из .glb, либо перед южной границей Box3
   let spawnPlayer: THREE.Vector3;
-  const spawnLookTarget = centerVec.clone();
-  spawnLookTarget.y = floorY + Math.min(3.5, Math.max(1.4, sizeVec.y * 0.3));
+  const spawnLookTarget = new THREE.Vector3(
+    centerVec.x,
+    deckSurfaceY + Math.max(1.5, Math.min(6.0, sizeVec.y * transform.spawn.lookAtHeightRatio)),
+    centerVec.z
+  );
 
   if (spawnCandidates.length > 0) {
     spawnPlayer = spawnCandidates[0].pos.clone();
   } else {
-    const frontOffsetZ = Math.max(3.5, Math.min(18, horizExtent * 0.22));
-    spawnPlayer = new THREE.Vector3(centerVec.x, floorY, sceneBounds.max.z + frontOffsetZ);
+    const spawnX = centerVec.x + transform.spawn.lateralNormX * sizeVec.x;
+    const spawnZ = sceneBounds.max.z + transform.spawn.forwardMarginMeters;
+    spawnPlayer = new THREE.Vector3(spawnX, deckSurfaceY, spawnZ);
     missingExpectedNodes.push(
       `SPAWN_PLAYER (авто-спавн по Box3: [${roundCoords(spawnPlayer).join(', ')}])`
     );
@@ -224,67 +346,109 @@ export function inspectNppSceneGraph(
   }
 
   if (entrances.length === 0) {
-    const autoEntrance = new THREE.Vector3(
-      centerVec.x,
-      floorY,
-      Math.max(sceneBounds.min.z, sceneBounds.max.z - Math.min(4.0, sizeVec.z * 0.12))
-    );
-    missingExpectedNodes.push(`ENTRANCE_* (авто: [${roundCoords(autoEntrance).join(', ')}])`);
+    const autoEntrance = resolveRelAnchor(config.defaultEntranceRelPos);
+    missingExpectedNodes.push(`ENTRANCE_* (авто по Box3: [${roundCoords(autoEntrance).join(', ')}])`);
     entrances.push({ name: 'AUTO_ENTRANCE_MAIN', pos: autoEntrance });
   }
 
   if (exits.length === 0) {
-    missingExpectedNodes.push('EXIT_* (авто-точки эваковыхода у границ модели)');
-    exits.push(
-      { name: 'EXIT_MAIN', pos: new THREE.Vector3(centerVec.x, floorY, sceneBounds.max.z) },
-      { name: 'EXIT_EAST', pos: new THREE.Vector3(sceneBounds.max.x, floorY, centerVec.z) }
-    );
+    missingExpectedNodes.push('EXIT_* (авто-точки эваковыхода по Box3 модели)');
+    config.defaultExits.forEach(ex => {
+      exits.push({
+        name: ex.id,
+        pos: resolveRelAnchor(ex.relPos)
+      });
+    });
   }
 
   if (assemblyPoints.length === 0) {
-    const autoAssembly = new THREE.Vector3(
-      spawnPlayer.x,
-      floorY,
-      spawnPlayer.z + 2.5
-    );
-    missingExpectedNodes.push(`ASSEMBLY_* (авто: [${roundCoords(autoAssembly).join(', ')}])`);
+    const autoAssembly = resolveRelAnchor(config.defaultAssemblyRelPos);
+    missingExpectedNodes.push(`ASSEMBLY_* (авто по Box3: [${roundCoords(autoAssembly).join(', ')}])`);
     assemblyPoints.push({ name: 'AUTO_ASSEMBLY_MAIN', pos: autoAssembly });
   }
 
   if (extinguisherPoints.length === 0) {
-    const primaryPost = new THREE.Vector3(spawnPlayer.x - 1.8, floorY, spawnPlayer.z - 2.4);
-    const sparePost = new THREE.Vector3(centerVec.x + 2.2, floorY, centerVec.z + 2.2);
-    missingExpectedNodes.push('EXTINGUISHER_POINT_* (размещены рядом со стартом и центром)');
+    const off = config.defaultPrimaryExtinguisherRelOffset;
+    const primaryPost = new THREE.Vector3(
+      spawnPlayer.x + off[0],
+      deckSurfaceY + off[1],
+      spawnPlayer.z + off[2]
+    );
+    const sparePost = resolveRelAnchor(config.defaultSpareExtinguisherRelPos);
+    missingExpectedNodes.push('EXTINGUISHER_POINT_* (размещены у старта и на проезде комплекса)');
     extinguisherPoints.push(
       { name: 'AUTO_EXTINGUISHER_1', pos: primaryPost },
       { name: 'AUTO_EXTINGUISHER_SPARE', pos: sparePost }
     );
   }
 
-  config.fireZones.forEach(fz => {
-    const found = fireZones.find(m => m.name.toUpperCase().startsWith(fz.markerName.toUpperCase()));
-    if (!found) {
-      missingExpectedNodes.push(`${fz.markerName} (не найден в .glb, применён коорд. пресет)`);
+  // Привязка очагов пожара: сначала узлы из .glb, иначе относительные координаты Box3 + поверхность модели
+  const resolvedFireZones: NamedWorldMarker[] = config.fireZones.map((fz, idx) => {
+    const found =
+      fireZones.find(m => m.name.toUpperCase().startsWith(fz.markerName.toUpperCase())) ??
+      fireZones[idx];
+    if (found) return found;
+    const autoPos = resolveRelAnchor(fz.relPos);
+    missingExpectedNodes.push(`${fz.markerName} (привязан к Box3: [${roundCoords(autoPos).join(', ')}])`);
+    return { name: fz.markerName, pos: autoPos };
+  });
+
+  // Привязка групп NPC и их waypoint-маршрутов к модели
+  const resolvedNpcSpawns: NamedWorldMarker[] = config.npcGroups.map((ng, idx) => {
+    const found =
+      npcSpawns.find(m => m.name.toUpperCase().startsWith(ng.markerName.toUpperCase())) ??
+      npcSpawns[idx];
+    if (found) return found;
+    const autoPos = resolveRelAnchor(ng.relPos);
+    missingExpectedNodes.push(`${ng.markerName} (привязан к Box3: [${roundCoords(autoPos).join(', ')}])`);
+    return { name: ng.markerName, pos: autoPos };
+  });
+
+  const resolvedWaypoints: NamedWorldMarker[] = [...waypoints];
+  config.npcGroups.forEach(ng => {
+    const hasWp = waypoints.some(w => w.name.toUpperCase().startsWith(ng.waypointPrefix.toUpperCase()));
+    if (!hasWp) {
+      ng.relWaypoints.forEach((relWp, wpIdx) => {
+        resolvedWaypoints.push({
+          name: `${ng.waypointPrefix}0${wpIdx + 1}`,
+          pos: resolveRelAnchor(relWp)
+        });
+      });
     }
   });
 
-  config.npcGroups.forEach(ng => {
-    const found = npcSpawns.find(m => m.name.toUpperCase().startsWith(ng.markerName.toUpperCase()));
-    if (!found) {
-      missingExpectedNodes.push(`${ng.markerName} (не найден в .glb, применён коорд. пресет)`);
-    }
+  const resolvedTriggers: NamedWorldMarker[] = config.triggerZones.map(tz => {
+    const found = triggers.find(m => m.name.toUpperCase().startsWith(tz.markerName.toUpperCase()));
+    if (found) return found;
+    return {
+      name: tz.markerName,
+      pos: resolveRelAnchor(tz.relPos)
+    };
   });
+
+  const rawMin = normMetrics?.rawBoundingBoxMin ?? roundCoords(sceneBounds.min);
+  const rawMax = normMetrics?.rawBoundingBoxMax ?? roundCoords(sceneBounds.max);
+  const rawSize = normMetrics?.rawBoundingBoxSize ?? roundCoords(sizeVec);
+  const appliedRotationDeg = normMetrics?.appliedRotationDeg ?? [0, 0, 0];
+  const appliedScale = normMetrics?.appliedScale ?? 1.0;
 
   const report: NppInspectionReport = {
     sourceKind,
     sourceUrl,
     totalNodes,
     totalMeshes,
+    rawBoundingBoxMin: rawMin,
+    rawBoundingBoxMax: rawMax,
+    rawBoundingBoxSize: rawSize,
+    appliedRotationDeg,
+    appliedScale,
+    deckSurfaceY: Number(deckSurfaceY.toFixed(3)),
     boundingBoxMin: roundCoords(sceneBounds.min),
     boundingBoxMax: roundCoords(sceneBounds.max),
     boundingBoxCenter: roundCoords(centerVec),
     boundingBoxSize: roundCoords(sizeVec),
     keyNodeNames,
+    namedNodeCoords,
     discoveredNodes,
     missingExpectedNodes,
     markers: {
@@ -296,10 +460,10 @@ export function inspectNppSceneGraph(
       exits,
       assemblyPoints,
       evacPoints,
-      fireZones,
-      npcSpawns,
-      waypoints,
-      triggers,
+      fireZones: resolvedFireZones,
+      npcSpawns: resolvedNpcSpawns,
+      waypoints: resolvedWaypoints,
+      triggers: resolvedTriggers,
       pois,
       extinguisherPoints,
       wallColliders
@@ -307,12 +471,24 @@ export function inspectNppSceneGraph(
   };
 
   console.groupCollapsed(
-    `[ALARA GLB Inspector] ${sourceUrl} | Узлов: ${totalNodes} | Мешей: ${totalMeshes} | Габариты Box3: ${report.boundingBoxSize.join('×')} м`
+    `[ALARA GLB Inspector] ${sourceUrl} | Узлов: ${totalNodes} | Мешей: ${totalMeshes} | Box3: ${report.rawBoundingBoxSize.join('×')} -> ${report.boundingBoxSize.join('×')} м`
   );
-  console.info('Box3 min:', report.boundingBoxMin, 'max:', report.boundingBoxMax, 'center:', report.boundingBoxCenter);
-  console.info(`Ключевые узлы (${keyNodeNames.length} показаны из ${totalNodes}):`, keyNodeNames);
+  console.info('Исходный Box3 (до нормализации):', { min: rawMin, max: rawMax, size: rawSize });
+  console.info('Нормализация (SCENARIO_4_TRANSFORM):', {
+    rotationDeg: appliedRotationDeg,
+    scale: Number(appliedScale.toFixed(4)),
+    floorY: Number(floorY.toFixed(3)),
+    deckSurfaceY: report.deckSurfaceY
+  });
+  console.info('Итоговый Box3 (после нормализации):', {
+    min: report.boundingBoxMin,
+    max: report.boundingBoxMax,
+    center: report.boundingBoxCenter,
+    size: report.boundingBoxSize
+  });
+  console.info(`Именованные узлы (${namedNodeCoords.length} из ${totalNodes}) и их мировые координаты:`, namedNodeCoords);
   if (missingExpectedNodes.length > 0) {
-    console.info('Авто-разрешённые игровые маркеры (отсутствуют в .glb):', missingExpectedNodes);
+    console.info('Авто-привязанные игровые зоны (по Box3 и поверхности .glb):', missingExpectedNodes);
   }
   console.groupEnd();
 

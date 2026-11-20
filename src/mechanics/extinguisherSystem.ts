@@ -88,15 +88,18 @@ export class ExtinguisherSystem {
   private readonly scratchVrOffset = new THREE.Vector3();
   private readonly scratchQuat = new THREE.Quaternion();
 
+  private readonly effectScale: number;
   private elapsedAnimSec = 0;
 
   constructor(
     fireSpecs: ReadonlyArray<FireZoneSpec>,
     discoveredFires: ReadonlyArray<NamedWorldMarker>,
     primaryPostPos: THREE.Vector3,
-    sparePostPos: THREE.Vector3
+    sparePostPos: THREE.Vector3,
+    effectScale = 0.62
   ) {
     this.rootGroup.name = 'npp_extinguisher_fire_system';
+    this.effectScale = Math.max(0.25, Math.min(2.0, effectScale));
     this.primaryPostPos.copy(primaryPostPos);
     this.sparePostPos.copy(sparePostPos);
 
@@ -288,8 +291,9 @@ export class ExtinguisherSystem {
     fireSpecs: ReadonlyArray<FireZoneSpec>,
     discoveredFires: ReadonlyArray<NamedWorldMarker>
   ): void {
-    const flameGeo = new THREE.ConeGeometry(0.42, 1.35, 8);
-    const smokeGeo = new THREE.DodecahedronGeometry(0.48, 0);
+    const es = this.effectScale;
+    const flameGeo = new THREE.ConeGeometry(0.32 * es, 1.15 * es, 8);
+    const smokeGeo = new THREE.DodecahedronGeometry(0.36 * es, 0);
 
     fireSpecs.forEach((cfg, idx) => {
       const matched = discoveredFires.find(d =>
@@ -303,24 +307,27 @@ export class ExtinguisherSystem {
       group.position.copy(worldPos);
       group.name = `fire_zone_${cfg.id}`;
 
+      const padRadius = cfg.radiusM * 0.62 * es;
       const baseMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(cfg.radiusM * 0.9, cfg.radiusM, 0.14, 16),
-        new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.9 })
+        new THREE.CylinderGeometry(padRadius * 0.85, padRadius, 0.05, 16),
+        new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.92 })
       );
-      baseMesh.position.y = 0.07;
+      baseMesh.position.y = 0.025;
       group.add(baseMesh);
 
+      const ringInner = Math.max(padRadius + 0.12, cfg.radiusM * 1.12 * es);
+      const ringOuter = ringInner + 0.14 * es;
       const floorRing = new THREE.Mesh(
-        new THREE.RingGeometry(cfg.heatRadiusM * 0.65, cfg.heatRadiusM * 0.7, 28),
+        new THREE.RingGeometry(ringInner, ringOuter, 28),
         new THREE.MeshBasicMaterial({
           color: 0xf97316,
           side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.24
+          opacity: 0.34
         })
       );
       floorRing.rotation.x = -Math.PI / 2;
-      floorRing.position.y = 0.025;
+      floorRing.position.y = 0.02;
       group.add(floorRing);
 
       const flameCones: THREE.Mesh[] = [];
@@ -334,8 +341,8 @@ export class ExtinguisherSystem {
         });
         const cone = new THREE.Mesh(flameGeo, flameMat);
         const angle = (f / 5) * Math.PI * 2;
-        const r = f === 0 ? 0 : cfg.radiusM * 0.42;
-        cone.position.set(Math.cos(angle) * r, 0.68, Math.sin(angle) * r);
+        const r = f === 0 ? 0 : padRadius * 0.52;
+        cone.position.set(Math.cos(angle) * r, 0.55 * es, Math.sin(angle) * r);
         cone.userData.baseX = cone.position.x;
         cone.userData.baseZ = cone.position.z;
         cone.userData.phase = idx * 1.3 + f * 1.1;
@@ -349,18 +356,22 @@ export class ExtinguisherSystem {
           color: 0x1e293b,
           roughness: 1.0,
           transparent: true,
-          opacity: 0.55 * cfg.smokeDensity,
+          opacity: 0.5 * cfg.smokeDensity,
           depthWrite: false
         });
         const puff = new THREE.Mesh(smokeGeo, smokeMat);
-        puff.position.set(((s % 3) - 1) * 0.45, 1.3 + s * 0.38, ((s % 2) - 0.5) * 0.45);
+        puff.position.set(
+          ((s % 3) - 1) * 0.32 * es,
+          (0.95 + s * 0.32) * es,
+          ((s % 2) - 0.5) * 0.32 * es
+        );
         puff.userData.phase = s * 0.9 + idx * 0.7;
         group.add(puff);
         smokePuffs.push(puff);
       }
 
-      const light = new THREE.PointLight(0xf97316, 4.2, 11.5, 1.6);
-      light.position.set(0, 1.35, 0);
+      const light = new THREE.PointLight(0xf97316, 3.6, 8.5 * Math.max(0.7, es), 1.6);
+      light.position.set(0, 1.1 * es, 0);
       group.add(light);
 
       this.rootGroup.add(group);
@@ -795,7 +806,7 @@ export class ExtinguisherSystem {
       }
 
       const flicker = 0.85 + Math.sin(this.elapsedAnimSec * 17 + i * 2.1) * 0.15;
-      fire.light.intensity = 4.5 * fire.intensity * flicker;
+      fire.light.intensity = 3.8 * fire.intensity * flicker;
       fire.floorRing.visible = true;
       fire.flameCones.forEach(c => {
         c.visible = true;
@@ -804,22 +815,22 @@ export class ExtinguisherSystem {
           0.2,
           fire.intensity * (0.85 + Math.sin(this.elapsedAnimSec * 14 + ph) * 0.28)
         );
-        c.scale.set(0.6 + fire.intensity * 0.45, scaleY, 0.6 + fire.intensity * 0.45);
-        c.position.y = 0.62 * scaleY;
+        c.scale.set(0.6 + fire.intensity * 0.42, scaleY, 0.6 + fire.intensity * 0.42);
+        c.position.y = 0.54 * this.effectScale * scaleY;
       });
 
       const isSteamTransition = fire.intensity < 0.28;
       fire.smokePuffs.forEach(p => {
         p.visible = true;
         const ph = (p.userData.phase as number) || 0;
-        const cycle = (this.elapsedAnimSec * 0.9 + ph) % 2.8;
-        p.position.y = 1.0 + cycle;
-        p.scale.setScalar(0.6 + cycle * 0.35);
+        const cycle = (this.elapsedAnimSec * 0.9 + ph) % 2.4;
+        p.position.y = (0.8 + cycle) * this.effectScale;
+        p.scale.setScalar(0.6 + cycle * 0.32);
         const mat = p.material as THREE.MeshStandardMaterial;
         mat.color.setHex(isSteamTransition ? 0xcbd5e1 : 0x1e293b);
         mat.opacity = Math.min(
-          0.65,
-          fire.config.smokeDensity * (0.35 + fire.intensity * 0.5) * (1 - cycle / 3.0)
+          0.6,
+          fire.config.smokeDensity * (0.35 + fire.intensity * 0.5) * (1 - cycle / 2.6)
         );
       });
     }

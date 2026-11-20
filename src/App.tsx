@@ -101,7 +101,7 @@ import {
 } from './utils/pdfDoseReportExporter';
 import { Scenario4Controller } from './scenarios/scenario4-npp-rescue/Scenario4Controller';
 import { Scenario4Hud } from './scenarios/scenario4-npp-rescue/Scenario4Hud';
-import type { Scenario4HudSnapshot } from './scenarios/scenario4-npp-rescue/config';
+import { SCENARIO_4_TRANSFORM, type Scenario4HudSnapshot } from './scenarios/scenario4-npp-rescue/config';
 
 const DEFAULT_PROTECTION_ANALYSIS: ComprehensiveProtectionAnalysis = {
   unshieldedBaseDoseRateMicroSv: 0.1,
@@ -425,6 +425,7 @@ export default function App() {
   const resetDesktopLookRef = useRef<() => void>(() => {});
   const setDesktopLookTargetRef = useRef<(from: THREE.Vector3, target: THREE.Vector3) => void>(() => {});
   const desktopOverviewYRef = useRef<number | null>(null);
+  const scenario4GroundYRef = useRef<number>(0);
   const lastHudDoseKeyRef = useRef<string>('');
   const lastHudCumDoseKeyRef = useRef<string>('');
   const lastHudMissionSecRef = useRef<number>(-1);
@@ -1544,22 +1545,22 @@ export default function App() {
         if (keysRef.current['KeyA']) playerGroupRef.current.translateX(-moveSpeed);
         if (keysRef.current['KeyD']) playerGroupRef.current.translateX(moveSpeed);
 
-        // Фиксация высоты взгляда в desktop (либо обзорная высота после [K], либо рост оператора)
+        // Фиксация высоты взгляда в desktop (либо обзорная высота после [K], либо рост оператора над уровнем площадки)
+        const groundY = activeScenarioIdRef.current === 4 ? scenario4GroundYRef.current : 0;
         const targetY =
           desktopOverviewYRef.current !== null
             ? desktopOverviewYRef.current
-            : isCrouched
-            ? 0.95
-            : 1.65;
+            : groundY + (isCrouched ? 0.95 : SCENARIO_4_TRANSFORM.spawn.eyeHeightMeters);
         playerGroupRef.current.position.y += (targetY - playerGroupRef.current.position.y) * Math.min(1.0, dt * 10);
         scenario4ControllerRef.current?.clampPlayerPosition(playerGroupRef.current.position, false);
       }
 
-      // 1.5. Следование 3D-манекена за ориентацией взгляда оператора и привязка ног к полу (y = 0)
+      // 1.5. Следование 3D-манекена за ориентацией взгляда оператора и привязка ног к полу (groundY)
       if (playerAvatarRigRef.current && cameraRef.current) {
+        const avatarGroundY = activeScenarioIdRef.current === 4 ? scenario4GroundYRef.current : 0;
         playerAvatarRigRef.current.rootGroup.position.y = isVR
           ? 0
-          : -(playerGroupRef.current?.position.y ?? 1.65);
+          : avatarGroundY - (playerGroupRef.current?.position.y ?? SCENARIO_4_TRANSFORM.spawn.eyeHeightMeters);
         playerAvatarRigRef.current.updatePose(cameraRef.current);
       }
 
@@ -2918,6 +2919,7 @@ export default function App() {
       lastScen4SnapKeyRef.current = '';
       lastScen4StepNumRef.current = 1;
       desktopOverviewYRef.current = null;
+      scenario4GroundYRef.current = 0;
       if (scen.id === 4 && cameraRef.current && playerGroupRef.current) {
         try {
           const s4Ctrl = new Scenario4Controller({
@@ -2927,8 +2929,15 @@ export default function App() {
             doseLimitMsv: cfg.hLimitMsv,
             maxDurationSec: cfg.tMaxSec,
             onToast: addToast,
+            onRadiationSourcesReady: sources => {
+              if (currentEnvGroup.current === built.envGroup) {
+                currentScenarioSources.current = sources;
+                radiationSourceVisualizerRef.current?.bindSources(sources, built.envGroup);
+              }
+            },
             onPlayerSpawnReady: (spawn, lookTarget, boundsSize) => {
               desktopOverviewYRef.current = null;
+              scenario4GroundYRef.current = spawn.y;
               const maxDim = Math.max(boundsSize[0], boundsSize[1], boundsSize[2], 30);
               if (cameraRef.current) {
                 cameraRef.current.far = Math.max(650, maxDim * 5);
@@ -2949,7 +2958,9 @@ export default function App() {
                 );
                 const vrY =
                   xrManagerRef.current?.activeReferenceSpaceType === 'local-floor' ? 0.0 : 1.65;
-                const spawnEyeY = isVrNow ? spawn.y + vrY : spawn.y + 1.65;
+                const spawnEyeY = isVrNow
+                  ? spawn.y + vrY
+                  : spawn.y + SCENARIO_4_TRANSFORM.spawn.eyeHeightMeters;
                 playerGroupRef.current.position.set(spawn.x, spawnEyeY, spawn.z);
                 if (!isVrNow) {
                   const eyeOrigin = new THREE.Vector3(spawn.x, spawnEyeY, spawn.z);

@@ -60,9 +60,9 @@ export class RadiationSourceVisualizer {
       halo.position.copy(src.position);
       this.rootGroup.add(halo);
 
-      // 4. Проекционные кольца зон доз на полу
+      // 4. Проекционные кольца зон доз на полу / поверхности модели
       const rings = this.createIsodoseRings(src);
-      rings.position.set(src.position.x, 0.02, src.position.z);
+      rings.position.set(src.position.x, src.ringFloorY ?? 0.02, src.position.z);
       this.rootGroup.add(rings);
 
       this.items.push({

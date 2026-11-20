@@ -230,24 +230,37 @@ export const Scenario4Hud: React.FC<Scenario4HudProps> = ({
                 Источник: {snapshot.inspectionReport.sourceUrl}
               </div>
               <div className="text-slate-300">
-                Box3 центр: [{snapshot.inspectionReport.boundingBoxCenter.join(', ')}] · Узлов:{' '}
+                Box3: до {snapshot.inspectionReport.rawBoundingBoxSize.join('×')} → после{' '}
+                {snapshot.inspectionReport.boundingBoxSize.join('×')} м
+              </div>
+              <div className="text-slate-300">
+                Поворот: [{snapshot.inspectionReport.appliedRotationDeg.join('°, ')}°] · Масштаб: ×
+                {snapshot.inspectionReport.appliedScale.toFixed(3)} · Настил Y:{' '}
+                {snapshot.inspectionReport.deckSurfaceY} м
+              </div>
+              <div className="text-slate-400">
+                Центр Box3: [{snapshot.inspectionReport.boundingBoxCenter.join(', ')}] · Узлов:{' '}
                 {snapshot.inspectionReport.totalNodes} · Мешей:{' '}
                 {snapshot.inspectionReport.totalMeshes}
               </div>
-              {snapshot.inspectionReport.keyNodeNames.length > 0 && (
+              {snapshot.inspectionReport.namedNodeCoords.length > 0 && (
                 <div className="pt-1 border-t border-slate-800 text-slate-300 space-y-0.5">
                   <div className="text-sky-300 font-bold">
-                    Ключевые узлы ({snapshot.inspectionReport.keyNodeNames.length}):
+                    Узлы и мировые координаты ({snapshot.inspectionReport.namedNodeCoords.length}):
                   </div>
-                  <div className="text-[10px] text-slate-400 break-words">
-                    {snapshot.inspectionReport.keyNodeNames.slice(0, 24).join(', ')}
+                  <div className="text-[10px] text-slate-400 space-y-0.5">
+                    {snapshot.inspectionReport.namedNodeCoords.slice(0, 16).map((node, idx) => (
+                      <div key={idx} className="truncate">
+                        • {node.name} [{node.kind}]: [{node.worldPosition.join(', ')}]
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
               {snapshot.inspectionReport.missingExpectedNodes.length > 0 && (
                 <div className="pt-1 border-t border-slate-800 text-amber-300 space-y-0.5">
                   <div className="font-bold">
-                    Авто-разрешённые маркеры ({snapshot.inspectionReport.missingExpectedNodes.length}):
+                    Авто-привязанные зоны ({snapshot.inspectionReport.missingExpectedNodes.length}):
                   </div>
                   {snapshot.inspectionReport.missingExpectedNodes.map((m, idx) => (
                     <div key={idx} className="text-[10px] text-amber-200/90">
