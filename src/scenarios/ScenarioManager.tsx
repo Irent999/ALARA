@@ -16,7 +16,7 @@
  *    - Предотвращение наложения 3D-мешей (Inter-hazard collision clearance).
  */
 
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import {
   calculateDoseRateDetailed,
@@ -66,6 +66,8 @@ export interface RandomizedHazardModeConfig {
   seed?: number;
 }
 
+const FALLBACK_PLAYER_POS = new THREE.Vector3(0, 1.65, 4.2);
+
 export const DEFAULT_ROOM_BOUNDS: RoomBounds = {
   minX: -4.2,
   maxX: 4.2,
@@ -80,16 +82,8 @@ export const DEFAULT_ROOM_BOUNDS: RoomBounds = {
 export const SCENARIO_ROOM_BOUNDS: Readonly<Record<number, Partial<RoomBounds>>> = {
   1: { minX: -3.8, maxX: 3.8, minZ: -5.5, maxZ: -0.5 }, // NPP Reactor Hall
   2: { minX: -4.0, maxX: 4.0, minZ: -5.0, maxZ: 0.0 },  // Coolant loop
-  3: { minX: -3.5, maxX: 3.5, minZ: -4.8, maxZ: -0.2 }, // Radiotherapy bunker
-  4: { minX: -4.2, maxX: 4.2, minZ: -5.8, maxZ: 0.5 },  // Flaw detection lab
-  5: { minX: -4.5, maxX: 4.5, minZ: -6.0, maxZ: 0.0 },  // Arctic RITEG site
-  6: { minX: -3.6, maxX: 3.6, minZ: -4.5, maxZ: -0.4 }, // Radiochemical hot cell
-  7: { minX: -4.0, maxX: 4.0, minZ: -5.2, maxZ: 0.0 },  // Waste storage facility
-  8: { minX: -4.2, maxX: 4.2, minZ: -5.5, maxZ: 0.2 },  // Transport rail accident
-  9: { minX: -3.8, maxX: 3.8, minZ: -5.0, maxZ: -0.2 }, // Medical cyclotron target
-  10: { minX: -4.5, maxX: 4.5, minZ: -6.0, maxZ: 0.0 }, // Dirty bomb urban perimeter
-  11: { minX: -3.5, maxX: 3.5, minZ: -4.5, maxZ: 0.0 }, // Radium luminescence workshop
-  12: { minX: -4.0, maxX: 4.0, minZ: -5.5, maxZ: -0.2 }  // Plutonium reprocessing line
+  3: { minX: -3.5, maxX: 3.5, minZ: -4.8, maxZ: -0.2 }, // SBO Control Room
+  4: { minX: -12.5, maxX: 12.5, minZ: -12.5, maxZ: 10.5 } // NPP Complex GLB interior
 };
 
 /**
@@ -717,23 +711,34 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
     engineRef.current!.getActiveHazards()
   );
 
+  const onHazardsGeneratedRef = useRef(onHazardsGenerated);
+  onHazardsGeneratedRef.current = onHazardsGenerated;
+  const onStateChangeRef = useRef(onStateChange);
+  onStateChangeRef.current = onStateChange;
+  const randomizedHazardConfigRef = useRef(randomizedHazardConfig);
+  randomizedHazardConfigRef.current = randomizedHazardConfig;
+  const isWearingHazmatPpeRef = useRef(isWearingHazmatPpe);
+  isWearingHazmatPpeRef.current = isWearingHazmatPpe;
+  const extraShieldLayersRef = useRef(extraShieldLayers);
+  extraShieldLayersRef.current = extraShieldLayers;
+
   const resetScenario = useCallback(
     (nextId?: number) => {
       const targetId = nextId ?? scenarioId;
       const newSnap = engineRef.current!.reset(
         targetId,
         randomizedHazardMode,
-        randomizedHazardConfig
+        randomizedHazardConfigRef.current
       );
       const newScen = engineRef.current!.getScenarioData();
       const currentHazards = engineRef.current!.getActiveHazards();
       setScenarioData(newScen);
       setSnapshot(newSnap);
       setActiveHazards(currentHazards);
-      onHazardsGenerated?.(currentHazards);
-      onStateChange?.(newSnap, newScen);
+      onHazardsGeneratedRef.current?.(currentHazards);
+      onStateChangeRef.current?.(newSnap, newScen);
     },
-    [scenarioId, randomizedHazardMode, randomizedHazardConfig, onHazardsGenerated, onStateChange]
+    [scenarioId, randomizedHazardMode]
   );
 
   const setRandomizedHazardMode = useCallback(
@@ -745,10 +750,10 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
       setScenarioData(newScen);
       setSnapshot(newSnap);
       setActiveHazards(currentHazards);
-      onHazardsGenerated?.(currentHazards);
-      onStateChange?.(newSnap, newScen);
+      onHazardsGeneratedRef.current?.(currentHazards);
+      onStateChangeRef.current?.(newSnap, newScen);
     },
-    [onHazardsGenerated, onStateChange]
+    []
   );
 
   const regenerateRandomizedHazards = useCallback(() => {
@@ -759,22 +764,23 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
     setScenarioData(newScen);
     setSnapshot(newSnap);
     setActiveHazards(currentHazards);
-    onHazardsGenerated?.(currentHazards);
-    onStateChange?.(newSnap, newScen);
-  }, [onHazardsGenerated, onStateChange]);
+    onHazardsGeneratedRef.current?.(currentHazards);
+    onStateChangeRef.current?.(newSnap, newScen);
+  }, []);
 
-  const completeObjective = useCallback(
-    (targetOrObjectiveId: string) => {
-      if (!engineRef.current) return;
-      engineRef.current.completeObjectiveByTarget(targetOrObjectiveId);
-      const nextSnap = engineRef.current.getSnapshot();
-      setSnapshot(nextSnap);
-      onStateChange?.(nextSnap, engineRef.current.getScenarioData());
-    },
-    [onStateChange]
-  );
+  const completeObjective = useCallback((targetOrObjectiveId: string) => {
+    if (!engineRef.current) return;
+    engineRef.current.completeObjectiveByTarget(targetOrObjectiveId);
+    const nextSnap = engineRef.current.getSnapshot();
+    setSnapshot(nextSnap);
+    onStateChangeRef.current?.(nextSnap, engineRef.current.getScenarioData());
+  }, []);
 
+  const lastInitKeyRef = useRef<string | null>(null);
   useEffect(() => {
+    const initKey = `${scenarioId}:${randomizedHazardMode ? 1 : 0}`;
+    if (lastInitKeyRef.current === initKey) return;
+    lastInitKeyRef.current = initKey;
     resetScenario(scenarioId);
   }, [scenarioId, randomizedHazardMode, resetScenario]);
 
@@ -786,31 +792,42 @@ export const ScenarioManager: React.FC<ScenarioManagerProps> = ({
       const dt = Math.min(0.25, Math.max(0.0, (nowMs - lastTimeMs) / 1000.0));
       lastTimeMs = nowMs;
 
-      const playerPos = playerGroupRef?.current?.position ?? new THREE.Vector3(0, 1.65, 4.2);
+      const playerPos = playerGroupRef?.current?.position ?? FALLBACK_PLAYER_POS;
       const nextSnap = engineRef.current.step(dt, {
         playerWorldPosition: playerPos,
-        isWearingHazmatPpe,
-        extraShieldLayers
+        isWearingHazmatPpe: isWearingHazmatPpeRef.current,
+        extraShieldLayers: extraShieldLayersRef.current
       });
       setSnapshot(nextSnap);
-      onStateChange?.(nextSnap, engineRef.current.getScenarioData());
+      onStateChangeRef.current?.(nextSnap, engineRef.current.getScenarioData());
     }, 150);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [playerGroupRef, isWearingHazmatPpe, extraShieldLayers, onStateChange]);
+  }, [playerGroupRef]);
 
-  const contextValue: ScenarioManagerContextValue = {
-    scenarioData,
-    snapshot,
-    activeHazards,
-    isRandomizedHazardMode: snapshot.isRandomizedHazardMode,
-    setRandomizedHazardMode,
-    regenerateRandomizedHazards,
-    completeObjective,
-    resetScenario
-  };
+  const contextValue: ScenarioManagerContextValue = useMemo(
+    () => ({
+      scenarioData,
+      snapshot,
+      activeHazards,
+      isRandomizedHazardMode: snapshot.isRandomizedHazardMode,
+      setRandomizedHazardMode,
+      regenerateRandomizedHazards,
+      completeObjective,
+      resetScenario
+    }),
+    [
+      scenarioData,
+      snapshot,
+      activeHazards,
+      setRandomizedHazardMode,
+      regenerateRandomizedHazards,
+      completeObjective,
+      resetScenario
+    ]
+  );
 
   return (
     <ScenarioManagerContext.Provider value={contextValue}>

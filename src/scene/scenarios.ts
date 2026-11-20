@@ -1,18 +1,11 @@
 /**
- * ALARA-Planner Pro VR — Полная библиотека из 11 узкоспециализированных интерактивных 3D-сценариев
- * радиационного контроля и дозиметрического обследования по ГОСТ Р 8.804-2012, НРБ-99/2009 и ОСПОРБ-99/2010:
+ * ALARA-Planner Pro VR — Библиотека из 4 оперативных 3D/VR-сценариев
+ * радиационной безопасности и аварийно-спасательных работ МЧС на объектах АЭС:
  *
- * 1. АЭС и предприятия ЯТЦ (помещения ГЦК ВВЭР, Co-60 + нейтронный фон)
- * 2. Медицинские учреждения (рентген-кабинеты, ПЭТ/КТ, лучевая терапия Co-60 / F-18)
- * 3. Пункты приема металлолома (входной контроль лома, утерянный гамма-дефектоскоп Ir-192 / Cs-137)
- * 4. Таможенные посты и границы (стойки «Янтарь», досмотр контейнеров и багажа, Am-241 / Cs-137)
- * 5. Места добычи полезных ископаемых (урановые рудники и гранитные карьеры ЕРН: Ra-226, Th-232, K-40)
- * 6. Зоны ликвидации аварий и хранилища ЯО (ХОЯТ, контейнеры ТУК, ПЗРО, Cf-252 нейтроны + парафин/бор)
- * 7. Строительные площадки и участки под застройку (измерение ППС радона-222 из почвы, накопительные камеры)
- * 8. Метрополитен и вокзалы (гранитная облицовка колонн и досмотровые рентгеновские интроскопы X-Ray)
- * 9. Строительные и отделочные материалы (гранитный щебень, керамическая плитка с урановой глазурью U-238)
- * 10. Продукты питания (спектрометрия лесных грибов, ягод и рыбы на удельную активность Cs-137)
- * 11. Предметы старины и антиквариат (авиационные часы, компасы, тумблеры и игрушки с СПД Радий-226)
+ * 1. Реакторный зал АЭС (разгерметизация, разведка ДП-5В, СИЗ, экранирование и эвакуация)
+ * 2. Машинный зал / кабельный тоннель 6 кВ (обесточивание и тушение ОУ-5)
+ * 3. Блочный пункт управления БПУ (авария SBO, резервный ввод 0.4 кВ и МДНУ-150)
+ * 4. Комплекс АЭС (.glb) — тушение очагов пожара и поэтапная эвакуация персонала
  */
 
 import * as THREE from 'three';
@@ -40,7 +33,14 @@ import {
   createGraphiteDebrisMaterial,
   createScorchedCorrodedMetalMaterial
 } from './pbrMaterialEngine';
+import {
+  createEquipmentLabelTexture,
+  createEvacCorridorSignTexture
+} from './mchsTextures';
 import { ShieldMaterialType } from '../physics/gostPhysics';
+import { createLeadSarContainerDropZone } from './EvacuationManager';
+import type { MchsToolId } from './ToolManager';
+import type { HoldActionKind } from '../vr/InteractionHoldSystem';
 
 export interface RadiationSourceInstance {
   id: string;
@@ -67,10 +67,35 @@ export interface ShieldingInstance {
 
 export type ObjectPlacementType = 'floor' | 'prop';
 
+export interface InteractiveHoldAction {
+  kind: HoldActionKind;
+  durationSec: number;
+  labelRu: string;
+  preferredToolId?: MchsToolId;
+  requiredToolIds?: MchsToolId[];
+}
+
 export interface InteractiveObjectInstance {
   id: string;
   nameRu: string;
-  type: 'shield' | 'valve' | 'container' | 'source' | 'sample' | 'cover' | 'flashlight';
+  type:
+    | 'shield'
+    | 'valve'
+    | 'container'
+    | 'source'
+    | 'sample'
+    | 'cover'
+    | 'flashlight'
+    | 'breaker'
+    | 'extinguisher'
+    | 'hydrant'
+    | 'generator'
+    | 'evac_point'
+    | 'spill'
+    | 'extractable'
+    | 'casualty'
+    | 'control_unit'
+    | 'drop_zone';
   placementType: ObjectPlacementType;
   isLargeEquipment: boolean;
   mesh: THREE.Object3D;
@@ -78,6 +103,9 @@ export interface InteractiveObjectInstance {
   highlighted?: boolean;
   shieldMaterial?: ShieldMaterialType;
   shieldThicknessCm?: number;
+  holdAction?: InteractiveHoldAction;
+  requiresTongs?: boolean;
+  linkedSourceId?: string;
 }
 
 export interface MissionStage {
@@ -152,70 +180,242 @@ function createBoratedParaffinWall(): THREE.Group {
   return group;
 }
 
+/**
+ * Создаёт радиоактивную просыпь / пятно пролива для дезактивации лопатой БСЛ-110 и сорбентом
+ */
+function createContaminationSpillMesh(colorHex = 0x84cc16): THREE.Group {
+  const group = new THREE.Group();
+  const puddleMat = new THREE.MeshStandardMaterial({
+    color: colorHex,
+    emissive: colorHex,
+    emissiveIntensity: 0.45,
+    roughness: 0.25,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.86
+  });
+
+  const mainDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.74, 0.025, 28), puddleMat);
+  mainDisc.position.y = 0.015;
+  group.add(mainDisc);
+
+  const lobe1 = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.022, 18), puddleMat);
+  lobe1.position.set(0.45, 0.013, 0.22);
+  const lobe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.30, 0.022, 18), puddleMat);
+  lobe2.position.set(-0.38, 0.013, -0.28);
+  group.add(lobe1, lobe2);
+
+  // Горка сорбента / песка (постепенно проявляется при засыпке лопатой БСЛ-110)
+  const sorbentMat = new THREE.MeshStandardMaterial({
+    color: 0xd6b370,
+    roughness: 0.95,
+    metalness: 0.0,
+    transparent: true,
+    opacity: 0.0
+  });
+  const sorbentMound = new THREE.Mesh(new THREE.ConeGeometry(0.72, 0.22, 24), sorbentMat);
+  sorbentMound.position.y = 0.02;
+  sorbentMound.scale.set(1, 0.05, 1);
+  sorbentMound.visible = false;
+  group.add(sorbentMound);
+
+  group.userData = {
+    ...group.userData,
+    puddleMeshes: [mainDisc, lobe1, lobe2],
+    puddleMat,
+    sorbentMound,
+    sorbentMat,
+    isDecontaminated: false
+  };
+  return group;
+}
+
+/**
+ * Создаёт выпавший фрагмент ТВЭЛ / открытый ИИИ (требует захвата щипцами ЦМ-1.5!)
+ */
+function createExposedFuelPinMesh(): THREE.Group {
+  const group = new THREE.Group();
+  const metalMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.88, roughness: 0.25 });
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: 0x38bdf8,
+    emissive: 0x0ea5e9,
+    emissiveIntensity: 1.4,
+    roughness: 0.2
+  });
+  const collarMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 });
+
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.34, 18), metalMat);
+  rod.rotation.z = Math.PI / 2;
+  rod.castShadow = true;
+  group.add(rod);
+
+  const coreSlot = new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.031, 0.14, 18), glowMat);
+  coreSlot.rotation.z = Math.PI / 2;
+  group.add(coreSlot);
+
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.04, 16), collarMat);
+  collar.rotation.z = Math.PI / 2;
+  collar.position.x = 0.11;
+  group.add(collar);
+
+  return group;
+}
+
+/**
+ * Создаёт повреждённую бочку РАО с утечкой
+ */
+function createDamagedRaoDrumMesh(): THREE.Group {
+  const group = new THREE.Group();
+  const drumMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.42, metalness: 0.45 });
+  const dentMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7, metalness: 0.35 });
+
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.56, 22), drumMat);
+  body.position.y = 0.28;
+  body.castShadow = true;
+  group.add(body);
+
+  const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.05, 22), dentMat);
+  lid.position.set(0.03, 0.56, 0);
+  lid.rotation.z = 0.12;
+  group.add(lid);
+
+  const badge = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.28, 0.14),
+    new THREE.MeshBasicMaterial({
+      map: createEquipmentLabelTexture('РАО 200л', 'ПОВРЕЖДЕНИЕ', '#451a03', '#facc15')
+    })
+  );
+  badge.position.set(0, 0.30, 0.245);
+  group.add(badge);
+
+  return group;
+}
+
+/**
+ * Создаёт манекен пострадавшего оператора в СИЗ для эвакуации в безопасную зону
+ */
+function createInjuredOperatorMesh(): THREE.Group {
+  const group = new THREE.Group();
+  const suitMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.55, metalness: 0.1 });
+  const visorMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.2, metalness: 0.6 });
+  const bootMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.22, 0.62), suitMat);
+  torso.position.set(0, 0.14, 0);
+  torso.castShadow = true;
+  group.add(torso);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16), suitMat);
+  head.position.set(0, 0.16, -0.42);
+  group.add(head);
+
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.06), visorMat);
+  visor.position.set(0, 0.24, -0.45);
+  group.add(visor);
+
+  const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.58, 12), suitMat);
+  legL.rotation.x = Math.PI / 2;
+  legL.position.set(-0.11, 0.10, 0.58);
+  const legR = legL.clone();
+  legR.position.x = 0.11;
+  group.add(legL, legR);
+
+  const bootL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 0.18), bootMat);
+  bootL.position.set(-0.11, 0.08, 0.88);
+  const bootR = bootL.clone();
+  bootR.position.x = 0.11;
+  group.add(bootL, bootR);
+
+  return group;
+}
+
+/**
+ * Создаёт переносной критический блок управления АСУ ТП (для эвакуации в Сценарии 3)
+ */
+function createCriticalControlUnitMesh(): THREE.Group {
+  const group = new THREE.Group();
+  const caseMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.35, metalness: 0.72 });
+  const accentMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.22, 0.28), caseMat);
+  box.position.y = 0.11;
+  box.castShadow = true;
+  group.add(box);
+
+  const led = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.02), accentMat);
+  led.position.set(0, 0.16, 0.145);
+  group.add(led);
+
+  const plate = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.32, 0.12),
+    new THREE.MeshBasicMaterial({
+      map: createEquipmentLabelTexture('БЛОК АСУ ТП', 'ЭВАКУИРОВАТЬ В САР', '#0f172a', '#38bdf8')
+    })
+  );
+  plate.position.set(0, 0.08, 0.145);
+  group.add(plate);
+
+  return group;
+}
+
 export const SCENARIOS: ScenarioDefinition[] = [
   // =========================================================================================
-  // 1. ЛАБОРАТОРНАЯ РАБОТА №1: Закон обратных квадратов и защита расстоянием
+  // 1. МЧС АЭС — СЦЕНАРИЙ №1: Радиационная авария / Выброс ГЦК ВВЭР-1200 и эвакуация
   // =========================================================================================
   {
     id: 1,
-    categoryRu: 'Лабораторный практикум (ГОСТ)',
-    titleRu: '1. Лабораторная работа: Закон обратных квадратов и защита расстоянием (1/r²)',
+    categoryRu: 'МЧС России • Ликвидация ЧС на АЭС',
+    titleRu: '1. МЧС АЭС: Радиационная авария / Выброс (ВВЭР-1200)',
     shortDescriptionRu:
-      'Экспериментальное исследование закона обратных квадратов Ḋ(r) = (Г_γ · A) / r². Оценка снижения мощности дозы при удалении на 1.0, 2.0 и 4.0 метра и применение телескопической штанги по принципу ALARA.',
-    facilityRu: 'Учебно-исследовательская лаборатория дозиметрии и радиационной безопасности',
-    dominantIsotopes: ['Cs-137', 'Co-60'],
-    recommendedPermitLimitMsv: 0.20,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 4.2),
+      'Разгерметизация первого контура ВВЭР: разведка прибором ДП-5В, визуализация границ зон заражения (красная/желтая/зеленая), расчет дозы ALARA, установка экрана и выход по безопасному маршруту эвакуации.',
+    facilityRu: 'Гермообъем реакторного отделения АЭС (Зона строгого режима)',
+    dominantIsotopes: ['Co-60', 'Cs-137', 'Cf-252'],
+    recommendedPermitLimitMsv: 0.25,
+    initialPlayerPos: new THREE.Vector3(-1.5, 1.65, 5.0),
     ambientColor: 0xe2e8f0,
-    fogColor: 0xe2e8f0,
-    fogDensity: 0.002,
+    fogColor: 0xdbeafe,
+    fogDensity: 0.004,
+    hasAirborneContamination: true,
     stages: [
       {
         stepNumber: 1,
-        titleRu: 'Шаг 1: «Разведка издалека» — Измерение радиационного фона на безопасном расстоянии',
-        taskRu: 'Произведите замер радиационного фона на безопасном удалении (граница зоны, r > 3.0 м) без входа в очаг поражения.',
-        hintRu: 'Зафиксируйте естественный радиационный фон (0.08–0.14 мкЗв/ч). Не входите в радиационную зону без предварительной разведки.',
-        alaraRuleRu: 'Методика РХБЗ: первичная разведка обстановки проводится с безопасного рубежа (граница радиационной зоны).'
+        titleRu: 'Этап 1 из 5: Разведка прибором ДП-5В на границе зон',
+        taskRu: 'Оцените мощность дозы на границе заражения (r > 3.0 м) прибором ДП-5В и определите контуры красной и желтой зон.',
+        hintRu: 'Красные и желтые контурные кольца на полу показывают границы опасного выброса. Не входите в красную зону без СИЗ.',
+        alaraRuleRu: 'Тактика МЧС: первичная радиационная разведка проводится на рубеже с контролем ДП-5В.'
       },
       {
         stepNumber: 2,
-        titleRu: 'Шаг 2: «Выбор средств защиты» — Анализ типа излучения и подбор костюма/СИЗ',
-        taskRu: 'Проанализируйте характер треков частиц (пробег в воздухе) и подберите правильный костюм/СИЗ (свинцовый фартук или Л-1/ОЗК) в Главном меню или селекторе СИЗ.',
-        hintRu: 'Откройте Главное меню (кнопка ☰) -> «Экипировка (СИЗ)» или выберите СИЗ в панели. Фартук/костюм снижают дозу в разы.',
-        alaraRuleRu: 'Комплексная защита (ALARA): подбор СИЗ (k_PPE) под преобладающий спектр ионизирующего излучения.'
+        titleRu: 'Этап 2 из 5: Экипировка хим- и радиозащиты (Л-1 / КИХ-4 + ГП-7ВМ)',
+        taskRu: 'Убедитесь, что выбраны костюм Л-1 или КИХ-4 и противогаз ГП-7ВМ / АСВ-2 для защиты от радиоактивного аэрозольного выброса.',
+        hintRu: 'Откройте меню экипировки (Esc / HUD -> СИЗ) и активируйте комплект химзащиты МЧС.',
+        alaraRuleRu: 'Защита органов дыхания (СИЗОД) полностью исключает ингаляционное поступление аэрозолей Cs-137 и Co-60.'
       },
       {
         stepNumber: 3,
-        titleRu: 'Шаг 3: «Дозированный подход» — Вход в опасную зону с таймером пребывания',
-        taskRu: 'Выполните дозированное сближение с источником под контролем таймера миссии (защита временем: пребывание t < T_max).',
-        hintRu: 'Контролируйте обратный отсчет на VR-планшете или в HUD. Скорость набора дозы зависит от времени экспозиции.',
-        alaraRuleRu: 'Защита временем (ALARA): доза пропорциональна времени в поле излучения. Минимизируйте время нахождения в очаге.'
+        titleRu: 'Этап 3 из 5: Локализация просыпи, ширма и клапан ГЦК',
+        taskRu: 'Засыпьте радиоактивную просыпь лопатой [2] (удержание), перекройте клапан ГЦК [5] и извлеките выпавший ТВЭЛ щипцами [3] в контейнер САР.',
+        hintRu: 'Выберите лопату БСЛ-110 [2] для просыпи, щипцы ЦМ-1.5 [3] для фрагмента ТВЭЛ (голыми руками — нарушение!) и ключ [5] для вентиля.',
+        alaraRuleRu: 'Принцип ALARA: дистанционные щипцы (1/r²) и экранирование в САР снижают дозу на 95%.'
       },
       {
         stepNumber: 4,
-        titleRu: 'Шаг 4: «Установка временного экрана» — Размещение защитного блока между оператором и источником',
-        taskRu: 'Разместите передвижной защитный блок (свинцовую ширму 25–50 мм Pb или бетон) между собой и источником для снижения мощности дозы перед началом работ.',
-        hintRu: 'Подойдите к ширме/экрану и установите ее в створ пучка (клавиша E / курок VR). Теневая защита снижает поток по закону Бугера.',
-        alaraRuleRu: 'Защита экранированием: установка временного барьера перед прецизионными работами снижает мощность дозы в десятки раз.'
+        titleRu: 'Этап 4 из 5: Движение по безопасному маршруту эвакуации',
+        taskRu: 'Следуйте по зеленому маркированному коридору вдоль правой стены в обход красной зоны выброса.',
+        hintRu: 'Ориентируйтесь на зеленые напольные указатели «ВЫХОД / ЭВАКУАЦИЯ МЧС» справа от зоны выброса.',
+        alaraRuleRu: 'Выбор оптимального маршрута с минимальной интегральной дозой H_accum.'
       },
       {
         stepNumber: 5,
-        titleRu: 'Шаг 5: «Точные замеры и расчет» — Фиксация показаний и занесение в лабораторный журнал',
-        taskRu: 'Произведите прецизионные замеры мощности эквивалентной дозы за экраном и занесите вычисленные данные в виртуальный «Лабораторный журнал» (📓).',
-        hintRu: 'Откройте «Лабораторный журнал» вверху экрана, рассчитайте кратность ослабления K = I₀/I и относительную погрешность δ.',
-        alaraRuleRu: 'ГОСТ Р 8.804-2012: документальное оформление результатов дозиметрических замеров и расчет погрешности.'
-      },
-      {
-        stepNumber: 6,
-        titleRu: 'Шаг 6: «Итоговый контроль и сдача» — Сверка дозового предела и защита работы (ALARA Отчет)',
-        taskRu: 'Сверьте накопленную дозу с контрольным лимитом наряда-допуска, отойдите в зелёную зону и сдайте протокол через «ALARA Отчет».',
-        hintRu: 'Убедитесь, что накопленная доза не превысила 80% порога безопасности, и защитите работу на оценку «Отлично».',
-        alaraRuleRu: 'Аттестация персонала: подтверждение навыков применения формулы комплексной защиты k = k_PPE · k_Shield · (r/r₀)².'
+        titleRu: 'Этап 5 из 5: Выход в санпропускник и сдача протокола ALARA',
+        taskRu: 'Подойдите к эвакуационному шлюзу МЧС справа и активируйте его ([E] / курок VR) для завершения эвакуации.',
+        hintRu: 'После выхода в чистую зону оформите итоговый протокол ALARA с расчетом накопленной дозы.',
+        alaraRuleRu: 'Завершение операции РХБЗ с дозовой нагрузкой ниже предела наряда-допуска.'
       }
     ],
     buildScene: (scene: THREE.Scene) => {
       const envGroup = new THREE.Group();
-      buildIndustrialRoom(envGroup, 14, 14, 4.8);
+      buildIndustrialRoom(envGroup, 16, 16, 5.2);
 
       const pipeMat = new THREE.MeshStandardMaterial({
         color: 0x94a3b8,
@@ -224,9 +424,9 @@ export const SCENARIOS: ScenarioDefinition[] = [
         map: createBrushedMetalTexture()
       });
 
-      const mainPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 12, 24), pipeMat);
+      const mainPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 13, 24), pipeMat);
       mainPipe.rotation.z = Math.PI / 2;
-      mainPipe.position.set(0, 1.8, -4.2);
+      mainPipe.position.set(-1.0, 1.8, -4.4);
       mainPipe.castShadow = true;
       envGroup.add(mainPipe);
 
@@ -235,38 +435,125 @@ export const SCENARIOS: ScenarioDefinition[] = [
         new THREE.MeshBasicMaterial({ map: createHazardStripesTexture(256, 64) })
       );
       pipeStripe.rotation.z = Math.PI / 2;
-      pipeStripe.position.set(1.8, 1.8, -4.2);
+      pipeStripe.position.set(-1.0, 1.8, -4.4);
       envGroup.add(pipeStripe);
 
       const valveMesh = createHighDetailValve();
-      valveMesh.position.set(0, 1.8, -4.2);
+      valveMesh.position.set(-1.0, 1.8, -4.4);
       valveMesh.rotation.x = Math.PI / 2;
       envGroup.add(valveMesh);
 
       const beacon = createRadiationBeacon('danger');
-      beacon.position.set(2.8, 3.2, -4.2);
+      beacon.position.set(1.6, 3.3, -4.4);
       envGroup.add(beacon);
 
-      // Визуальное свечение Вавилова — Черенкова и ионизация воздуха вблизи поврежденного узла ГЦК / ТВС
-      const cherenkovGlow = createCherenkovRadiationGlowMesh(0.75);
-      cherenkovGlow.position.set(0, 1.8, -4.1);
+      // Визуальное свечение Черенкова + облако радиоактивного выброса
+      const cherenkovGlow = createCherenkovRadiationGlowMesh(0.85);
+      cherenkovGlow.position.set(-1.0, 1.8, -4.2);
       envGroup.add(cherenkovGlow);
 
-      // Обломки реакторного графита с PBR-материалом на полу у контура
+      const aerosolPlume = createGaussianPlumeAerosolCloud(0xfbbf24, 3.8);
+      aerosolPlume.position.set(-1.0, 1.5, -3.4);
+      envGroup.add(aerosolPlume);
+
+      // Обломки реакторного графита
       const graphiteMat = createGraphiteDebrisMaterial();
       for (let i = 0; i < 6; i++) {
         const block = new THREE.Mesh(
           new THREE.DodecahedronGeometry(0.09 + (i % 3) * 0.03, 1),
           graphiteMat
         );
-        block.position.set(-1.1 + i * 0.42, 0.06, -3.3 + (i % 2) * 0.35);
+        block.position.set(-2.1 + i * 0.42, 0.06, -3.5 + (i % 2) * 0.35);
         block.rotation.set(i * 0.5, i * 0.8, 0.2);
         block.castShadow = true;
         envGroup.add(block);
       }
 
+      // 3D-ВИЗУАЛИЗАЦИЯ ГРАНИЦ ЗОН ЗАРАЖЕНИЯ (Красная, Желтая, Зеленая границы)
+      const zoneBoundariesGroup = new THREE.Group();
+      zoneBoundariesGroup.position.set(-1.0, 0.018, -3.8);
+      const zoneSpecs = [
+        { inner: 2.85, outer: 3.0, color: 0xef4444, opacity: 0.72 },
+        { inner: 4.85, outer: 5.0, color: 0xfacc15, opacity: 0.58 },
+        { inner: 6.75, outer: 6.9, color: 0x22c55e, opacity: 0.50 }
+      ];
+      zoneSpecs.forEach(zSpec => {
+        const ringGeo = new THREE.RingGeometry(zSpec.inner, zSpec.outer, 64);
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: zSpec.color,
+          transparent: true,
+          opacity: zSpec.opacity,
+          side: THREE.DoubleSide
+        });
+        const ring = new THREE.Mesh(ringGeo, ringMat);
+        ring.rotation.x = -Math.PI / 2;
+        zoneBoundariesGroup.add(ring);
+      });
+      zoneBoundariesGroup.userData.isContaminationZoneGroup = true;
+      envGroup.add(zoneBoundariesGroup);
+
+      // БЕЗОПАСНЫЙ МАРШРУТ ЭВАКУАЦИИ (Зеленый коридор + указатели МЧС)
+      const evacArrows: THREE.Mesh[] = [];
+      const arrowMat = new THREE.MeshBasicMaterial({
+        color: 0x10b981,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide
+      });
+      for (let idx = 0; idx < 5; idx++) {
+        const arrow = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.9), arrowMat);
+        arrow.rotation.x = -Math.PI / 2;
+        arrow.position.set(4.5, 0.022, 4.0 - idx * 1.85);
+        envGroup.add(arrow);
+        evacArrows.push(arrow);
+      }
+      envGroup.userData.evacArrows = evacArrows;
+
+      // Эвакуационный шлюз / пост выхода в чистую зону
+      const evacGroup = new THREE.Group();
+      evacGroup.position.set(4.8, 0, -4.6);
+      const portalFrameMat = new THREE.MeshStandardMaterial({
+        color: 0x065f46,
+        roughness: 0.3,
+        metalness: 0.55
+      });
+      const postL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.4, 0.22), portalFrameMat);
+      postL.position.set(-0.85, 1.2, 0);
+      const postR = postL.clone();
+      postR.position.x = 0.85;
+      const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.92, 0.42, 0.26), portalFrameMat);
+      lintel.position.set(0, 2.35, 0);
+      evacGroup.add(postL, postR, lintel);
+
+      const evacSign = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.75, 0.58),
+        new THREE.MeshBasicMaterial({ map: createEvacCorridorSignTexture('ВЫХОД • ЭВАКУАЦИЯ') })
+      );
+      evacSign.position.set(0, 2.35, 0.14);
+      evacGroup.add(evacSign);
+
+      const evacGateGlow = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.48, 2.1),
+        new THREE.MeshBasicMaterial({
+          color: 0x34d399,
+          transparent: true,
+          opacity: 0.24,
+          side: THREE.DoubleSide
+        })
+      );
+      evacGateGlow.position.set(0, 1.05, 0);
+      evacGroup.add(evacGateGlow);
+      evacGroup.userData = {
+        ...evacGroup.userData,
+        interactiveId: 'evac_beacon',
+        placementType: 'floor',
+        isLargeEquipment: true
+      };
+      envGroup.add(evacGroup);
+
+      // Передвижная свинцовая ширма
       const shieldMesh = createMovableLeadShieldScreen();
-      shieldMesh.position.set(-2.8, 0, -1.2);
+      shieldMesh.position.set(-3.4, 0, -1.0);
       shieldMesh.userData = {
         ...shieldMesh.userData,
         interactiveId: 'screen_shield',
@@ -275,6 +562,21 @@ export const SCENARIOS: ScenarioDefinition[] = [
       };
       envGroup.add(shieldMesh);
 
+      // Радиоактивная просыпь для дезактивации лопатой БСЛ-110 [2]
+      const spillMesh = createContaminationSpillMesh(0x84cc16);
+      spillMesh.position.set(-1.3, 0, -2.2);
+      envGroup.add(spillMesh);
+
+      // Выпавший фрагмент ТВЭЛ / ИИИ (требует дистанционных щипцов ЦМ-1.5 [3])
+      const fuelPinMesh = createExposedFuelPinMesh();
+      fuelPinMesh.position.set(-0.35, 0.04, -2.95);
+      envGroup.add(fuelPinMesh);
+
+      // Безопасная зона эвакуации: свинцовый контейнер САР-1
+      const sarDropZoneS1 = createLeadSarContainerDropZone('КОНТЕЙНЕР САР-1', 'ИЗОЛЯЦИЯ ТВЭЛ / ИИИ');
+      sarDropZoneS1.position.set(2.8, 0, -1.5);
+      envGroup.add(sarDropZoneS1);
+
       scene.add(envGroup);
 
       return {
@@ -282,7 +584,7 @@ export const SCENARIOS: ScenarioDefinition[] = [
         sources: [
           {
             id: 'src_vver_co60',
-            position: new THREE.Vector3(0, 1.8, -4.1),
+            position: new THREE.Vector3(-1.0, 1.8, -4.2),
             isotopeId: 'Co-60',
             activityMBq: 48000,
             isLineSource: true,
@@ -290,9 +592,23 @@ export const SCENARIOS: ScenarioDefinition[] = [
           },
           {
             id: 'src_vver_neutron',
-            position: new THREE.Vector3(-2.5, 1.8, -4.3),
+            position: new THREE.Vector3(-3.0, 1.8, -4.3),
             isotopeId: 'Cf-252',
             activityMBq: 1800
+          },
+          {
+            id: 'src_vver_spill_cs137',
+            position: new THREE.Vector3(-1.3, 0.05, -2.2),
+            isotopeId: 'Cs-137',
+            activityMBq: 4500,
+            mesh: spillMesh
+          },
+          {
+            id: 'src_vver_fuel_pin',
+            position: new THREE.Vector3(-0.35, 0.05, -2.95),
+            isotopeId: 'Co-60',
+            activityMBq: 9500,
+            mesh: fuelPinMesh
           }
         ],
         shields: [
@@ -318,11 +634,64 @@ export const SCENARIOS: ScenarioDefinition[] = [
           },
           {
             id: 'reactor_valve',
-            nameRu: 'Запорный клапан контура ГЦК',
+            nameRu: 'Запорный клапан аварийного контура ГЦК',
             type: 'valve',
             placementType: 'floor',
             isLargeEquipment: true,
             mesh: valveMesh,
+            interacted: false,
+            holdAction: {
+              kind: 'valve',
+              durationSec: 3.0,
+              labelRu: 'Перекрытие запорного клапана ГЦК',
+              preferredToolId: 'wrench'
+            }
+          },
+          {
+            id: 'spill_vver_sorbent',
+            nameRu: 'Очаг просыпи Cs-137 (дезактивация сорбентом)',
+            type: 'spill',
+            placementType: 'floor',
+            isLargeEquipment: true,
+            mesh: spillMesh,
+            interacted: false,
+            linkedSourceId: 'src_vver_spill_cs137',
+            holdAction: {
+              kind: 'decontaminate',
+              durationSec: 3.0,
+              labelRu: 'Засыпка просыпи сорбентом (БСЛ-110)',
+              preferredToolId: 'shovel'
+            }
+          },
+          {
+            id: 'fuel_pin_source',
+            nameRu: 'Выпавший ТВЭЛ / ИИИ Co-60 (Щипцы ЦМ-1.5 [3])',
+            type: 'extractable',
+            placementType: 'prop',
+            isLargeEquipment: false,
+            mesh: fuelPinMesh,
+            interacted: false,
+            requiresTongs: true,
+            linkedSourceId: 'src_vver_fuel_pin'
+          },
+          {
+            id: 'sar_drop_zone_s1',
+            nameRu: 'Свинцовый контейнер САР-1 (Безопасная зона)',
+            type: 'drop_zone',
+            placementType: 'floor',
+            isLargeEquipment: true,
+            shieldMaterial: 'lead',
+            shieldThicknessCm: 10.0,
+            mesh: sarDropZoneS1,
+            interacted: false
+          },
+          {
+            id: 'evac_beacon',
+            nameRu: 'Шлюз эвакуации МЧС (Чистая зона)',
+            type: 'evac_point',
+            placementType: 'floor',
+            isLargeEquipment: true,
+            mesh: evacGroup,
             interacted: false
           }
         ]
@@ -331,111 +700,287 @@ export const SCENARIOS: ScenarioDefinition[] = [
   },
 
   // =========================================================================================
-  // 2. ЛАБОРАТОРНАЯ РАБОТА №2: Ослабление ИИ материалами и СИЗ
+  // 2. МЧС АЭС — СЦЕНАРИЙ №2: Пожар на энергоблоке (Кабельные трассы 6 кВ под напряжением)
   // =========================================================================================
   {
     id: 2,
-    categoryRu: 'Лабораторный практикум (ГОСТ)',
-    titleRu: '2. Лабораторная работа: Ослабление ИИ материалами и СИЗ (Закон Бугера-Ламберта-Бера)',
+    categoryRu: 'МЧС России • Ликвидация ЧС на АЭС',
+    titleRu: '2. МЧС АЭС: Пожар в кабельном отсеке под напряжением (6 кВ)',
     shortDescriptionRu:
-      'Экспериментальная проверка экспоненциального закона ослабления фотонного излучения I = I₀·B(μd)·exp(-μd). Оценка слоев половинного ослабления (СПО) для свинца, стали, бетона и рентгенозащитного фартука (0.5 мм Pb).',
-    facilityRu: 'Лаборатория радиационной физики и защиты от ионизирующего излучения',
-    dominantIsotopes: ['Co-60', 'Cs-137'],
-    recommendedPermitLimitMsv: 0.15,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 4.0),
-    ambientColor: 0xf8fafc,
-    fogColor: 0xf1f5f9,
-    fogDensity: 0.001,
+      'Возгорание высоковольтных кабельных трасс 6 кВ в турбинном/кабельном отсеке. Экипировка БОП-1, обесточивание силовым рубильником, диэлектрическое тушение ОУ-5 (запрет воды под напряжением!) и контроль фона.',
+    facilityRu: 'Кабельная полуэтажка и турбинный цех энергоблока АЭС',
+    dominantIsotopes: ['Cs-137', 'Co-60'],
+    recommendedPermitLimitMsv: 0.18,
+    initialPlayerPos: new THREE.Vector3(0, 1.65, 4.6),
+    ambientColor: 0xf1f5f9,
+    fogColor: 0x332b26,
+    fogDensity: 0.012,
+    hasAirborneContamination: true,
     stages: [
       {
         stepNumber: 1,
-        titleRu: 'Шаг 1: «Разведка издалека» — Замер базового фона при закрытом коллиматоре',
-        taskRu: 'Произведите замер радиационного фона на безопасном рубеже оператора (r > 3.0 м) при закрытом коллиматоре бокса.',
-        hintRu: 'Зафиксируйте нулевую опорную точку фона (0.08–0.12 мкЗв/ч). Не входите в створ пучка без СИЗ.',
-        alaraRuleRu: 'Методика РХБЗ: проверка герметичности биозащиты и фоновой обстановки перед началом экспозиции.'
+        titleRu: 'Этап 1 из 4: Экипировка БОП-1 МЧС и разведка ДП-5В',
+        taskRu: 'Экипируйте Боевую одежду пожарного (БОП-1) и панорамную маску ППМ-88 / АСВ-2, оцените фон у горящих лотков 6 кВ.',
+        hintRu: 'Откройте меню (Esc) -> пресет «Пожарный расчёт БОП-1». БОП защищает от теплового потока до 350°C и пробоя до 10 кВ.',
+        alaraRuleRu: 'Совмещенный пожарно-радиационный допуск МЧС: БОП-1 + СИЗОД при горении кабельной изоляции.'
       },
       {
         stepNumber: 2,
-        titleRu: 'Шаг 2: «Выбор средств защиты» — Подбор свинцового фартука/костюма под гамма-излучение',
-        taskRu: 'Проанализируйте характер фотонного пучка и экипируйте свинцовый фартук (0.5 мм Pb) или спецодежду в меню «Экипировка».',
-        hintRu: 'Свинцовый эквивалент 0.5 мм Pb ослабляет низко- и среднеэнергетические фотоны и рассеянное излучение.',
-        alaraRuleRu: 'Комплексная защита (ALARA): применение индивидуальных СИЗ свинцового эквивалента (k_PPE).'
+        titleRu: 'Этап 2 из 4: Обесточивание кабельной трассы 6 кВ',
+        taskRu: 'Подойдите к силовому шкафу рубильника 6 кВ слева и снимите напряжение ([E] / курок VR).',
+        hintRu: 'Пока горит синяя электродуга — кабели под напряжением 6 кВ! Подача воды строго запрещена и смертельно опасна.',
+        alaraRuleRu: 'Боевой устав пожарной охраны на АЭС: первоочередное обесточивание кабельных отсеков перед тушением.'
       },
       {
         stepNumber: 3,
-        titleRu: 'Шаг 3: «Дозированный подход» — Приближение к коллиматору с контролем времени',
-        taskRu: 'Выполните дозированный вход в зону облучения под контролем таймера миссии (защита временем: пребывание t < T_max).',
-        hintRu: 'Следите за таймером в HUD. Ограничение времени экспозиции снижает интегральную дозовую нагрузку.',
-        alaraRuleRu: 'Защита временем: нахождение в створе открытого коллиматора должно быть строго регламентировано.'
+        titleRu: 'Этап 3 из 4: Тушение очага ОУ-5 [4] и эвакуация из зоны',
+        taskRu: 'Выберите огнетушитель ОУ-5 [4] и удерживайте [E] / ЛКМ на очаге пламени, затем эвакуируйте пострадавшего и бочку РАО в зону САР.',
+        hintRu: 'Удерживайте ОУ-5 [4] на огне 3.5 сек до полного сбития пламени. Для бочки РАО используйте щипцы [3].',
+        alaraRuleRu: 'Локализация пожара исключает вынос радиоактивных продуктов горения (Cs-137) в вентиляцию блока.'
       },
       {
         stepNumber: 4,
-        titleRu: 'Шаг 4: «Установка временного экрана» — Монтаж свинцовых блоков перед пучком',
-        taskRu: 'Установите блок свинцовых кирпичей (d = 50 мм Pb) в створ выходного окна коллиматора для снижения интенсивности пучка.',
-        hintRu: 'Возьмите свинцовый блок (клавиша E) и поставьте перед коллиматором. Мощность дозы упадет по закону Бугера.',
-        alaraRuleRu: 'Защита экранированием: слой половинного ослабления (СПО) свинца для Co-60 составляет d₁/₂ = 1.25 см.'
-      },
-      {
-        stepNumber: 5,
-        titleRu: 'Шаг 5: «Точные замеры и расчет» — Определение коэффициента ослабления K_shield',
-        taskRu: 'Зафиксируйте мощность дозы за свинцовым экраном и внесите данные в виртуальный «Лабораторный журнал» (📓).',
-        hintRu: 'Рассчитайте кратность ослабления K = I₀/I и экспериментальный слой половинного ослабления d₁/₂ = ln(2)/μ.',
-        alaraRuleRu: 'Инженерная физика: расчет необходимой толщины биозащиты по нормативам НРБ-99/2009.'
-      },
-      {
-        stepNumber: 6,
-        titleRu: 'Шаг 6: «Итоговый контроль и сдача» — Закрытие затвора и защита лабораторной работы',
-        taskRu: 'Переведите затвор коллиматора в положение «ЗАКРЫТО», отойдите в зелёную зону и сдайте работу через «ALARA Отчет».',
-        hintRu: 'Убедитесь в нормализации радиационного фона и получите итоговую оценку за соблюдение принципов ALARA.',
-        alaraRuleRu: 'Аттестация персонала группы А: подтверждение допуска к работе с источниками фотонного излучения.'
+        titleRu: 'Этап 4 из 4: Эвакуация пострадавшего и сдача протокола ALARA',
+        taskRu: 'Убедитесь, что пламя и дуга ликвидированы, пострадавший и бочка РАО в безопасной зоне САР, и оформите отчет ALARA.',
+        hintRu: 'Нажмите «ALARA Отчет» в меню «Практикум» после ликвидации горения и эвакуации.',
+        alaraRuleRu: 'Документирование дозовых нагрузок пожарно-спасательного звена МЧС.'
       }
     ],
     buildScene: (scene: THREE.Scene) => {
       const envGroup = new THREE.Group();
-      buildCleanRoom(envGroup, 12, 12, 4.0);
+      buildIndustrialRoom(envGroup, 16, 14, 4.8);
 
-      // Ламинарный горячий бокс ПЭТ-лаборатории
-      const hotCell = createHotCellGlovebox();
-      hotCell.position.set(-2.2, 0, -3.2);
-      envGroup.add(hotCell);
+      const rackSteelMat = new THREE.MeshStandardMaterial({
+        color: 0x475569,
+        metalness: 0.8,
+        roughness: 0.35
+      });
+      const scorchedCableMat = createScorchedCorrodedMetalMaterial();
 
-      // Аппарат дистанционной гамма-терапии (гиis-гентри)
-      const gantryMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.25, metalness: 0.3 });
-      const gantryBase = new THREE.Mesh(new THREE.BoxGeometry(1.4, 2.2, 1.2), gantryMat);
-      gantryBase.position.set(2.2, 1.1, -3.5);
-      gantryBase.castShadow = true;
-      envGroup.add(gantryBase);
+      // Многоярусная кабельная эстакада 6 кВ в глубине отсека
+      const trayGroup = new THREE.Group();
+      trayGroup.position.set(0, 0, -3.2);
+      for (const xPost of [-2.4, 0, 2.4]) {
+        const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.14, 3.2, 0.14), rackSteelMat);
+        pillar.position.set(xPost, 1.6, 0);
+        pillar.castShadow = true;
+        trayGroup.add(pillar);
+      }
+      for (const tierY of [1.15, 1.85, 2.55]) {
+        const trayShelf = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.08, 0.72), rackSteelMat);
+        trayShelf.position.set(0, tierY, 0);
+        trayGroup.add(trayShelf);
 
-      const gantryArm = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 1.6), gantryMat);
-      gantryArm.position.set(2.2, 2.0, -2.7);
-      envGroup.add(gantryArm);
+        for (let c = -2; c <= 2; c++) {
+          const cable = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.042, 0.042, 5.5, 12),
+            c === 0 ? scorchedCableMat : new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.7 })
+          );
+          cable.rotation.z = Math.PI / 2;
+          cable.position.set(0, tierY + 0.07, c * 0.12);
+          trayGroup.add(cable);
+        }
+      }
 
-      // Затвор коллиматора
-      const shutterValve = createHighDetailValve();
-      shutterValve.scale.setScalar(0.65);
-      shutterValve.position.set(2.2, 1.5, -2.85);
-      envGroup.add(shutterValve);
-
-      // Светящийся флакон с РФП 18F-ФДГ
-      const spillGroup = new THREE.Group();
-      spillGroup.position.set(-2.2, 0.96, -3.0);
-      const puddle = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.22, 0.25, 0.02, 24),
-        new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85 })
+      const traySign = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.9, 0.65),
+        new THREE.MeshBasicMaterial({
+          map: createEquipmentLabelTexture('ЭСТАКАДА 6 кВ', 'ОПАСНО! ВЫСОКОЕ НАПРЯЖЕНИЕ', '#1e1b4b', '#facc15')
+        })
       );
-      spillGroup.add(puddle);
-      envGroup.add(spillGroup);
+      traySign.position.set(0, 3.05, 0.38);
+      trayGroup.add(traySign);
+      envGroup.add(trayGroup);
 
-      // Свинцовые кирпичи ГОСТ
-      const bricks = createLeadBrickStack(3, 4);
-      bricks.position.set(-0.4, 0, -1.2);
-      bricks.userData = {
-        ...bricks.userData,
-        interactiveId: 'lead_bricks',
+      // Процедурное 3D-пламя и дым на горящей кабельной полке
+      const fireGroup = new THREE.Group();
+      fireGroup.position.set(0.3, 1.25, -3.0);
+      const flameFlames: THREE.Mesh[] = [];
+      const flameColors = [0xf97316, 0xfacc15, 0xef4444, 0xfb923c, 0xfde047];
+      for (let i = 0; i < 8; i++) {
+        const cone = new THREE.Mesh(
+          new THREE.ConeGeometry(0.18 + (i % 3) * 0.07, 0.75 + (i % 4) * 0.24, 12),
+          new THREE.MeshBasicMaterial({
+            color: flameColors[i % flameColors.length],
+            transparent: true,
+            opacity: 0.85
+          })
+        );
+        cone.position.set((i - 3.5) * 0.28, 0.35 + (i % 2) * 0.18, (i % 2 === 0 ? 0.1 : -0.1));
+        fireGroup.add(cone);
+        flameFlames.push(cone);
+      }
+
+      const smokePuffs: THREE.Mesh[] = [];
+      const smokeMat = new THREE.MeshStandardMaterial({
+        color: 0x1f2937,
+        transparent: true,
+        opacity: 0.45,
+        roughness: 1.0
+      });
+      for (let i = 0; i < 6; i++) {
+        const puff = new THREE.Mesh(new THREE.SphereGeometry(0.32 + i * 0.05, 12, 12), smokeMat);
+        puff.position.set((i - 2.5) * 0.35, 1.1 + i * 0.32, 0);
+        fireGroup.add(puff);
+        smokePuffs.push(puff);
+      }
+
+      const fireLight = new THREE.PointLight(0xf97316, 4.5, 10, 1.5);
+      fireLight.position.set(0, 0.8, 0.4);
+      fireGroup.add(fireLight);
+
+      // Искры электрической дуги 6 кВ
+      const sparkGroup = new THREE.Group();
+      const sparkMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+      for (let i = 0; i < 5; i++) {
+        const arc = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.28, 0.03), sparkMat);
+        arc.position.set((i - 2) * 0.35, 0.68, 0.18);
+        arc.rotation.z = (i - 2) * 0.4;
+        sparkGroup.add(arc);
+      }
+      fireGroup.add(sparkGroup);
+      envGroup.add(fireGroup);
+
+      // Состояние пожара для интерактивной логики и анимации
+      envGroup.userData.fireSimulation = {
+        fireGroup,
+        flameFlames,
+        smokePuffs,
+        fireLight,
+        sparkGroup,
+        isPowerEnergized: true,
+        isFireExtinguished: false
+      };
+
+      // 1. Силовой шкаф-рубильник 6 кВ (слева)
+      const breakerGroup = new THREE.Group();
+      breakerGroup.position.set(-3.8, 0, -1.4);
+      const cabinet = new THREE.Mesh(
+        new THREE.BoxGeometry(0.85, 1.95, 0.62),
+        new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.45, metalness: 0.65 })
+      );
+      cabinet.position.y = 0.975;
+      cabinet.castShadow = true;
+      breakerGroup.add(cabinet);
+
+      const breakerSign = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.72, 0.28),
+        new THREE.MeshBasicMaterial({
+          map: createEquipmentLabelTexture('РУБИЛЬНИК 6 кВ', 'ОТКЛЮЧИТЬ ПИТАНИЕ', '#0f172a', '#ef4444')
+        })
+      );
+      breakerSign.position.set(0, 1.62, 0.32);
+      breakerGroup.add(breakerSign);
+
+      const breakerHandle = new THREE.Mesh(
+        new THREE.BoxGeometry(0.10, 0.42, 0.14),
+        new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3, metalness: 0.4 })
+      );
+      breakerHandle.position.set(0.24, 1.18, 0.34);
+      breakerGroup.add(breakerHandle);
+
+      const breakerLed = new THREE.Mesh(
+        new THREE.SphereGeometry(0.06, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xef4444 })
+      );
+      breakerLed.position.set(-0.22, 1.32, 0.32);
+      breakerGroup.add(breakerLed);
+      breakerGroup.userData = {
+        ...breakerGroup.userData,
+        interactiveId: 'power_breaker',
+        breakerHandle,
+        breakerLed,
         placementType: 'floor',
         isLargeEquipment: true
       };
-      envGroup.add(bricks);
+      envGroup.add(breakerGroup);
+
+      // 2. Углекислотный огнетушитель ОУ-5 (Диэлектрический)
+      const co2Group = new THREE.Group();
+      co2Group.position.set(-1.5, 0, 1.4);
+      const cylMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.28, metalness: 0.45 });
+      const cylBody = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.72, 24), cylMat);
+      cylBody.position.y = 0.38;
+      cylBody.castShadow = true;
+      co2Group.add(cylBody);
+
+      const cylNeck = new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), cylMat);
+      cylNeck.position.y = 0.74;
+      co2Group.add(cylNeck);
+
+      const horn = new THREE.Mesh(
+        new THREE.ConeGeometry(0.09, 0.24, 18),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6 })
+      );
+      horn.rotation.x = Math.PI / 3;
+      horn.position.set(0.12, 0.80, -0.18);
+      co2Group.add(horn);
+
+      const co2Tag = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.46, 0.18),
+        new THREE.MeshBasicMaterial({
+          map: createEquipmentLabelTexture('ОУ-5 (CO₂)', 'ДИЭЛЕКТРИК ДО 10 кВ', '#450a0a', '#4ade80')
+        })
+      );
+      co2Tag.position.set(0, 1.05, 0);
+      co2Group.add(co2Tag);
+      co2Group.userData = {
+        ...co2Group.userData,
+        interactiveId: 'co2_extinguisher',
+        placementType: 'floor',
+        isLargeEquipment: false
+      };
+      envGroup.add(co2Group);
+
+      // 3. Водяной пожарный кран-ствол ПК-50 (ОПАСНО при 6 кВ!)
+      const hydrantGroup = new THREE.Group();
+      hydrantGroup.position.set(3.8, 0, 0.8);
+      const hydBox = new THREE.Mesh(
+        new THREE.BoxGeometry(0.75, 1.15, 0.36),
+        new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.38, metalness: 0.3 })
+      );
+      hydBox.position.y = 0.72;
+      hydBox.castShadow = true;
+      hydrantGroup.add(hydBox);
+
+      const hydSign = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.66, 0.26),
+        new THREE.MeshBasicMaterial({
+          map: createEquipmentLabelTexture('ПОЖАРНЫЙ КРАН (ВОДА)', 'ЗАПРЕЩЕНО ПОД 6 кВ!', '#7f1d1d', '#fde047')
+        })
+      );
+      hydSign.position.set(0, 1.02, 0.19);
+      hydrantGroup.add(hydSign);
+      hydrantGroup.userData = {
+        ...hydrantGroup.userData,
+        interactiveId: 'water_hydrant',
+        placementType: 'floor',
+        isLargeEquipment: true
+      };
+      envGroup.add(hydrantGroup);
+
+      // 4. Невидимая коллайдер-зона самого очага пожара на эстакаде (для тушения струёй ОУ-5 [4] прямо по пламени)
+      const fireTargetHitbox = new THREE.Mesh(
+        new THREE.BoxGeometry(2.4, 1.4, 1.1),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0, depthWrite: false })
+      );
+      fireTargetHitbox.position.set(0.3, 1.55, -3.0);
+      envGroup.add(fireTargetHitbox);
+
+      // 5. Повреждённая бочка РАО (для эвакуации щипцами ЦМ-1.5 [3] в контейнер САР)
+      const raoDrumMesh = createDamagedRaoDrumMesh();
+      raoDrumMesh.position.set(1.85, 0, -1.9);
+      envGroup.add(raoDrumMesh);
+
+      // 6. Пострадавший оператор (манекен для эвакуации в безопасную зону)
+      const injuredMesh = createInjuredOperatorMesh();
+      injuredMesh.position.set(-1.9, 0, -2.4);
+      envGroup.add(injuredMesh);
+
+      // 7. Безопасная зона эвакуации и контейнер САР-2
+      const sarDropZoneS2 = createLeadSarContainerDropZone('ЗОНА САР-2 • ЭВАК.', 'БОЧКА РАО / ПОСТРАДАВШИЙ');
+      sarDropZoneS2.position.set(3.4, 0, 2.7);
+      envGroup.add(sarDropZoneS2);
 
       scene.add(envGroup);
 
@@ -443,47 +988,104 @@ export const SCENARIOS: ScenarioDefinition[] = [
         envGroup,
         sources: [
           {
-            id: 'src_med_f18',
-            position: new THREE.Vector3(-2.2, 0.98, -3.0),
-            isotopeId: 'F-18',
-            activityMBq: 26000,
-            mesh: spillGroup
+            id: 'src_fire_cs137',
+            position: new THREE.Vector3(0.3, 1.4, -3.0),
+            isotopeId: 'Cs-137',
+            activityMBq: 16500
           },
           {
-            id: 'src_med_co60_head',
-            position: new THREE.Vector3(2.2, 1.65, -2.7),
+            id: 'src_fire_rao_drum',
+            position: new THREE.Vector3(1.85, 0.3, -1.9),
             isotopeId: 'Co-60',
-            activityMBq: 18000
+            activityMBq: 6200,
+            mesh: raoDrumMesh
           }
         ],
-        shields: [
-          {
-            id: 'lead_bricks',
-            mesh: bricks,
-            material: 'lead',
-            thicknessCm: 5.0,
-            boundingBox: new THREE.Box3().setFromObject(bricks)
-          }
-        ],
+        shields: [],
         interactive: [
           {
-            id: 'lead_bricks',
-            nameRu: 'Блок свинцовых кирпичей защиты (50 мм Pb)',
-            type: 'shield',
+            id: 'power_breaker',
+            nameRu: 'Силовой рубильник отключения кабельной трассы 6 кВ',
+            type: 'breaker',
             placementType: 'floor',
             isLargeEquipment: true,
-            shieldMaterial: 'lead',
-            shieldThicknessCm: 5.0,
-            mesh: bricks,
+            mesh: breakerGroup,
+            interacted: false,
+            holdAction: {
+              kind: 'breaker',
+              durationSec: 2.0,
+              labelRu: 'Отключение рубильника 6 кВ',
+              preferredToolId: 'wrench'
+            }
+          },
+          {
+            id: 'co2_extinguisher',
+            nameRu: 'Диэлектрический углекислотный огнетушитель ОУ-5',
+            type: 'extinguisher',
+            placementType: 'floor',
+            isLargeEquipment: false,
+            mesh: co2Group,
+            interacted: false,
+            holdAction: {
+              kind: 'extinguish',
+              durationSec: 3.5,
+              labelRu: 'Тушение очага ОУ-5 (CO₂)',
+              preferredToolId: 'extinguisher'
+            }
+          },
+          {
+            id: 'fire_tray_target',
+            nameRu: 'Очаг возгорания кабельной эстакады 6 кВ',
+            type: 'extinguisher',
+            placementType: 'floor',
+            isLargeEquipment: true,
+            mesh: fireTargetHitbox,
+            interacted: false,
+            holdAction: {
+              kind: 'extinguish',
+              durationSec: 3.5,
+              labelRu: 'Ликвидация пламени струёй ОУ-5 [4]',
+              preferredToolId: 'extinguisher'
+            }
+          },
+          {
+            id: 'water_hydrant',
+            nameRu: 'Водяной пожарный ствол ПК-50 (Вода — опасна под 6 кВ!)',
+            type: 'hydrant',
+            placementType: 'floor',
+            isLargeEquipment: true,
+            mesh: hydrantGroup,
             interacted: false
           },
           {
-            id: 'reactor_valve',
-            nameRu: 'Привод затвора гамма-аппарата Co-60',
-            type: 'valve',
+            id: 'damaged_rao_drum',
+            nameRu: 'Повреждённая бочка РАО (Щипцы ЦМ-1.5 [3])',
+            type: 'extractable',
             placementType: 'floor',
             isLargeEquipment: true,
-            mesh: shutterValve,
+            mesh: raoDrumMesh,
+            interacted: false,
+            requiresTongs: true,
+            linkedSourceId: 'src_fire_rao_drum'
+          },
+          {
+            id: 'injured_operator',
+            nameRu: 'Пострадавший оператор в СИЗ (Эвакуация в САР)',
+            type: 'casualty',
+            placementType: 'floor',
+            isLargeEquipment: true,
+            mesh: injuredMesh,
+            interacted: false
+          },
+          {
+            id: 'sar_drop_zone_s2',
+            nameRu: 'Безопасная зона эвакуации САР-2',
+            type: 'drop_zone',
+            placementType: 'floor',
+            isLargeEquipment: true,
+            shieldMaterial: 'lead',
+            shieldThicknessCm: 10.0,
+            mesh: sarDropZoneS2,
             interacted: false
           }
         ]
@@ -492,680 +1094,201 @@ export const SCENARIOS: ScenarioDefinition[] = [
   },
 
   // =========================================================================================
-  // 3. ЛАБОРАТОРНАЯ РАБОТА №3: Спектрометрия и слепая идентификация неизвестного источника
+  // 3. МЧС АЭС — СЦЕНАРИЙ №3: Отказ систем питания SBO (Обесточивание БПУ АЭС)
   // =========================================================================================
   {
     id: 3,
-    categoryRu: 'Лабораторный практикум (ГОСТ)',
-    titleRu: '3. Лабораторная работа: Спектрометрия и слепая идентификация неизвестного источника',
+    categoryRu: 'МЧС России • Ликвидация ЧС на АЭС',
+    titleRu: '3. МЧС АЭС: Отказ систем питания SBO (Обесточивание БПУ)',
     shortDescriptionRu:
-      'Слепая идентификация: перед студентом находится скрытый источник излучения в ампуле. Проведите серию измерений с фильтрами, наберите амплитудный спектр на МКА, определите энергию фотопиков и идентифицируйте изотоп.',
-    facilityRu: 'Лаборатория спектрометрии и радиоизотопной идентификации',
-    dominantIsotopes: ['Cs-137', 'Co-60', 'Am-241', 'Sr-90', 'Pu-239', 'Cf-252'],
-    recommendedPermitLimitMsv: 0.15,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 4.2),
-    ambientColor: 0xe2e8f0,
-    fogColor: 0xcbd5e1,
-    fogDensity: 0.0025,
-    stages: [
-      {
-        stepNumber: 1,
-        titleRu: 'Этап 1 из 3: Качественная оценка вида ИИ поглотителями (α / β / γ / n)',
-        taskRu: 'Оцените изменение счета при установке преград: бумага (задержка альфа), алюминий (бета), свинец (гамма).',
-        hintRu: 'Если счет падает до нуля от листа бумаги — это чистый альфа-эмиттер (Pu-239). Если пробивает свинец — жесткое гамма (Co-60).',
-        alaraRuleRu: 'Дифференциальная радиометрия: разделение видов ИИ методом фильтров поглощения.'
-      },
-      {
-        stepNumber: 2,
-        titleRu: 'Этап 2 из 3: Активация спектрометра МКА и накопление спектра',
-        taskRu: 'Откройте анализатор спектра (кнопка 📊 вверху), проведите экспозицию 10–30 секунд и найдите фотопики полного поглощения.',
-        hintRu: 'Используйте сцинтиллятор NaI(Tl) или полупроводниковый CdZnTe для обнаружения характеристических линий.',
-        alaraRuleRu: 'ГОСТ Р МЭК 61274: спектрометрическая идентификация закрытых радионуклидных источников.'
-      },
-      {
-        stepNumber: 3,
-        titleRu: 'Этап 3 из 3: Оформление паспорта неизвестного источника и зачет',
-        taskRu: 'В окне спектрометра выберите идентифицированный нуклид, подтвердите вердикт и переместите ампулу в контейнер ТК-6 (E).',
-        hintRu: 'Сверьте положение обнаруженных пиков с библиотекой радионуклидов ГОСТ.',
-        alaraRuleRu: 'ОСПОРБ-99/2010: изоляция идентифицированного источника в транспортный контейнер ТК-6.'
-      }
-    ],
-    buildScene: (scene: THREE.Scene) => {
-      const envGroup = new THREE.Group();
-      buildIndustrialRoom(envGroup, 16, 14, 5.2);
-
-      // Навалы металлолома (трубы, балки, шестерни)
-      const rustMat = new THREE.MeshStandardMaterial({
-        color: 0x78350f,
-        roughness: 0.75,
-        metalness: 0.65,
-        map: createBrushedMetalTexture()
-      });
-
-      for (let i = 0; i < 8; i++) {
-        const scrapPipe = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.14, 0.14, 2.2, 16),
-          rustMat
-        );
-        scrapPipe.position.set(-1.5 + (i % 4) * 0.9, 0.22 + Math.floor(i / 4) * 0.25, -3.2 + (i % 2) * 0.4);
-        scrapPipe.rotation.z = Math.PI / 2 + (i - 3) * 0.12;
-        scrapPipe.rotation.y = (i * 0.4) % 1.2;
-        scrapPipe.castShadow = true;
-        envGroup.add(scrapPipe);
-      }
-
-      // Выпавший держатель капсулы гамма-дефектоскопа Ir-192
-      const capsuleGroup = new THREE.Group();
-      capsuleGroup.position.set(1.2, 0.12, -2.5);
-      const bodyMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.03, 0.03, 0.18, 16),
-        new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.95, roughness: 0.1 })
-      );
-      bodyMesh.rotation.z = Math.PI / 2;
-      capsuleGroup.add(bodyMesh);
-
-      const glow = new THREE.Mesh(
-        new THREE.SphereGeometry(0.055, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.85 })
-      );
-      capsuleGroup.add(glow);
-      capsuleGroup.userData = {
-        ...capsuleGroup.userData,
-        interactiveId: 'ir_capsule',
-        placementType: 'prop',
-        isLargeEquipment: false
-      };
-      envGroup.add(capsuleGroup);
-
-      // Защитный контейнер ТК-6
-      const tk6 = createTK6Container();
-      tk6.position.set(-1.8, 0, -1.2);
-      tk6.userData = {
-        ...tk6.userData,
-        interactiveId: 'tk6_box',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(tk6);
-
-      scene.add(envGroup);
-
-      return {
-        envGroup,
-        sources: [
-          {
-            id: 'src_scrap_ir192',
-            position: capsuleGroup.position.clone(),
-            isotopeId: 'Ir-192',
-            activityMBq: 95000,
-            mesh: capsuleGroup
-          },
-          {
-            id: 'src_scrap_cs137',
-            position: new THREE.Vector3(-1.2, 0.35, -3.3),
-            isotopeId: 'Cs-137',
-            activityMBq: 8500
-          }
-        ],
-        shields: [],
-        interactive: [
-          {
-            id: 'ir_capsule',
-            nameRu: 'Ампула гамма-дефектоскопа Ir-192 (95 ГБк)',
-            type: 'source',
-            placementType: 'prop',
-            isLargeEquipment: false,
-            mesh: capsuleGroup,
-            interacted: false
-          },
-          {
-            id: 'tk6_box',
-            nameRu: 'Транспортный свинцовый контейнер ТК-6',
-            type: 'container',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            mesh: tk6,
-            interacted: false
-          }
-        ]
-      };
-    }
-  },
-
-  // =========================================================================================
-  // 4. Таможенные посты и границы
-  // =========================================================================================
-  {
-    id: 4,
-    categoryRu: 'Таможенные посты и границы',
-    titleRu: '4. Таможня: Стойки «Янтарь» и досмотр контейнера (²⁴¹Am, ¹³⁷Cs)',
-    shortDescriptionRu:
-      'Сканирование морских контейнеров, автотранспорта и багажа стационарными мониторами и поисковыми радиометрами на предмет незадекларированных РМ.',
-    facilityRu: 'Пограничный терминал радиационного контроля ТКДРМ',
-    dominantIsotopes: ['Cs-137', 'Am-241'],
-    recommendedPermitLimitMsv: 0.08,
+      'Полное обесточивание Блочного пункта управления (Station Blackout): ориентирование в темноте с фонарем, высокий фон, подключение аварийного кабеля и запуск мобильной дизель-насосной установки МДНУ-150 в жестком дефиците времени.',
+    facilityRu: 'Блочный пункт управления (БПУ) и площадка резервного питания АЭС',
+    dominantIsotopes: ['Co-60', 'Cf-252'],
+    recommendedPermitLimitMsv: 0.22,
     initialPlayerPos: new THREE.Vector3(0, 1.65, 4.4),
-    ambientColor: 0xe2e8f0,
-    fogColor: 0xdbeafe,
-    fogDensity: 0.002,
-    stages: [
-      {
-        stepNumber: 1,
-        titleRu: 'Этап 1 из 3: Локализация сработки портала «Янтарь»',
-        taskRu: 'Обследуйте задержанный грузовой контейнер и найдите ящик с незадекларированным источником.',
-        hintRu: 'Америций-241 испускает интенсивное альфа- и низкоэнергетическое гамма-излучение (59.5 кэВ).',
-        alaraRuleRu: 'СИЗ: экипируйте респиратор для 100% защиты от возможной альфа-аэрозольной разгерметизации.'
-      },
-      {
-        stepNumber: 2,
-        titleRu: 'Этап 2 из 3: Ограждение задержанного груза экраном',
-        taskRu: 'Переместите передвижную свинцовую ширму (E) вплотную к стенке фонящего таможенного ящика.',
-        hintRu: 'Низкоэнергетическое излучение Am-241 и Cs-137 эффективно блокируется свинцовым экраном.',
-        alaraRuleRu: 'Защита экранированием: изолируйте опасный груз на досмотровой площадке.'
-      },
-      {
-        stepNumber: 3,
-        titleRu: 'Этап 3 из 3: Повторный замер на границе барьера',
-        taskRu: 'Отойдите за установленный экран и зафиксируйте снижение мощности дозы до безопасного уровня.',
-        hintRu: 'Сохраните CSV-отчет измерений в плавающем окне аналитики для таможенного протокола.',
-        alaraRuleRu: 'Контроль дозовых нагрузок инспекторов ТКДРМ.'
-      }
-    ],
-    buildScene: (scene: THREE.Scene) => {
-      const envGroup = new THREE.Group();
-      buildIndustrialRoom(envGroup, 16, 14, 5.0);
-
-      // Морской 20-футовый контейнер (синий гофрированный)
-      const containerMat = new THREE.MeshStandardMaterial({
-        color: 0x1d4ed8,
-        roughness: 0.5,
-        metalness: 0.6
-      });
-      const cargoBox = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.5, 4.5), containerMat);
-      cargoBox.position.set(0, 1.25, -3.5);
-      cargoBox.castShadow = true;
-      envGroup.add(cargoBox);
-
-      // Стационарные стойки радиационного контроля «Янтарь-1С» по бокам
-      const pillarMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3, metalness: 0.4 });
-      const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(0.28, 2.4, 0.28), pillarMat);
-      leftPillar.position.set(-2.4, 1.2, -2.0);
-      const rightPillar = leftPillar.clone();
-      rightPillar.position.set(2.4, 1.2, -2.0);
-      envGroup.add(leftPillar, rightPillar);
-
-      const alarmBeacon = createRadiationBeacon('danger');
-      alarmBeacon.position.set(-2.4, 2.55, -2.0);
-      envGroup.add(alarmBeacon);
-
-      // Подозрительный багажный кейс возле открытых ворот контейнера
-      const smuggledCase = new THREE.Mesh(
-        new THREE.BoxGeometry(0.55, 0.38, 0.42),
-        new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.35, metalness: 0.7 })
-      );
-      smuggledCase.position.set(0.3, 0.19, -1.0);
-      smuggledCase.castShadow = true;
-      envGroup.add(smuggledCase);
-
-      // Свинцовый экран таможенного поста
-      const shieldMesh = createMovableLeadShieldScreen();
-      shieldMesh.position.set(-2.6, 0, 0.2);
-      shieldMesh.userData = {
-        ...shieldMesh.userData,
-        interactiveId: 'screen_shield',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(shieldMesh);
-
-      scene.add(envGroup);
-
-      return {
-        envGroup,
-        sources: [
-          {
-            id: 'src_customs_cs137',
-            position: new THREE.Vector3(0.3, 0.25, -1.0),
-            isotopeId: 'Cs-137',
-            activityMBq: 42000,
-            mesh: smuggledCase
-          },
-          {
-            id: 'src_customs_am241',
-            position: new THREE.Vector3(0.1, 0.9, -2.2),
-            isotopeId: 'Am-241',
-            activityMBq: 35000
-          }
-        ],
-        shields: [
-          {
-            id: 'lead_screen',
-            mesh: shieldMesh,
-            material: 'lead',
-            thicknessCm: 2.0,
-            boundingBox: new THREE.Box3().setFromObject(shieldMesh)
-          }
-        ],
-        interactive: [
-          {
-            id: 'screen_shield',
-            nameRu: 'Мобильный защитный экран ТКДРМ (20 мм Pb)',
-            type: 'shield',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            shieldMaterial: 'lead',
-            shieldThicknessCm: 2.0,
-            mesh: shieldMesh,
-            interacted: false
-          }
-        ]
-      };
-    }
-  },
-
-  // =========================================================================================
-  // 5. Места добычи полезных ископаемых
-  // =========================================================================================
-  {
-    id: 5,
-    categoryRu: 'Места добычи полезных ископаемых',
-    titleRu: '5. Горнодобыча: Урановый и гранитный карьер ЕРН (²²⁶Ra, ²³²Th, ⁴⁰K)',
-    shortDescriptionRu:
-      'Мониторинг урановых рудников, гранитных и угольных карьеров с повышенным содержанием естественных радионуклидов (NORM/ЕРН).',
-    facilityRu: 'Подземный урановый рудник (штрек) и участок сортировки руды',
-    dominantIsotopes: ['Ra-226', 'Th-232', 'K-40'],
-    recommendedPermitLimitMsv: 0.10,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 4.5),
-    ambientColor: 0x1e293b,
-    fogColor: 0x090d16,
-    fogDensity: 0.032,
-    isLowLight: true,
-    stages: [
-      {
-        stepNumber: 1,
-        titleRu: 'Этап 1 из 3: Гамма-поиск аномального керна руды',
-        taskRu: 'Включите защиту СИЗ (респиратор от рудной альфа-пыли) и найдите обогащенный фрагмент породы Ra-226.',
-        hintRu: 'Минералы уранинита и торита дают смешанный альфа-, бета- и гамма-вклад в дозовую нагрузку.',
-        alaraRuleRu: 'Защита СИЗ: респиратор полностью (на 100%) блокирует ингаляционное поступление альфа-частиц.'
-      },
-      {
-        stepNumber: 2,
-        titleRu: 'Этап 2 из 3: Отбор пробы породы дистанционным захватом',
-        taskRu: 'Возьмите активный образец руды Ra-226 (клавиша E) для помещения в геологический свинцовый пенал.',
-        hintRu: 'Используйте манипулятор в панели защиты расстоянием для снижения облучения кистей рук.',
-        alaraRuleRu: 'Защита расстоянием: используйте щипцы-манипуляторы при отборе высокоактивных кернов.'
-      },
-      {
-        stepNumber: 3,
-        titleRu: 'Этап 3 из 3: Герметизация пробы в контейнере',
-        taskRu: 'Опустите образец породы в желтый защитный контейнер-пенал (E) для отправки в лабораторию.',
-        hintRu: 'После помещения пробы в пенал гамма-фон на участке снижается до природного уровня.',
-        alaraRuleRu: 'Защита экранированием: транспортировка проб ЕРН в экранированных контейнерах.'
-      }
-    ],
-    buildScene: (scene: THREE.Scene) => {
-      const envGroup = new THREE.Group();
-
-      const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(36, 36),
-        new THREE.MeshStandardMaterial({
-          color: 0xa8a29e,
-          map: createQuarryGroundTexture(),
-          roughness: 0.9,
-          metalness: 0.05
-        })
-      );
-      ground.name = 'scene_floor';
-      ground.userData = { ...ground.userData, isFloor: true };
-      ground.rotation.x = -Math.PI / 2;
-      ground.receiveShadow = true;
-      envGroup.add(ground);
-
-      const rockMat = new THREE.MeshStandardMaterial({
-        color: 0x78716c,
-        roughness: 0.85,
-        metalness: 0.12
-      });
-
-      const rocks: THREE.Mesh[] = [];
-      const rockCoords = [
-        [-2.8, 0.5, -2.5],
-        [-1.1, 0.4, -3.8],
-        [1.8, 0.6, -2.8],
-        [0.5, 0.35, -3.1],
-        [2.9, 0.5, -3.9]
-      ];
-
-      rockCoords.forEach(([x, r, z]) => {
-        const mesh = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 1), rockMat);
-        mesh.position.set(x, r * 0.7, z);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        envGroup.add(mesh);
-        rocks.push(mesh);
-      });
-
-      const hotRock = rocks[3];
-      hotRock.userData = {
-        ...hotRock.userData,
-        interactiveId: 'norm_rock',
-        placementType: 'prop',
-        isLargeEquipment: false
-      };
-
-      const pig = createTK6Container();
-      pig.scale.setScalar(0.85);
-      pig.position.set(-2.2, 0, -1.0);
-      pig.userData = {
-        ...pig.userData,
-        interactiveId: 'sample_carrier',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(pig);
-
-      scene.add(envGroup);
-
-      return {
-        envGroup,
-        sources: [
-          {
-            id: 'src_mine_ra226',
-            position: hotRock.position.clone(),
-            isotopeId: 'Ra-226',
-            activityMBq: 16500,
-            mesh: hotRock
-          },
-          {
-            id: 'src_mine_th232',
-            position: new THREE.Vector3(-1.1, 0.4, -3.8),
-            isotopeId: 'Th-232',
-            activityMBq: 6200
-          },
-          {
-            id: 'src_mine_k40',
-            position: new THREE.Vector3(1.8, 0.5, -2.8),
-            isotopeId: 'K-40',
-            activityMBq: 14000
-          }
-        ],
-        shields: [],
-        interactive: [
-          {
-            id: 'norm_rock',
-            nameRu: 'Керн урановой руды Ra-226 (16.5 ГБк)',
-            type: 'sample',
-            placementType: 'prop',
-            isLargeEquipment: false,
-            mesh: hotRock,
-            interacted: false
-          },
-          {
-            id: 'sample_carrier',
-            nameRu: 'Геологический свинцовый пенал проб',
-            type: 'container',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            mesh: pig,
-            interacted: false
-          }
-        ]
-      };
-    }
-  },
-
-  // =========================================================================================
-  // 6. Зоны ликвидации аварий и хранилища ЯО (ХОЯТ / ПЗРО)
-  // =========================================================================================
-  {
-    id: 6,
-    categoryRu: 'Зоны ликвидации аварий и хранилища ЯО',
-    titleRu: '6. ХОЯТ и ПЗРО: Локализация нейтронно-гамма поля (²⁵²Cf, ¹³⁷Cs)',
-    shortDescriptionRu:
-      'Поиск и локализация горячих точек, радиационный контроль хранилищ отработавшего ядерного топлива (ХОЯТ) и пунктов захоронения РАО.',
-    facilityRu: 'Подземный бункер-хранилище контейнеров ТУК-13 (ХОЯТ / ПЗРО, аварийное освещение)',
-    dominantIsotopes: ['Cf-252', 'Cs-137', 'Co-60'],
-    recommendedPermitLimitMsv: 0.25,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 4.4),
-    ambientColor: 0x1e293b,
-    fogColor: 0x090d16,
+    ambientColor: 0x0f172a,
+    fogColor: 0x020617,
     fogDensity: 0.028,
     isLowLight: true,
     stages: [
       {
         stepNumber: 1,
-        titleRu: 'Этап 1 из 3: Нейтронная дозиметрия у контейнера ТУК',
-        taskRu: 'Переключите прибор на нейтронный радиометр «Нейтрон» и оцените вклад нейтронов в окне аналитики.',
-        hintRu: 'Отработавшее ядерное топливо создает интенсивный поток быстрых и тепловых нейтронов (w_R = 10).',
-        alaraRuleRu: 'Нейтронная защита: свинец слабо задерживает нейтроны — необходим водородсодержащий парафин с бором.'
+        titleRu: 'Этап 1 из 4: Ориентирование в обесточенном БПУ с фонарем',
+        taskRu: 'Используйте тактический фонарь ([F] / кнопка Y) в затемненном БПУ и оцените радиационный фон прибором ДП-5В.',
+        hintRu: 'При полном обесточивании (SBO) работает только аварийная красная сигнализация. Контролируйте время T_max!',
+        alaraRuleRu: 'Работа в условиях ограниченной видимости при жестком лимите времени на расхолаживание активной зоны.'
       },
       {
         stepNumber: 2,
-        titleRu: 'Этап 2 из 3: Установка борированного полиэтиленового экрана',
-        taskRu: 'Захватите синий водородно-борный экран (клавиша E) и установите его напротив дефектного шва ТУК.',
-        hintRu: 'Парафин и борированный полиэтилен замедляют быстрые нейтроны на ядрах водорода и поглощают их бором-10.',
-        alaraRuleRu: 'Защита экранированием: комбинированная защита (полиэтилен + свинец/бетон) против n + γ излучения.'
+        titleRu: 'Этап 2 из 4: Подключение силового кабеля аварийного ввода',
+        taskRu: 'Подойдите к распределительному щиту резервного ввода слева и подключите силовой кабель МДНУ ([E] / курок VR).',
+        hintRu: 'Шкаф «ВВОД РЕЗЕРВА 0.4 кВ» расположен слева от пультов БПУ.',
+        alaraRuleRu: 'Сборка временной схемы электроснабжения собственных нужд первой категории.'
       },
       {
         stepNumber: 3,
-        titleRu: 'Этап 3 из 3: Экранирование гамма-компоненты свинцом',
-        taskRu: 'Дополнительно установите передвижную свинцовую ширму (E) для подавления вторичного гамма-фона.',
-        hintRu: 'Оцените итоговый коэффициент ослабления K_prot в таблице факторов ослабления.',
-        alaraRuleRu: 'Комплексное применение многослойных защитных преград в ХОЯТ.'
+        titleRu: 'Этап 3 из 4: Запуск мобильной дизель-насосной установки МДНУ-150',
+        taskRu: 'Активируйте передвижную дизель-насосную установку МДНУ-150 справа ([E] / курок VR) для подачи питания на БПУ.',
+        hintRu: 'После запуска МДНУ пульты БПУ перейдут с аварийного красного режима на резервное питание.',
+        alaraRuleRu: 'Обеспечение питания КИПиА и насосов подпитки при отказе стационарных ДГ.'
+      },
+      {
+        stepNumber: 4,
+        titleRu: 'Этап 4 из 4: Задвижка ПГ, дезактивация [2] и эвакуация блока АСУ ТП',
+        taskRu: 'Откройте задвижку ПГ (удерживайте [E] с ключом [5]), засыпьте пролив лопатой [2] и перенесите блок АСУ ТП в зону САР.',
+        hintRu: 'Когда индикаторы пультов БПУ станут зелеными — режим SBO ликвидирован, сдайте отчет ALARA.',
+        alaraRuleRu: 'Восстановление отвода остаточного тепловыделения с соблюдением нормативов дозы НРБ-99/2009.'
       }
     ],
     buildScene: (scene: THREE.Scene) => {
       const envGroup = new THREE.Group();
-      buildIndustrialRoom(envGroup, 16, 16, 5.4);
+      buildIndustrialRoom(envGroup, 16, 14, 4.6);
 
-      // Массивный транспортный упаковочный комплект ТУК-13 (вертикальный цилиндр)
-      const caskMat = new THREE.MeshStandardMaterial({
-        color: 0x475569,
-        roughness: 0.35,
-        metalness: 0.8,
-        map: createBrushedMetalTexture()
+      // Главный пульт БПУ АЭС (П-образный операторский стол + вертикальное мнемотабло)
+      const consoleBodyMat = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        roughness: 0.5,
+        metalness: 0.45
       });
-      const cask = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 3.6, 32), caskMat);
-      cask.position.set(0, 1.8, -3.8);
-      cask.castShadow = true;
-      envGroup.add(cask);
+      const mainDesk = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.92, 1.15), consoleBodyMat);
+      mainDesk.position.set(0, 0.46, -2.5);
+      mainDesk.castShadow = true;
+      envGroup.add(mainDesk);
 
-      // Желтые бочки РАО (ПЗРО)
-      const drumMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.4, metalness: 0.4 });
-      for (let i = 0; i < 3; i++) {
-        const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.92, 24), drumMat);
-        drum.position.set(2.4 + i * 0.75, 0.46, -3.4);
-        drum.castShadow = true;
-        envGroup.add(drum);
-      }
+      const mimicPanel = new THREE.Mesh(new THREE.BoxGeometry(6.2, 2.2, 0.35), consoleBodyMat);
+      mimicPanel.position.set(0, 1.5, -4.1);
+      mimicPanel.castShadow = true;
+      envGroup.add(mimicPanel);
 
-      // Экран из парафина / борированного полиэтилена (для нейтронов)
-      const paraffinWall = createBoratedParaffinWall();
-      paraffinWall.position.set(-2.6, 0, -1.4);
-      paraffinWall.userData = {
-        ...paraffinWall.userData,
-        interactiveId: 'paraffin_shield',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(paraffinWall);
+      // Дисплеи БПУ (темные в режиме SBO, переключаются при восстановлении питания)
+      const sboScreenMat = new THREE.MeshBasicMaterial({
+        map: createEquipmentLabelTexture('БПУ • БЛОК №1', 'SBO: ПОТЕРЯ ПИТАНИЯ!', '#1f0808', '#ef4444')
+      });
+      const sboScreenMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 1.25), sboScreenMat);
+      sboScreenMesh.position.set(0, 1.65, -3.91);
+      envGroup.add(sboScreenMesh);
 
-      // Свинцовая ширма
-      const leadShield = createMovableLeadShieldScreen();
-      leadShield.position.set(2.6, 0, -1.0);
-      leadShield.userData = {
-        ...leadShield.userData,
-        interactiveId: 'screen_shield',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(leadShield);
+      const deskIndicatorMat = new THREE.MeshBasicMaterial({ color: 0x991b1b });
+      const deskStrip = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.06, 0.25), deskIndicatorMat);
+      deskStrip.position.set(0, 0.94, -2.35);
+      envGroup.add(deskStrip);
 
-      scene.add(envGroup);
+      // Аварийный мигающий маячок БПУ
+      const emergencyLight = new THREE.PointLight(0xef4444, 2.2, 9, 1.6);
+      emergencyLight.position.set(0, 3.6, -2.2);
+      envGroup.add(emergencyLight);
 
-      return {
-        envGroup,
-        sources: [
-          {
-            id: 'src_hoyat_cf252',
-            position: new THREE.Vector3(0, 1.5, -2.9),
-            isotopeId: 'Cf-252',
-            activityMBq: 14500
-          },
-          {
-            id: 'src_hoyat_cs137',
-            position: new THREE.Vector3(2.8, 0.5, -3.4),
-            isotopeId: 'Cs-137',
-            activityMBq: 38000
-          }
-        ],
-        shields: [
-          {
-            id: 'paraffin_shield',
-            mesh: paraffinWall,
-            material: 'paraffin_borated',
-            thicknessCm: 14.0,
-            boundingBox: new THREE.Box3().setFromObject(paraffinWall)
-          },
-          {
-            id: 'lead_screen',
-            mesh: leadShield,
-            material: 'lead',
-            thicknessCm: 2.0,
-            boundingBox: new THREE.Box3().setFromObject(leadShield)
-          }
-        ],
-        interactive: [
-          {
-            id: 'paraffin_shield',
-            nameRu: 'Нейтронный экран (Парафин / Борированный полиэтилен 140 мм)',
-            type: 'shield',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            shieldMaterial: 'paraffin_borated',
-            shieldThicknessCm: 14.0,
-            mesh: paraffinWall,
-            interacted: false
-          },
-          {
-            id: 'screen_shield',
-            nameRu: 'Свинцовая гамма-ширма (20 мм Pb)',
-            type: 'shield',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            shieldMaterial: 'lead',
-            shieldThicknessCm: 2.0,
-            mesh: leadShield,
-            interacted: false
-          }
-        ]
-      };
-    }
-  },
+      // 1. Шкаф ввода резервного кабеля 0.4 кВ (слева)
+      const cableBoxGroup = new THREE.Group();
+      cableBoxGroup.position.set(-4.0, 0, -1.2);
+      const boxMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.9, 1.7, 0.6),
+        new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.7 })
+      );
+      boxMesh.position.y = 0.85;
+      cableBoxGroup.add(boxMesh);
 
-  // =========================================================================================
-  // 7. Строительные площадки и участки под застройку
-  // =========================================================================================
-  {
-    id: 7,
-    categoryRu: 'Строительные площадки и участки под застройку',
-    titleRu: '7. Стройплощадка: Поток радона-222 из грунта (²²²Rn, ²²⁶Ra)',
-    shortDescriptionRu:
-      'Измерение ППС (плотности потока радона-222 с поверхности грунта) накопительными камерами и замер гамма-фона котлована перед застройкой.',
-    facilityRu: 'Темный подземный подвал и фундаментный коллектор здания (контроль радона)',
-    dominantIsotopes: ['Rn-222', 'Ra-226'],
-    recommendedPermitLimitMsv: 0.05,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 4.2),
-    ambientColor: 0x1e293b,
-    fogColor: 0x090d16,
-    fogDensity: 0.032,
-    isLowLight: true,
-    stages: [
-      {
-        stepNumber: 1,
-        titleRu: 'Этап 1 из 3: Защита органов дыхания от радона и торона',
-        taskRu: 'Включите комплект СИЗ в окне аналитики и обследуйте разлом грунта в котловане на эксхаляцию радона-222.',
-        hintRu: 'Радон-222 и его дочерние продукты распада формируют свыше 60% альфа-нагрузки на легкие.',
-        alaraRuleRu: 'СИЗ: применение противоаэрозольных респираторов на радоноопасных участках.'
-      },
-      {
-        stepNumber: 2,
-        titleRu: 'Этап 2 из 3: Установка защитного газонепроницаемого купола',
-        taskRu: 'Возьмите защитный экран-перекрытие (E) и установите его над тектонической трещиной выхода радона.',
-        hintRu: 'Бетонная стяжка и противорадоновая мембрана снижают ППС радона ниже норматива 80 мБк/(м²·с).',
-        alaraRuleRu: 'Защита экранированием: инженерная радонозащита фундамента здания.'
-      },
-      {
-        stepNumber: 3,
-        titleRu: 'Этап 3 из 3: Съемка накопительной угольной кассеты НК-32',
-        taskRu: 'Извлеките контрольную сорбционную кассету (E) и поместите её в герметичный контейнер для лаборатории.',
-        hintRu: 'Сравните спектральный вклад альфа- и гамма-излучения до и после укрытия трещины.',
-        alaraRuleRu: 'Радиационно-экологический контроль территорий по СП 2.6.1.2612-10.'
-      }
-    ],
-    buildScene: (scene: THREE.Scene) => {
-      const envGroup = new THREE.Group();
-
-      const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(32, 32),
-        new THREE.MeshStandardMaterial({
-          color: 0x9ca3af,
-          map: createQuarryGroundTexture(),
-          roughness: 0.92
+      const cableLabel = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.76, 0.30),
+        new THREE.MeshBasicMaterial({
+          map: createEquipmentLabelTexture('ВВОД 0.4 кВ', 'ПОДКЛЮЧИТЬ КАБЕЛЬ МДНУ', '#0f172a', '#f59e0b')
         })
       );
-      ground.name = 'scene_floor';
-      ground.userData = { ...ground.userData, isFloor: true };
-      ground.rotation.x = -Math.PI / 2;
-      ground.receiveShadow = true;
-      envGroup.add(ground);
+      cableLabel.position.set(0, 1.42, 0.31);
+      cableBoxGroup.add(cableLabel);
 
-      // Фундаментные блоки ФБС по периметру котлована
-      const concreteMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85 });
-      for (let i = 0; i < 4; i++) {
-        const fbs = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.6, 0.6), concreteMat);
-        fbs.position.set(-3.6 + i * 2.4, 0.3, -4.5);
-        fbs.castShadow = true;
-        envGroup.add(fbs);
-      }
-
-      // Накопительная сорбционная камера НК-32 на грунте
-      const radonChamber = new THREE.Group();
-      radonChamber.position.set(0.4, 0.12, -2.4);
-      const dome = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.18, 0.24, 0.22, 24),
-        new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.3, metalness: 0.4 })
+      const cablePlugLed = new THREE.Mesh(
+        new THREE.SphereGeometry(0.065, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xf59e0b })
       );
-      radonChamber.add(dome);
-      radonChamber.userData = {
-        ...radonChamber.userData,
-        interactiveId: 'norm_rock',
-        placementType: 'prop',
-        isLargeEquipment: false
-      };
-      envGroup.add(radonChamber);
-
-      // Защитный экран и контейнер проб
-      const bricks = createLeadBrickStack(3, 4);
-      bricks.position.set(-2.0, 0, -1.4);
-      bricks.userData = {
-        ...bricks.userData,
-        interactiveId: 'lead_bricks',
+      cablePlugLed.position.set(0.28, 1.12, 0.31);
+      cableBoxGroup.add(cablePlugLed);
+      cableBoxGroup.userData = {
+        ...cableBoxGroup.userData,
+        interactiveId: 'sbo_power_cable',
+        cablePlugLed,
         placementType: 'floor',
         isLargeEquipment: true
       };
-      envGroup.add(bricks);
+      envGroup.add(cableBoxGroup);
 
-      const carrier = createTK6Container();
-      carrier.scale.setScalar(0.8);
-      carrier.position.set(2.2, 0, -1.2);
-      carrier.userData = {
-        ...carrier.userData,
-        interactiveId: 'sample_carrier',
+      // 2. Мобильная дизель-насосная установка МДНУ-150 (справа)
+      const mdnuGroup = new THREE.Group();
+      mdnuGroup.position.set(3.8, 0, -1.4);
+      const mdnuChassis = new THREE.Mesh(
+        new THREE.BoxGeometry(1.45, 1.25, 2.2),
+        new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.38, metalness: 0.42 })
+      );
+      mdnuChassis.position.y = 0.72;
+      mdnuChassis.castShadow = true;
+      mdnuGroup.add(mdnuChassis);
+
+      const exhaustPipe = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 0.85, 16),
+        new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.85, roughness: 0.25 })
+      );
+      exhaustPipe.position.set(0.45, 1.65, -0.6);
+      mdnuGroup.add(exhaustPipe);
+
+      const mdnuLabel = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.2, 0.45),
+        new THREE.MeshBasicMaterial({
+          map: createEquipmentLabelTexture('МДНУ-150 МЧС', 'ПУСК ДИЗЕЛЬ-ГЕНЕРАТОРА', '#1e293b', '#f97316')
+        })
+      );
+      mdnuLabel.position.set(0, 0.92, 1.11);
+      mdnuGroup.add(mdnuLabel);
+
+      const mdnuStatusLed = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0xef4444 })
+      );
+      mdnuStatusLed.position.set(-0.48, 1.4, 0.8);
+      mdnuGroup.add(mdnuStatusLed);
+      mdnuGroup.userData = {
+        ...mdnuGroup.userData,
+        interactiveId: 'mdnu_diesel_pump',
+        mdnuStatusLed,
         placementType: 'floor',
         isLargeEquipment: true
       };
-      envGroup.add(carrier);
+      envGroup.add(mdnuGroup);
+
+      // 3. Арматура аварийной подпитки ПГ
+      const coolingValve = createHighDetailValve();
+      coolingValve.position.set(0, 1.0, -1.45);
+      coolingValve.scale.setScalar(0.85);
+      coolingValve.userData = {
+        ...coolingValve.userData,
+        interactiveId: 'sbo_cooling_valve',
+        placementType: 'floor',
+        isLargeEquipment: true
+      };
+      envGroup.add(coolingValve);
+
+      // 4. Пролив теплоносителя в БПУ для дезактивации лопатой БСЛ-110 [2]
+      const sboSpillMesh = createContaminationSpillMesh(0x38bdf8);
+      sboSpillMesh.position.set(1.45, 0, -1.35);
+      envGroup.add(sboSpillMesh);
+
+      // 5. Критический блок АСУ ТП на пульте (эвакуация в САР-3)
+      const controlUnitMesh = createCriticalControlUnitMesh();
+      controlUnitMesh.position.set(-1.9, 0.92, -2.35);
+      envGroup.add(controlUnitMesh);
+
+      // 6. Безопасная зона эвакуации САР-3
+      const sarDropZoneS3 = createLeadSarContainerDropZone('КОНТЕЙНЕР САР-3', 'ЭВАКУАЦИЯ БЛОКА АСУ ТП');
+      sarDropZoneS3.position.set(3.2, 0, 2.5);
+      envGroup.add(sarDropZoneS3);
+
+      envGroup.userData.sboSimulation = {
+        sboScreenMesh,
+        deskIndicatorMat,
+        emergencyLight,
+        isCableConnected: false,
+        isGeneratorRunning: false,
+        isCoolingRestored: false
+      };
 
       scene.add(envGroup);
 
@@ -1173,869 +1296,216 @@ export const SCENARIOS: ScenarioDefinition[] = [
         envGroup,
         sources: [
           {
-            id: 'src_site_radon222',
-            position: new THREE.Vector3(0.4, 0.15, -2.4),
-            isotopeId: 'Rn-222',
-            activityMBq: 5200,
-            mesh: radonChamber
-          },
-          {
-            id: 'src_site_ra226',
-            position: new THREE.Vector3(-0.8, 0.1, -3.1),
-            isotopeId: 'Ra-226',
-            activityMBq: 9500
-          }
-        ],
-        shields: [
-          {
-            id: 'lead_bricks',
-            mesh: bricks,
-            material: 'concrete',
-            thicknessCm: 12.0,
-            boundingBox: new THREE.Box3().setFromObject(bricks)
-          }
-        ],
-        interactive: [
-          {
-            id: 'lead_bricks',
-            nameRu: 'Защитная баритобетонная плита (120 мм)',
-            type: 'shield',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            shieldMaterial: 'concrete',
-            shieldThicknessCm: 12.0,
-            mesh: bricks,
-            interacted: false
-          },
-          {
-            id: 'norm_rock',
-            nameRu: 'Накопительная угольная камера НК-32 (Радон-222)',
-            type: 'sample',
-            placementType: 'prop',
-            isLargeEquipment: false,
-            mesh: radonChamber,
-            interacted: false
-          },
-          {
-            id: 'sample_carrier',
-            nameRu: 'Герметичный транспортировочный кофр',
-            type: 'container',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            mesh: carrier,
-            interacted: false
-          }
-        ]
-      };
-    }
-  },
-
-  // =========================================================================================
-  // 8. Метрополитен и вокзалы
-  // =========================================================================================
-  {
-    id: 8,
-    categoryRu: 'Метрополитен и вокзалы',
-    titleRu: '8. Метро и вокзалы: Гранит и рентген-интроскоп (X-Ray, ²³²Th)',
-    shortDescriptionRu:
-      'Радиационный контроль облицовочного гранита и туффитов станций, а также проверка досмотровых рентгеновских интроскопов на утечку пучка.',
-    facilityRu: 'Подземный свод станции метрополитена и технический туннель интроскопии',
-    dominantIsotopes: ['X-Ray-100kV', 'Th-232', 'Ra-226'],
-    recommendedPermitLimitMsv: 0.05,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 4.2),
-    ambientColor: 0x1e293b,
-    fogColor: 0x0b1120,
-    fogDensity: 0.025,
-    isLowLight: true,
-    stages: [
-      {
-        stepNumber: 1,
-        titleRu: 'Этап 1 из 3: Замер дефекта шторки багажного интроскопа',
-        taskRu: 'Проверьте выходное окно рентгеновского интроскопа, где повреждена свинцовая ламель.',
-        hintRu: 'Тормозное рентгеновское излучение 100 кВ эффективно ослабляется тонким слоем свинца или просвинцованной резины.',
-        alaraRuleRu: 'Контроль лучевых досмотровых установок (СанПиН 2.6.1.3488-17).'
-      },
-      {
-        stepNumber: 2,
-        titleRu: 'Этап 2 из 3: Экранирование зоны выхода туннеля интроскопа',
-        taskRu: 'Установите защитную свинцовую ширму (E) перед дефектным окном рентгеновского интроскопа.',
-        hintRu: 'Свинец при энергии 100 кэВ имеет высокий коэффициент ослабления μ = 58 см⁻¹.',
-        alaraRuleRu: 'Защита экранированием: устранение утечки рассеянного рентгеновского излучения.'
-      },
-      {
-        stepNumber: 3,
-        titleRu: 'Этап 3 из 3: Отключение анодного напряжения интроскопа',
-        taskRu: 'Поверните сервисный выключатель генератора рентгеновской трубки (E) и проверьте гранитные колонны.',
-        hintRu: 'Гранитная облицовка 1 класса имеет повышенный природный фон Th-232 и Ra-226 до 0.35–0.50 мкЗв/ч.',
-        alaraRuleRu: 'Защита временем: немедленное отключение неисправных генерирующих ИИИ.'
-      }
-    ],
-    buildScene: (scene: THREE.Scene) => {
-      const envGroup = new THREE.Group();
-      buildCleanRoom(envGroup, 16, 14, 4.6);
-
-      // Гранитные колонны станции метрополитена (красно-коричневый полированный гранит)
-      const graniteMat = new THREE.MeshStandardMaterial({
-        color: 0x7f1d1d,
-        roughness: 0.18,
-        metalness: 0.2
-      });
-      for (const x of [-3.5, 3.5]) {
-        const col = new THREE.Mesh(new THREE.BoxGeometry(0.9, 4.5, 0.9), graniteMat);
-        col.position.set(x, 2.25, -2.5);
-        col.castShadow = true;
-        envGroup.add(col);
-      }
-
-      // Досмотровый рентгеновский интроскоп с конвейерной лентой
-      const scannerMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.3, metalness: 0.5 });
-      const tunnel = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.5, 1.8), scannerMat);
-      tunnel.position.set(0, 1.15, -3.2);
-      tunnel.castShadow = true;
-      envGroup.add(tunnel);
-
-      const belt = new THREE.Mesh(
-        new THREE.BoxGeometry(1.2, 0.4, 3.4),
-        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 })
-      );
-      belt.position.set(0, 0.2, -3.2);
-      envGroup.add(belt);
-
-      // Выключатель рентгеновского генератора на корпусе интроскопа
-      const xraySwitch = createHighDetailValve();
-      xraySwitch.scale.setScalar(0.55);
-      xraySwitch.position.set(0.75, 1.3, -2.5);
-      envGroup.add(xraySwitch);
-
-      const shieldMesh = createMovableLeadShieldScreen();
-      shieldMesh.position.set(-2.2, 0, -0.8);
-      shieldMesh.userData = {
-        ...shieldMesh.userData,
-        interactiveId: 'screen_shield',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(shieldMesh);
-
-      scene.add(envGroup);
-
-      return {
-        envGroup,
-        sources: [
-          {
-            id: 'src_metro_xray',
-            position: new THREE.Vector3(0, 1.0, -2.3),
-            isotopeId: 'X-Ray-100kV',
+            id: 'src_sbo_core_gamma',
+            position: new THREE.Vector3(-1.2, 1.5, -4.6),
+            isotopeId: 'Co-60',
             activityMBq: 32000
           },
           {
-            id: 'src_metro_granite_th232',
-            position: new THREE.Vector3(-3.5, 1.4, -2.5),
-            isotopeId: 'Th-232',
-            activityMBq: 4200
-          }
-        ],
-        shields: [
-          {
-            id: 'lead_screen',
-            mesh: shieldMesh,
-            material: 'lead',
-            thicknessCm: 1.5,
-            boundingBox: new THREE.Box3().setFromObject(shieldMesh)
-          }
-        ],
-        interactive: [
-          {
-            id: 'screen_shield',
-            nameRu: 'Защитная рентгенозащитная ширма (15 мм Pb)',
-            type: 'shield',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            shieldMaterial: 'lead',
-            shieldThicknessCm: 1.5,
-            mesh: shieldMesh,
-            interacted: false
+            id: 'src_sbo_neutron',
+            position: new THREE.Vector3(1.6, 1.4, -4.7),
+            isotopeId: 'Cf-252',
+            activityMBq: 1500
           },
           {
-            id: 'reactor_valve',
-            nameRu: 'Аварийный разъединитель анода интроскопа',
-            type: 'valve',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            mesh: xraySwitch,
-            interacted: false
-          }
-        ]
-      };
-    }
-  },
-
-  // =========================================================================================
-  // 9. Строительные и отделочные материалы
-  // =========================================================================================
-  {
-    id: 9,
-    categoryRu: 'Строительные и отделочные материалы',
-    titleRu: '9. Стройматериалы: Щебень и кафель с урановой глазурью (²³⁸U, ²²⁶Ra)',
-    shortDescriptionRu:
-      'Проверка гранитного щебня, бетона, старой керамической плитки и винтажного кафеля с оранжево-желтой урановой глазурью.',
-    facilityRu: 'Склад-лаборатория входного контроля строительных и отделочных материалов',
-    dominantIsotopes: ['U-238', 'Ra-226', 'K-40'],
-    recommendedPermitLimitMsv: 0.05,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 4.0),
-    ambientColor: 0xf8fafc,
-    fogColor: 0xe2e8f0,
-    fogDensity: 0.0015,
-    stages: [
-      {
-        stepNumber: 1,
-        titleRu: 'Этап 1 из 3: Бета-гамма контроль керамической плитки',
-        taskRu: 'Найдите паллету со старой керамической плиткой, покрытой урановой глазурью U-238.',
-        hintRu: 'Урановая глазурь дает интенсивный поток бета-частиц и альфа-излучения вблизи поверхности.',
-        alaraRuleRu: 'СИЗ: плотные резиновые перчатки и костюм КЗМ задерживают 95–99% бета-излучения.'
-      },
-      {
-        stepNumber: 2,
-        titleRu: 'Этап 2 из 3: Изъятие образца фонящего кафеля в контейнер',
-        taskRu: 'Возьмите дефектную плитку с урановой глазурью (E) и поместите её в свинцовый контейнер ТК-6.',
-        hintRu: 'Удельная эффективная активность A_эфф стройматериалов I класса не должна превышать 370 Бк/кг.',
-        alaraRuleRu: 'Защита расстоянием и экранированием при работе с открытыми бета-источниками.'
-      },
-      {
-        stepNumber: 3,
-        titleRu: 'Этап 3 из 3: Ограждение партии гранитного щебня III класса',
-        taskRu: 'Установите блок свинцовых кирпичей (E) перед насыпью высокоактивного гранитного щебня.',
-        hintRu: 'Проконтролируйте снижение вклада бета- и гамма-компонент на диаграмме спектрального состава.',
-        alaraRuleRu: 'НРБ-99/2009: классификация строительных материалов по удельной активности ЕРН.'
-      }
-    ],
-    buildScene: (scene: THREE.Scene) => {
-      const envGroup = new THREE.Group();
-      buildIndustrialRoom(envGroup, 14, 12, 4.5);
-
-      // Стол лабораторного контроля с образцами кафеля и щебня
-      const table = new THREE.Mesh(
-        new THREE.BoxGeometry(2.6, 0.85, 1.1),
-        new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5 })
-      );
-      table.position.set(0, 0.425, -2.8);
-      table.castShadow = true;
-      envGroup.add(table);
-
-      // Оранжево-красная керамическая плитка с урановой глазурью (UO3)
-      const uraniumTile = new THREE.Mesh(
-        new THREE.BoxGeometry(0.32, 0.04, 0.32),
-        new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.15, metalness: 0.1 })
-      );
-      uraniumTile.position.set(0.35, 0.88, -2.6);
-      uraniumTile.userData = {
-        ...uraniumTile.userData,
-        interactiveId: 'ir_capsule',
-        placementType: 'prop',
-        isLargeEquipment: false
-      };
-      envGroup.add(uraniumTile);
-
-      // Контейнер ТК-6 и свинцовые кирпичи
-      const tk6 = createTK6Container();
-      tk6.position.set(-1.9, 0, -1.3);
-      tk6.userData = {
-        ...tk6.userData,
-        interactiveId: 'tk6_box',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(tk6);
-
-      const bricks = createLeadBrickStack(3, 4);
-      bricks.position.set(1.8, 0, -1.3);
-      bricks.userData = {
-        ...bricks.userData,
-        interactiveId: 'lead_bricks',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(bricks);
-
-      scene.add(envGroup);
-
-      return {
-        envGroup,
-        sources: [
-          {
-            id: 'src_tile_u238',
-            position: uraniumTile.position.clone(),
-            isotopeId: 'U-238',
-            activityMBq: 48000,
-            mesh: uraniumTile
-          },
-          {
-            id: 'src_gravel_ra226',
-            position: new THREE.Vector3(-0.7, 0.9, -2.8),
-            isotopeId: 'Ra-226',
-            activityMBq: 11500
-          }
-        ],
-        shields: [
-          {
-            id: 'lead_bricks',
-            mesh: bricks,
-            material: 'lead',
-            thicknessCm: 5.0,
-            boundingBox: new THREE.Box3().setFromObject(bricks)
-          }
-        ],
-        interactive: [
-          {
-            id: 'ir_capsule',
-            nameRu: 'Плитка с урановой глазурью U-238',
-            type: 'source',
-            placementType: 'prop',
-            isLargeEquipment: false,
-            mesh: uraniumTile,
-            interacted: false
-          },
-          {
-            id: 'tk6_box',
-            nameRu: 'Защитный контейнер-изолятор ТК-6',
-            type: 'container',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            mesh: tk6,
-            interacted: false
-          },
-          {
-            id: 'lead_bricks',
-            nameRu: 'Свинцовый экран лабораторного стола',
-            type: 'shield',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            shieldMaterial: 'lead',
-            shieldThicknessCm: 5.0,
-            mesh: bricks,
-            interacted: false
-          }
-        ]
-      };
-    }
-  },
-
-  // =========================================================================================
-  // 10. Продукты питания
-  // =========================================================================================
-  {
-    id: 10,
-    categoryRu: 'Продукты питания',
-    titleRu: '10. Санэпидконтроль: Дикорастущие грибы, ягоды и рыба (¹³⁷Cs)',
-    shortDescriptionRu:
-      'Дозиметрический и гамма-спектрометрический контроль дикорастущих грибов, лесных ягод (цезий-137 в экосистемах) и привозной морской рыбы.',
-    facilityRu: 'Лаборатория ветеринарно-санитарной экспертизы рынка',
-    dominantIsotopes: ['Cs-137', 'K-40'],
-    recommendedPermitLimitMsv: 0.05,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 3.8),
-    ambientColor: 0xf8fafc,
-    fogColor: 0xf1f5f9,
-    fogDensity: 0.001,
-    stages: [
-      {
-        stepNumber: 1,
-        titleRu: 'Этап 1 из 3: Спектрометрический скрининг проб NaI(Tl)',
-        taskRu: 'Выберите сцинтилляционный спектрометр NaI(Tl) и найдите загрязненную партию сушеных грибов (Cs-137).',
-        hintRu: 'Грибы (польский гриб, маслята) и черника являются сильными аккумуляторами техногенного Цезия-137 (662 кэВ).',
-        alaraRuleRu: 'Радиационный контроль продовольственного сырья по СанПиН 2.3.2.1078-01.'
-      },
-      {
-        stepNumber: 2,
-        titleRu: 'Этап 2 из 3: Помещение сосуда Маринелли в свинцовый домик',
-        taskRu: 'Захватите сосуд Маринелли с пробой лесных грибов (E) и перенесите его в желтый свинцовый домик ТК-6.',
-        hintRu: 'Свинцовая защита спектрометра снижает внешний фон и изолирует высокоактивную пробу.',
-        alaraRuleRu: 'Защита экранированием и расстоянием при работе с концентрированными пробами.'
-      },
-      {
-        stepNumber: 3,
-        titleRu: 'Этап 3 из 3: Выбраковка партии и экспорт протокола CSV',
-        taskRu: 'Убедитесь в снижении гамма-фона в лаборатории и экспортируйте данные дозиметрии в CSV.',
-        hintRu: 'Допустимый уровень Cs-137 в свежих дикорастущих грибах — 500 Бк/кг, в сушеных — 2500 Бк/кг.',
-        alaraRuleRu: 'Предотвращение внутреннего облучения населения с пищевыми продуктами.'
-      }
-    ],
-    buildScene: (scene: THREE.Scene) => {
-      const envGroup = new THREE.Group();
-      buildCleanRoom(envGroup, 12, 12, 4.0);
-
-      // Лабораторный стол ветеринарно-санитарной экспертизы
-      const bench = new THREE.Mesh(
-        new THREE.BoxGeometry(2.8, 0.88, 1.0),
-        new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.25, metalness: 0.2 })
-      );
-      bench.position.set(0, 0.44, -2.6);
-      bench.castShadow = true;
-      envGroup.add(bench);
-
-      // Сосуд Маринелли 1 л с пробой дикорастущих грибов и ягод
-      const marinelliBeaker = new THREE.Group();
-      marinelliBeaker.position.set(0.45, 0.98, -2.45);
-      const jar = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.11, 0.11, 0.18, 24),
-        new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.3, transparent: true, opacity: 0.9 })
-      );
-      const lid = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.115, 0.115, 0.03, 24),
-        new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.4 })
-      );
-      lid.position.y = 0.1;
-      marinelliBeaker.add(jar, lid);
-      marinelliBeaker.userData = {
-        ...marinelliBeaker.userData,
-        interactiveId: 'ir_capsule',
-        placementType: 'prop',
-        isLargeEquipment: false
-      };
-      envGroup.add(marinelliBeaker);
-
-      // Низкофоновый свинцовый домик гамма-спектрометра
-      const leadHouse = createTK6Container();
-      leadHouse.position.set(-1.8, 0, -1.2);
-      leadHouse.userData = {
-        ...leadHouse.userData,
-        interactiveId: 'tk6_box',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(leadHouse);
-
-      scene.add(envGroup);
-
-      return {
-        envGroup,
-        sources: [
-          {
-            id: 'src_food_cs137',
-            position: marinelliBeaker.position.clone(),
+            id: 'src_sbo_spill',
+            position: new THREE.Vector3(1.45, 0.05, -1.35),
             isotopeId: 'Cs-137',
-            activityMBq: 24000,
-            mesh: marinelliBeaker
+            activityMBq: 3800,
+            mesh: sboSpillMesh
           },
           {
-            id: 'src_food_k40_fish',
-            position: new THREE.Vector3(-0.6, 0.95, -2.5),
-            isotopeId: 'K-40',
-            activityMBq: 8500
+            id: 'src_sbo_unit',
+            position: new THREE.Vector3(-1.9, 1.0, -2.35),
+            isotopeId: 'Co-60',
+            activityMBq: 2600,
+            mesh: controlUnitMesh
           }
         ],
         shields: [],
         interactive: [
           {
-            id: 'ir_capsule',
-            nameRu: 'Сосуд Маринелли: Грибы и ягоды (¹³⁷Cs)',
-            type: 'source',
-            placementType: 'prop',
-            isLargeEquipment: false,
-            mesh: marinelliBeaker,
-            interacted: false
-          },
-          {
-            id: 'tk6_box',
-            nameRu: 'Свинцовый домик гамма-спектрометра',
-            type: 'container',
+            id: 'sbo_power_cable',
+            nameRu: 'Силовой кабель аварийного ввода 0.4 кВ',
+            type: 'breaker',
             placementType: 'floor',
             isLargeEquipment: true,
-            mesh: leadHouse,
-            interacted: false
-          }
-        ]
-      };
-    }
-  },
-
-  // =========================================================================================
-  // 11. Предметы старины и антиквариат (СПД Радий-226)
-  // =========================================================================================
-  {
-    id: 11,
-    categoryRu: 'Предметы старины и антиквариат',
-    titleRu: '11. Антиквариат: Авиационные часы, компасы и СПД (²²⁶Ra)',
-    shortDescriptionRu:
-      'Поиск и дезактивация советских авиационных и водолазных часов, компасов, тумблеров и елочных игрушек со светосоставом постоянного действия (СПД Радий-226).',
-    facilityRu: 'Экспертиза антикварного салона и коллекции исторических приборов',
-    dominantIsotopes: ['Ra-226'],
-    recommendedPermitLimitMsv: 0.08,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 3.8),
-    ambientColor: 0xf8fafc,
-    fogColor: 0xe2e8f0,
-    fogDensity: 0.0015,
-    stages: [
-      {
-        stepNumber: 1,
-        titleRu: 'Этап 1 из 3: Защита СИЗ от осыпающейся радиевой краски СПД',
-        taskRu: 'Экипируйте СИЗ (перчатки + респиратор) в окне аналитики и найдите фонящие авиационные часы АЧС-1 с СПД.',
-        hintRu: 'Старый светосостав постоянного действия (ZnS + Ra-226) со временем осыпается, создавая опасную альфа-пыль.',
-        alaraRuleRu: 'СИЗ: 100% блокировка альфа-частиц и 95–99% ослабление бета-излучения Радия-226.'
-      },
-      {
-        stepNumber: 2,
-        titleRu: 'Этап 2 из 3: Дистанционный захват прибора с СПД',
-        taskRu: 'Используя дистанционный захват, возьмите авиационные часы с Радием-226 (клавиша E).',
-        hintRu: 'Вблизи циферблата с СПД мощность дозы может превышать 500–1500 мкЗв/ч.',
-        alaraRuleRu: 'Защита расстоянием: закон обратных квадратов D(r) = A·Γ / r².'
-      },
-      {
-        stepNumber: 3,
-        titleRu: 'Этап 3 из 3: Изоляция прибора СПД в контейнер ТК-6',
-        taskRu: 'Поместите часы с СПД Радий-226 в защитный свинцовый контейнер ТК-6 (E) для сдачи в «Радон».',
-        hintRu: 'Проверьте снижение всех трех компонент (α, β, γ) на графиках дозиметрического анализа.',
-        alaraRuleRu: 'Дезактивация и утилизация исторических изделий с СПД через спецкомбинат.'
-      }
-    ],
-    buildScene: (scene: THREE.Scene) => {
-      const envGroup = new THREE.Group();
-      buildCleanRoom(envGroup, 12, 12, 4.0);
-
-      // Антикварная витрина / стол
-      const antiqueTable = new THREE.Mesh(
-        new THREE.BoxGeometry(2.6, 0.84, 1.1),
-        new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.45, metalness: 0.1 })
-      );
-      antiqueTable.position.set(0, 0.42, -2.5);
-      antiqueTable.castShadow = true;
-      envGroup.add(antiqueTable);
-
-      // Авиационные часы-хронометр АЧС-1 / водолазные часы с зеленым свечением СПД Ra-226
-      const radiumClock = new THREE.Group();
-      radiumClock.position.set(0.25, 0.90, -2.35);
-      const clockCase = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.085, 0.085, 0.07, 24),
-        new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3, metalness: 0.85 })
-      );
-      clockCase.rotation.x = Math.PI / 3;
-      const dialGlow = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.072, 0.072, 0.074, 24),
-        new THREE.MeshBasicMaterial({ color: 0x4ade80 })
-      );
-      dialGlow.rotation.x = Math.PI / 3;
-      radiumClock.add(clockCase, dialGlow);
-      radiumClock.userData = {
-        ...radiumClock.userData,
-        interactiveId: 'ir_capsule',
-        placementType: 'prop',
-        isLargeEquipment: false
-      };
-      envGroup.add(radiumClock);
-
-      // Защитный контейнер ТК-6 спецкомбината «Радон»
-      const tk6 = createTK6Container();
-      tk6.position.set(-1.8, 0, -1.2);
-      tk6.userData = {
-        ...tk6.userData,
-        interactiveId: 'tk6_box',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(tk6);
-
-      // Передвижная свинцовая ширма
-      const shieldMesh = createMovableLeadShieldScreen();
-      shieldMesh.position.set(2.1, 0, -1.2);
-      shieldMesh.userData = {
-        ...shieldMesh.userData,
-        interactiveId: 'screen_shield',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(shieldMesh);
-
-      scene.add(envGroup);
-
-      return {
-        envGroup,
-        sources: [
-          {
-            id: 'src_antique_ra226_clock',
-            position: radiumClock.position.clone(),
-            isotopeId: 'Ra-226',
-            activityMBq: 58000,
-            mesh: radiumClock
+            mesh: cableBoxGroup,
+            interacted: false,
+            holdAction: {
+              kind: 'breaker',
+              durationSec: 2.2,
+              labelRu: 'Подключение силового кабеля 0.4 кВ',
+              preferredToolId: 'wrench'
+            }
           },
           {
-            id: 'src_antique_compass',
-            position: new THREE.Vector3(-0.65, 0.88, -2.5),
-            isotopeId: 'Ra-226',
-            activityMBq: 9200
-          }
-        ],
-        shields: [
-          {
-            id: 'lead_screen',
-            mesh: shieldMesh,
-            material: 'lead',
-            thicknessCm: 2.0,
-            boundingBox: new THREE.Box3().setFromObject(shieldMesh)
-          }
-        ],
-        interactive: [
-          {
-            id: 'ir_capsule',
-            nameRu: 'Авиационные часы АЧС-1 с СПД (Радий-226)',
-            type: 'source',
-            placementType: 'prop',
-            isLargeEquipment: false,
-            mesh: radiumClock,
-            interacted: false
-          },
-          {
-            id: 'tk6_box',
-            nameRu: 'Защитный контейнер ТК-6 («Радон»)',
-            type: 'container',
+            id: 'mdnu_diesel_pump',
+            nameRu: 'Мобильная дизель-насосная установка МДНУ-150',
+            type: 'generator',
             placementType: 'floor',
             isLargeEquipment: true,
-            mesh: tk6,
-            interacted: false
+            mesh: mdnuGroup,
+            interacted: false,
+            holdAction: {
+              kind: 'generator',
+              durationSec: 2.8,
+              labelRu: 'Запуск дизель-насоса МДНУ-150',
+              preferredToolId: 'wrench'
+            }
           },
           {
-            id: 'screen_shield',
-            nameRu: 'Передвижная защитная ширма (20 мм Pb)',
-            type: 'shield',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            shieldMaterial: 'lead',
-            shieldThicknessCm: 2.0,
-            mesh: shieldMesh,
-            interacted: false
-          }
-        ]
-      };
-    }
-  },
-
-  // =========================================================================================
-  // 12. Диверсия на заводе регенерации топлива (Разлив Pu-239 и предотвращение СЦР)
-  // =========================================================================================
-  {
-    id: 12,
-    categoryRu: 'Ядерно-оружейный комплекс и радиохимия',
-    titleRu: '12. Завод регенерации ОЯТ: Разлив плутония и угроза СЦР (²³⁹Pu / ²⁵²Cf)',
-    shortDescriptionRu:
-      'Ликвидация последствий взрыва в цехе плутониевой экстракции, локализация радиоактивно-химических луж с SSS-свечением и подавление нейтронного потока борированным экраном.',
-    facilityRu: 'Радиохимический цех регенерации топлива (Аварийный бокс экстракции)',
-    dominantIsotopes: ['Pu-239', 'Cf-252', 'Cs-137'],
-    recommendedPermitLimitMsv: 0.25,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 4.4),
-    ambientColor: 0x94a3b8,
-    fogColor: 0x0f172a,
-    fogDensity: 0.018,
-    isLowLight: true,
-    stages: [
-      {
-        stepNumber: 1,
-        titleRu: 'Этап 1 из 3: Подавление нейтронного потока СЦР',
-        taskRu: 'Переместите плиту из борированного полиэтилена (E / курок VR) к аварийному аппарату-экстрактору.',
-        hintRu: 'Борированный полиэтилен замедляет быстрые нейтроны и поглощает тепловые нейтроны за счет ядер B-10.',
-        alaraRuleRu: 'Защита от СЦР: немедленно введите нейтронопоглощающий барьер для срыва цепной реакции.'
-      },
-      {
-        stepNumber: 2,
-        titleRu: 'Этап 2 из 3: Перекрытие подачи плутониевого раствора',
-        taskRu: 'Под защитой борированного и свинцового экранов перекройте запорный вентиль коллектора экстракции (E).',
-        hintRu: 'Включите тактический фонарь на левой руке (кнопка Y / клавиша F) для осмотра темного аварийного бокса.',
-        alaraRuleRu: 'Контроль СИЗ: работа в зоне аэрозолей Pu-239 допускается строго в изолирующем костюме КИХ-4 / пневмокостюме.'
-      },
-      {
-        stepNumber: 3,
-        titleRu: 'Этап 3 из 3: Эвакуация ампулы-пробы в ТУК',
-        taskRu: 'Дистанционным манипулятором захватите аварийную пробу (E) и поместите её в защитный контейнер ТК-6.',
-        hintRu: 'После завершения операции пройдите обязательный контроль кожи радиометром РЗБ-04 в санпропускнике.',
-        alaraRuleRu: 'Защита расстоянием и временем: исключите прямой контакт перчаток с плутониевым раствором.'
-      }
-    ],
-    buildScene: (scene: THREE.Scene) => {
-      const envGroup = new THREE.Group();
-      buildIndustrialRoom(envGroup, 15, 15, 5.0);
-
-      // Поврежденный радиохимический аппарат-экстрактор из обожженного корродированного металла
-      const scorchedMat = createScorchedCorrodedMetalMaterial(0x334155);
-      const extractorVessel = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.65, 0.65, 3.2, 28),
-        scorchedMat
-      );
-      extractorVessel.position.set(0, 1.6, -3.6);
-      extractorVessel.castShadow = true;
-      envGroup.add(extractorVessel);
-
-      // Свечение Вавилова — Черенкова в зоне предкритичности раствора
-      const cherenkov = createCherenkovRadiationGlowMesh(0.95);
-      cherenkov.position.set(0, 1.35, -3.1);
-      envGroup.add(cherenkov);
-
-      // Опасная химическая плутониевая лужа с эффектом Subsurface Scattering (SSS) на полу
-      const puddleMat = createChemicalPuddleSSSMaterial(0x10b981, 0x047857);
-      const puddleMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.65, 1.75, 0.018, 36), puddleMat);
-      puddleMesh.position.set(0.2, 0.012, -3.1);
-      envGroup.add(puddleMesh);
-
-      // Неоднородное гауссово облако радиоактивного аэрозоля с эффектом Тиндаля
-      const plumeCloud = createGaussianPlumeAerosolCloud(0x94a3b8, 3.6, 1.9, 3.2);
-      plumeCloud.position.set(0, 0.5, -2.8);
-      envGroup.add(plumeCloud);
-
-      // Запорный вентиль коллектора экстракции
-      const valveMesh = createHighDetailValve();
-      valveMesh.position.set(0.72, 1.45, -3.1);
-      valveMesh.userData = {
-        ...valveMesh.userData,
-        interactiveId: 'emergency_valve',
-        placementType: 'prop',
-        isLargeEquipment: false
-      };
-      envGroup.add(valveMesh);
-
-      // Аварийная ампула-проба плутониевого концентрата
-      const puSample = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.045, 0.045, 0.16, 20),
-        new THREE.MeshStandardMaterial({
-          color: 0x38bdf8,
-          emissive: 0x0284c7,
-          emissiveIntensity: 1.4,
-          metalness: 0.7,
-          roughness: 0.2
-        })
-      );
-      puSample.position.set(-0.55, 0.09, -2.5);
-      puSample.userData = {
-        ...puSample.userData,
-        interactiveId: 'ir_capsule',
-        placementType: 'prop',
-        isLargeEquipment: false
-      };
-      envGroup.add(puSample);
-
-      // Защитный контейнер ТК-6
-      const tk6 = createTK6Container();
-      tk6.position.set(2.3, 0, -1.5);
-      tk6.userData = {
-        ...tk6.userData,
-        interactiveId: 'tk6_box',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(tk6);
-
-      // Борированный полиэтиленовый щит и свинцовая ширма
-      const boratedWall = createBoratedParaffinWall();
-      boratedWall.position.set(-2.4, 0, -1.2);
-      boratedWall.userData = {
-        ...boratedWall.userData,
-        interactiveId: 'borated_shield',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(boratedWall);
-
-      const leadScreen = createMovableLeadShieldScreen();
-      leadScreen.position.set(-3.5, 0, 0.4);
-      leadScreen.userData = {
-        ...leadScreen.userData,
-        interactiveId: 'screen_shield',
-        placementType: 'floor',
-        isLargeEquipment: true
-      };
-      envGroup.add(leadScreen);
-
-      const beacon = createRadiationBeacon('danger');
-      beacon.position.set(0, 3.6, -3.6);
-      envGroup.add(beacon);
-
-      scene.add(envGroup);
-
-      return {
-        envGroup,
-        sources: [
-          {
-            id: 'src_reprocessing_cf252_scr',
-            position: new THREE.Vector3(0, 1.3, -3.4),
-            isotopeId: 'Cf-252',
-            activityMBq: 95000
-          },
-          {
-            id: 'src_reprocessing_pu239_spill',
-            position: puSample.position.clone(),
-            isotopeId: 'Pu-239',
-            activityMBq: 140000,
-            mesh: puSample
-          },
-          {
-            id: 'src_reprocessing_cs137',
-            position: new THREE.Vector3(0.4, 1.1, -3.2),
-            isotopeId: 'Cs-137',
-            activityMBq: 64000
-          }
-        ],
-        shields: [
-          {
-            id: 'borated_paraffin_shield',
-            mesh: boratedWall,
-            material: 'paraffin_borated',
-            thicknessCm: 12.0,
-            boundingBox: new THREE.Box3().setFromObject(boratedWall)
-          },
-          {
-            id: 'lead_screen',
-            mesh: leadScreen,
-            material: 'lead',
-            thicknessCm: 2.0,
-            boundingBox: new THREE.Box3().setFromObject(leadScreen)
-          }
-        ],
-        interactive: [
-          {
-            id: 'borated_shield',
-            nameRu: 'Нейтронопоглощающий экран (Борированный полиэтилен 120 мм)',
-            type: 'shield',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            shieldMaterial: 'paraffin_borated',
-            shieldThicknessCm: 12.0,
-            mesh: boratedWall,
-            interacted: false
-          },
-          {
-            id: 'screen_shield',
-            nameRu: 'Передвижная свинцовая ширма (20 мм Pb)',
-            type: 'shield',
-            placementType: 'floor',
-            isLargeEquipment: true,
-            shieldMaterial: 'lead',
-            shieldThicknessCm: 2.0,
-            mesh: leadScreen,
-            interacted: false
-          },
-          {
-            id: 'emergency_valve',
-            nameRu: 'Запорный вентиль коллектора экстракции Pu-239',
+            id: 'sbo_cooling_valve',
+            nameRu: 'Задвижка аварийной подпитки парогенераторов',
             type: 'valve',
-            placementType: 'prop',
-            isLargeEquipment: false,
-            mesh: valveMesh,
-            interacted: false
-          },
-          {
-            id: 'ir_capsule',
-            nameRu: 'Аварийная ампула плутониевого концентрата (²³⁹Pu)',
-            type: 'source',
-            placementType: 'prop',
-            isLargeEquipment: false,
-            mesh: puSample,
-            interacted: false
-          },
-          {
-            id: 'tk6_box',
-            nameRu: 'Защитный контейнер ТК-6 («Радон»)',
-            type: 'container',
             placementType: 'floor',
             isLargeEquipment: true,
-            mesh: tk6,
+            mesh: coolingValve,
+            interacted: false,
+            holdAction: {
+              kind: 'valve',
+              durationSec: 3.0,
+              labelRu: 'Открытие задвижки аварийной подпитки ПГ',
+              preferredToolId: 'wrench'
+            }
+          },
+          {
+            id: 'spill_sbo_coolant',
+            nameRu: 'Пролив теплоносителя в БПУ (БСЛ-110 [2])',
+            type: 'spill',
+            placementType: 'floor',
+            isLargeEquipment: true,
+            mesh: sboSpillMesh,
+            interacted: false,
+            linkedSourceId: 'src_sbo_spill',
+            holdAction: {
+              kind: 'decontaminate',
+              durationSec: 3.0,
+              labelRu: 'Дезактивация пролива сорбентом',
+              preferredToolId: 'shovel'
+            }
+          },
+          {
+            id: 'critical_control_unit',
+            nameRu: 'Критический блок управления АСУ ТП',
+            type: 'control_unit',
+            placementType: 'prop',
+            isLargeEquipment: false,
+            mesh: controlUnitMesh,
+            interacted: false,
+            linkedSourceId: 'src_sbo_unit'
+          },
+          {
+            id: 'sar_drop_zone_s3',
+            nameRu: 'Контейнер эвакуации САР-3 (Безопасная зона)',
+            type: 'drop_zone',
+            placementType: 'floor',
+            isLargeEquipment: true,
+            shieldMaterial: 'lead',
+            shieldThicknessCm: 10.0,
+            mesh: sarDropZoneS3,
             interacted: false
           }
         ]
+      };
+    }
+  },
+  // =========================================================================================
+  // 4. Комплексный VR-тренажёр МЧС на 3D-модели комплекса АЭС (.glb)
+  // =========================================================================================
+  {
+    id: 4,
+    categoryRu: "МЧС АЭС • 3D-комплекс (.glb)",
+    titleRu: "4. МЧС АЭС: Пожар и эвакуация персонала в комплексе АЭС (.glb)",
+    shortDescriptionRu:
+      "Практическая операция МЧС на 3D-модели комплекса АЭС (.glb): экипировка ОУ-5, вход в корпус, тушение очагов пожара и вывод персонала на безопасный пункт сбора.",
+    facilityRu: "Комплекс энергоблоков, градирен и вспомогательных корпусов АЭС (1:1 м)",
+    dominantIsotopes: ["Cs-137", "Co-60"],
+    recommendedPermitLimitMsv: 0.50,
+    initialPlayerPos: new THREE.Vector3(0, 1.65, 21.5),
+    ambientColor: 0x334155,
+    isLowLight: false,
+    hasAirborneContamination: true,
+    fogColor: 0x0b1322,
+    fogDensity: 0.0045,
+    stages: [
+      {
+        stepNumber: 1,
+        titleRu: "Подготовка ОУ-5 и вход в комплекс АЭС",
+        taskRu: "Возьмите ОУ-5 на красной стойке у входа [E], сорвите чеку [E]/[R] и войдите в корпус через синий маркер.",
+        hintRu: "Наружный пост расположен справа от входа. После срыва чеки следуйте по напольным стрелкам.",
+        alaraRuleRu: "Проверка боеготовности средств пожаротушения и СИЗ до входа в зону поражения."
+      },
+      {
+        stepNumber: 2,
+        titleRu: "Локализация очага №1 (Щитовая)",
+        taskRu: "Пройдите к западному отсеку и подайте струю CO₂ на первый очаг пожара (ЛКМ / [E] / курок VR).",
+        hintRu: "Не подходите ближе 1.5 м к открытому пламени во избежание тепловой перегрузки.",
+        alaraRuleRu: "Поддерживайте оптимальную дистанцию при тушении (Защита расстоянием)."
+      },
+      {
+        stepNumber: 3,
+        titleRu: "Эвакуация группы персонала №1",
+        taskRu: "Подойдите к заблокированному персоналу у западного отсека и подайте команду выхода [E].",
+        hintRu: "Персонал автоматически выйдет к внешнему пункту сбора при свободном пути.",
+        alaraRuleRu: "Приоритет — немедленный вывод персонала с маршрутом в обход активных очагов."
+      },
+      {
+        stepNumber: 4,
+        titleRu: "Тушение остальных очагов и вывод группы №2",
+        taskRu: "Потушите очаги в коридоре и машзале, при необходимости замените баллон ОУ-5 и эвакуируйте группу №2.",
+        hintRu: "Жёлтая стойка с запасным ОУ-5 находится в центральном холле.",
+        alaraRuleRu: "Контроль остатка ОТВ и ограничение времени экспозиции в горячих зонах."
+      },
+      {
+        stepNumber: 5,
+        titleRu: "Финальная проверка и выход на пункт сбора",
+        taskRu: "Убедитесь, что все очаги потушены и персонал эвакуирован, затем выйдите на зелёный Пункт сбора МЧС.",
+        hintRu: "Следуйте по зелёной линии навигации к внешнему выходу.",
+        alaraRuleRu: "Сокращение времени пребывания в корпусе после выполнения боевой задачи."
+      },
+      {
+        stepNumber: 6,
+        titleRu: "Итоговый разбор операции МЧС",
+        taskRu: "Ознакомьтесь с протоколом разбора: временем операции, дозой ALARA, расходом ОУ-5 и замечаниями.",
+        hintRu: "Вы можете перезапустить сценарий или загрузить собственный .glb-макет АЭС.",
+        alaraRuleRu: "Анализ дозовой нагрузки и соблюдения регламента безопасности МЧС."
+      }
+    ],
+    buildScene: (scene) => {
+      const envGroup = new THREE.Group();
+      envGroup.name = "scenario_4_npp_complex_env";
+      scene.add(envGroup);
+
+      // Лёгкий радиационный фон у очагов возгорания (управляется и масштабируется контроллером Сценария 4)
+      const fireMarker1 = new THREE.Object3D();
+      fireMarker1.position.set(-7.5, 0.8, 1.5);
+      envGroup.add(fireMarker1);
+
+      const fireMarker2 = new THREE.Object3D();
+      fireMarker2.position.set(1.5, 0.8, -5.5);
+      envGroup.add(fireMarker2);
+
+      return {
+        envGroup,
+        sources: [
+          {
+            id: "src_s4_zone1",
+            position: new THREE.Vector3(-7.5, 0.8, 1.5),
+            isotopeId: "Cs-137",
+            activityMBq: 450,
+            mesh: fireMarker1
+          },
+          {
+            id: "src_s4_zone2",
+            position: new THREE.Vector3(1.5, 0.8, -5.5),
+            isotopeId: "Co-60",
+            activityMBq: 320,
+            mesh: fireMarker2
+          }
+        ],
+        shields: [],
+        interactive: []
       };
     }
   }
@@ -2045,9 +1515,13 @@ export const SCENARIOS: ScenarioDefinition[] = [
  * Построение промышленного зала со светлыми бетонными панелями, эпоксидным полом,
  * потолочными фермами, светильниками и колоннами
  */
-function buildIndustrialRoom(group: THREE.Group, width: number, depth: number, height: number): void {
+export function buildIndustrialRoom(group: THREE.Group, width: number, depth: number, height: number): void {
+  const safeW = Number.isFinite(width) && width > 1 ? width : 14;
+  const safeD = Number.isFinite(depth) && depth > 1 ? depth : 14;
+  const safeH = Number.isFinite(height) && height > 1 ? height : 5.2;
+
   const wallTex = createIndustrialConcreteWallTexture();
-  wallTex.repeat.set(width / 4, height / 4);
+  wallTex.repeat.set(safeW / 4, safeH / 4);
 
   const wallMat = new THREE.MeshStandardMaterial({
     color: 0xe2e8f0,
@@ -2056,60 +1530,94 @@ function buildIndustrialRoom(group: THREE.Group, width: number, depth: number, h
     metalness: 0.08
   });
 
-  const backWall = new THREE.Mesh(new THREE.BoxGeometry(width, height, 0.25), wallMat);
-  backWall.position.set(0, height / 2, -depth / 2);
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(safeW, safeH, 0.25), wallMat);
+  backWall.position.set(0, safeH / 2, -safeD / 2);
   backWall.receiveShadow = true;
   group.add(backWall);
 
-  const frontWall = new THREE.Mesh(new THREE.BoxGeometry(width, height, 0.25), wallMat);
-  frontWall.position.set(0, height / 2, depth / 2);
+  const frontWall = new THREE.Mesh(new THREE.BoxGeometry(safeW, safeH, 0.25), wallMat);
+  frontWall.position.set(0, safeH / 2, safeD / 2);
   frontWall.receiveShadow = true;
   group.add(frontWall);
 
-  const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.25, height, depth), wallMat);
-  leftWall.position.set(-width / 2, height / 2, 0);
+  const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.25, safeH, safeD), wallMat);
+  leftWall.position.set(-safeW / 2, safeH / 2, 0);
   leftWall.receiveShadow = true;
   group.add(leftWall);
 
-  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.25, height, depth), wallMat);
-  rightWall.position.set(width / 2, height / 2, 0);
+  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.25, safeH, safeD), wallMat);
+  rightWall.position.set(safeW / 2, safeH / 2, 0);
   rightWall.receiveShadow = true;
   group.add(rightWall);
 
   const ceilingMat = new THREE.MeshStandardMaterial({
     color: 0xf1f5f9,
     roughness: 0.85,
-    metalness: 0.1
+    metalness: 0.1,
+    side: THREE.DoubleSide
   });
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), ceilingMat);
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(safeW, safeD), ceilingMat);
   ceiling.rotation.x = Math.PI / 2;
-  ceiling.position.y = height;
+  ceiling.position.y = safeH;
   group.add(ceiling);
 
-  const trussPositions = [-depth / 4, 0, depth / 4];
-  trussPositions.forEach(zPos => {
-    const truss = createIndustrialCeilingTruss(width - 0.5);
-    truss.position.set(0, height - 0.25, zPos);
-    group.add(truss);
+  const trussPositions = [-safeD / 4, 0, safeD / 4];
+  const instMatrix = new THREE.Matrix4();
 
-    const lampLeft = createIndustrialCeilingLamp();
-    lampLeft.position.set(-width / 4, height - 0.05, zPos);
-    group.add(lampLeft);
-
-    const lampRight = createIndustrialCeilingLamp();
-    lampRight.position.set(width / 4, height - 0.05, zPos);
-    group.add(lampRight);
+  // Инстанцированные потолочные фермы (3 балки вместо десятков отдельных мешей)
+  const trussSpan = safeW - 0.5;
+  const trussGeo = new THREE.BoxGeometry(trussSpan, 0.22, 0.16);
+  const trussMat = new THREE.MeshStandardMaterial({
+    color: 0x475569,
+    roughness: 0.48,
+    metalness: 0.65
   });
+  const trussInstanced = new THREE.InstancedMesh(trussGeo, trussMat, trussPositions.length);
+  trussInstanced.name = 'industrial_ceiling_trusses_instanced';
+  trussPositions.forEach((zPos, i) => {
+    instMatrix.makeTranslation(0, safeH - 0.25, zPos);
+    trussInstanced.setMatrixAt(i, instMatrix);
+  });
+  trussInstanced.instanceMatrix.needsUpdate = true;
+  group.add(trussInstanced);
+
+  // Инстанцированные потолочные светильники (корпуса и плафоны: 6 шт.)
+  const lampCount = trussPositions.length * 2;
+  const lampHousingGeo = new THREE.BoxGeometry(1.15, 0.08, 0.28);
+  const lampHousingMat = new THREE.MeshStandardMaterial({
+    color: 0x334155,
+    roughness: 0.4,
+    metalness: 0.6
+  });
+  const lampHousingInst = new THREE.InstancedMesh(lampHousingGeo, lampHousingMat, lampCount);
+  const lampLensGeo = new THREE.BoxGeometry(1.06, 0.03, 0.22);
+  const lampLensMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+  const lampLensInst = new THREE.InstancedMesh(lampLensGeo, lampLensMat, lampCount);
+
+  let lampIdx = 0;
+  trussPositions.forEach(zPos => {
+    for (const xPos of [-safeW / 4, safeW / 4]) {
+      instMatrix.makeTranslation(xPos, safeH - 0.05, zPos);
+      lampHousingInst.setMatrixAt(lampIdx, instMatrix);
+      instMatrix.makeTranslation(xPos, safeH - 0.095, zPos);
+      lampLensInst.setMatrixAt(lampIdx, instMatrix);
+      lampIdx += 1;
+    }
+  });
+  lampHousingInst.instanceMatrix.needsUpdate = true;
+  lampLensInst.instanceMatrix.needsUpdate = true;
+  group.add(lampHousingInst, lampLensInst);
 
   const floorTex = createEpoxyFloorTexture();
-  floorTex.repeat.set(width / 3, depth / 3);
+  floorTex.repeat.set(safeW / 3, safeD / 3);
   const floorPlaneMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     map: floorTex,
     roughness: 0.4,
-    metalness: 0.1
+    metalness: 0.1,
+    side: THREE.DoubleSide
   });
-  const floorPlane = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), floorPlaneMat);
+  const floorPlane = new THREE.Mesh(new THREE.PlaneGeometry(safeW, safeD), floorPlaneMat);
   floorPlane.name = 'scene_floor';
   floorPlane.userData = { ...floorPlane.userData, isFloor: true };
   floorPlane.rotation.x = -Math.PI / 2;
@@ -2137,13 +1645,16 @@ function buildIndustrialRoom(group: THREE.Group, width: number, depth: number, h
     [-width / 2 + 0.3, 0],
     [width / 2 - 0.3, 0]
   ];
-  positions.forEach(([x, z]) => {
-    const col = new THREE.Mesh(colGeo, colMat);
-    col.position.set(x, height / 2, z);
-    col.castShadow = true;
-    col.receiveShadow = true;
-    group.add(col);
+  const colInstanced = new THREE.InstancedMesh(colGeo, colMat, positions.length);
+  colInstanced.name = 'industrial_columns_instanced';
+  colInstanced.castShadow = true;
+  colInstanced.receiveShadow = true;
+  positions.forEach(([x, z], i) => {
+    instMatrix.makeTranslation(x, height / 2, z);
+    colInstanced.setMatrixAt(i, instMatrix);
   });
+  colInstanced.instanceMatrix.needsUpdate = true;
+  group.add(colInstanced);
 }
 
 /**

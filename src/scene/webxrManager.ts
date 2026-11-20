@@ -52,6 +52,14 @@ export interface WebXRCallbacks {
   onToggleRadiationBackgroundField?: () => void;
   onCalibratePlayerSpace?: () => void;
   onToggleHudVisibility?: (visible: boolean) => void;
+  onCycleTool?: (dir: 1 | -1) => void;
+  onRightTriggerWorldHold?: (
+    raycaster: THREE.Raycaster,
+    controller: THREE.Group,
+    isHeld: boolean,
+    justPressed: boolean,
+    justReleased: boolean
+  ) => void;
 }
 
 export interface XRControllerInput {
@@ -78,6 +86,8 @@ export class VRWristDisplay {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private texture: THREE.CanvasTexture;
+  private lastRenderTimeMs = 0;
+  private lastRenderKey = '';
 
   constructor() {
     this.canvas = document.createElement('canvas');
@@ -103,6 +113,13 @@ export class VRWristDisplay {
     this.mesh.rotation.x = -Math.PI / 3;
   }
 
+  public dispose(): void {
+    this.mesh.parent?.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    (this.mesh.material as THREE.Material).dispose();
+    this.texture.dispose();
+  }
+
   public update(
     doseRateMicroSv: number,
     cumulativeDoseMsv: number,
@@ -112,8 +129,22 @@ export class VRWristDisplay {
     isVoiceActive?: boolean,
     voiceVolume?: number,
     latestVoiceNote?: string,
-    isHudVisible: boolean = true
+    isHudVisible: boolean = true,
+    activeToolLabel?: string,
+    holdProgressPct?: number | null
   ): void {
+    const nowMs = performance.now();
+    const rateKey =
+      doseRateMicroSv >= 10000
+        ? (doseRateMicroSv / 1000).toFixed(1)
+        : doseRateMicroSv.toFixed(1);
+    const renderKey = `${rateKey}|${cumulativeDoseMsv.toFixed(4)}|${taskTitle.slice(0, 24)}|${isFlashlightOn ? 1 : 0}|${Math.round((hapticStrength ?? 1) * 20)}|${isVoiceActive ? 1 : 0}|${latestVoiceNote ?? ''}|${isHudVisible ? 1 : 0}|${activeToolLabel ?? ''}|${typeof holdProgressPct === 'number' ? Math.round(holdProgressPct) : -1}`;
+    if (renderKey === this.lastRenderKey || nowMs - this.lastRenderTimeMs < 140) {
+      return;
+    }
+    this.lastRenderKey = renderKey;
+    this.lastRenderTimeMs = nowMs;
+
     const ctx = this.ctx;
     ctx.clearRect(0, 0, 512, 256);
 
@@ -158,7 +189,26 @@ export class VRWristDisplay {
     ctx.font = 'bold 21px monospace';
     ctx.fillText(`Доза: ${cumulativeDoseMsv.toFixed(4)} мЗв`, 20, 130);
 
-    if (latestVoiceNote && latestVoiceNote.trim().length > 0) {
+    if (activeToolLabel) {
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 15px monospace';
+      ctx.fillText(`Инстр: ${activeToolLabel.slice(0, 18)}`, 305, 130);
+    }
+
+    if (typeof holdProgressPct === 'number' && holdProgressPct > 0) {
+      const clamped = Math.max(0, Math.min(100, Math.round(holdProgressPct)));
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+      ctx.fillRect(16, 144, 480, 50);
+      ctx.fillStyle = 'rgba(14, 165, 233, 0.35)';
+      ctx.fillRect(18, 146, Math.round((476 * clamped) / 100), 46);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(16, 144, 480, 50);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillText(`Выполнение операции: ${clamped}%`, 28, 175);
+    } else if (latestVoiceNote && latestVoiceNote.trim().length > 0) {
       ctx.fillStyle = 'rgba(30, 41, 59, 0.92)';
       ctx.fillRect(16, 144, 480, 50);
       ctx.strokeStyle = isVoiceActive ? '#22c55e' : '#38bdf8';
@@ -181,7 +231,7 @@ export class VRWristDisplay {
     ctx.fillStyle = '#64748b';
     ctx.font = 'italic 14px sans-serif';
     ctx.fillText(
-      `Фонарь [Y]: ${isFlashlightOn ? 'ВКЛ' : 'ВЫКЛ'} • PTT [X] • Вибро: ${hapPct}%`,
+      `Фонарь [Y]: ${isFlashlightOn ? 'ВКЛ' : 'ВЫКЛ'} • Стик ↕ Инстр • Вибро: ${hapPct}%`,
       20,
       228
     );
@@ -210,12 +260,28 @@ export class WebXRManager {
   public isInVR = false;
   public xrSession: XRSession | null = null;
   public activeReferenceSpaceType: XRReferenceSpaceFallbackType = 'local-floor';
+  public lastErrorMessageRu: string | null = null;
 
-  // Контроллеры VR (0 = правый, 1 = левый) и их Grip-пространства
-  public controller0: THREE.Group | null = null;
-  public controller1: THREE.Group | null = null;
-  public controllerGrip0: THREE.Group | null = null;
-  public controllerGrip1: THREE.Group | null = null;
+  // Контроллеры WebXR (слоты 0 и 1) и их Grip-пространства (руки маппятся динамически по handedness)
+  public controller0: THREE.XRTargetRaySpace | null = null;
+  public controller1: THREE.XRTargetRaySpace | null = null;
+  public controllerGrip0: THREE.XRGripSpace | null = null;
+  public controllerGrip1: THREE.XRGripSpace | null = null;
+
+  private readonly controllerMeta: Record<
+    0 | 1,
+    { connected: boolean; handedness: XRHandedness; targetRayMode: XRTargetRayMode | 'unknown' }
+  > = {
+    0: { connected: false, handedness: 'none', targetRayMode: 'unknown' },
+    1: { connected: false, handedness: 'none', targetRayMode: 'unknown' }
+  };
+
+  // Fallback для шлемов без контроллеров (gaze / transient-pointer)
+  private gazeReticle: THREE.Mesh;
+  private readonly gazeAnchorGroup = new THREE.Group();
+  private isGazeSelectHeld = false;
+  private gazeJustPressed = false;
+  private gazeJustReleased = false;
 
   // Анатомические руки в химзащите (HazmatHandRig) внутри контроллеров
   public rightHandRig: HazmatHandRig | null = null;
@@ -319,8 +385,71 @@ export class WebXRManager {
   public hapticStrength = 1.0;
   public lastEffectiveHapticIntensity = 0.0;
   private draggingUiControllerIdx: number | null = null;
-  private prevMenuButtonPressed = false;
-  private prevViveGripButtonPressed = false;
+  private isDisposed = false;
+  private readonly cleanupCallbacks: Array<() => void> = [];
+  private attachedSession: XRSession | null = null;
+  private readonly tempCamPos = new THREE.Vector3();
+  private readonly tempCamDir = new THREE.Vector3();
+  private readonly tempCamQuat = new THREE.Quaternion();
+
+  private readonly onRendererSessionStart = (): void => {
+    this.isInVR = true;
+    const session = this.renderer.xr.getSession();
+    this.xrSession = session;
+    this.attachXRSessionListeners(session);
+
+    // Сброс Y-координаты группы игрока под аппаратный уровень пола гарнитуры (для local/viewer — 1.65м)
+    this.playerGroup.position.y = this.activeReferenceSpaceType === 'local-floor' ? 0.0 : 1.65;
+    this.syncTrackedHandMetaFromSession();
+    this.syncHandRigVisibility();
+
+    this.updateVRButtonText();
+    this.callbacks.onSessionStart?.();
+  };
+
+  private readonly onRendererSessionEnd = (): void => {
+    this.detachXRSessionListeners();
+    this.cleanupSessionState();
+    this.updateVRButtonText();
+    this.callbacks.onSessionEnd?.();
+  };
+
+  private readonly onSessionInputSourcesChange = (): void => {
+    this.syncTrackedHandMetaFromSession();
+    this.syncHandRigVisibility();
+  };
+
+  private readonly onSessionGazeSelectStart = (event: XRInputSourceEvent): void => {
+    try {
+      const src = event.inputSource;
+      const isGazeOrTransient =
+        src.targetRayMode === 'gaze' ||
+        src.targetRayMode === 'transient-pointer' ||
+        (!this.hasTrackedHand('right') && !this.hasTrackedHand('left'));
+      if (!isGazeOrTransient) return;
+
+      this.isGazeSelectHeld = true;
+      this.gazeJustPressed = true;
+    } catch {
+      // Игнорируем некорректные события selectstart
+    }
+  };
+
+  private readonly onSessionGazeSelectEnd = (event: XRInputSourceEvent): void => {
+    try {
+      const src = event.inputSource;
+      const isGazeOrTransient =
+        src.targetRayMode === 'gaze' ||
+        src.targetRayMode === 'transient-pointer' ||
+        this.isGazeSelectHeld;
+      if (!isGazeOrTransient) return;
+
+      this.isGazeSelectHeld = false;
+      this.gazeJustReleased = true;
+    } catch {
+      // Игнорируем некорректные события selectend
+    }
+  };
 
   constructor(
     renderer: THREE.WebGLRenderer,
@@ -334,7 +463,6 @@ export class WebXRManager {
     this.callbacks = callbacks;
 
     // 1. Инициализация высоты playerGroup.position.y в 0.0 по умолчанию
-    // (физическая высота гарнитуры отслеживается встроенным трекингом local-floor)
     this.playerGroup.position.y = 0.0;
 
     // 2. Конфигурация WebXR-подсистемы рендерера
@@ -342,25 +470,8 @@ export class WebXRManager {
     this.renderer.xr.setReferenceSpaceType('local-floor');
 
     // 3. Обработчики жизненного цикла XR-сессии
-    this.renderer.xr.addEventListener('sessionstart', () => {
-      this.isInVR = true;
-      this.xrSession = this.renderer.xr.getSession();
-
-      // Сброс Y-координаты группы игрока под аппаратный уровень пола гарнитуры
-      this.playerGroup.position.y = 0.0;
-
-      if (this.rightHandRig) this.rightHandRig.rootGroup.visible = true;
-      if (this.leftHandRig) this.leftHandRig.rootGroup.visible = true;
-
-      this.updateVRButtonText();
-      this.callbacks.onSessionStart?.();
-    });
-
-    this.renderer.xr.addEventListener('sessionend', () => {
-      this.cleanupSessionState();
-      this.updateVRButtonText();
-      this.callbacks.onSessionEnd?.();
-    });
+    this.renderer.xr.addEventListener('sessionstart', this.onRendererSessionStart);
+    this.renderer.xr.addEventListener('sessionend', this.onRendererSessionEnd);
 
     // 4. Инициализация геометрии параболической дуги телепортации без динамических аллокаций
     this.arcPositionsBuffer = new Float32Array((this.arcPointsCount + 1) * 3);
@@ -394,8 +505,141 @@ export class WebXRManager {
     this.targetRing.visible = false;
     this.scene.add(this.targetRing);
 
+    // Прицел взгляда (Gaze Reticle) для шлемов без контроллеров
+    const gazeGeo = new THREE.RingGeometry(0.012, 0.02, 24);
+    const gazeMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false
+    });
+    this.gazeReticle = new THREE.Mesh(gazeGeo, gazeMat);
+    this.gazeReticle.renderOrder = 999;
+    this.gazeReticle.visible = false;
+    this.gazeReticle.raycast = () => {};
+    this.scene.add(this.gazeReticle);
+    this.gazeAnchorGroup.name = 'webxr_gaze_anchor';
+
     this.checkXRSupport();
     this.setupControllersInPlayerGroup();
+  }
+
+  private attachXRSessionListeners(session: XRSession | null): void {
+    if (this.attachedSession === session) return;
+    this.detachXRSessionListeners();
+    if (!session) return;
+    try {
+      session.addEventListener('inputsourceschange', this.onSessionInputSourcesChange);
+      session.addEventListener('selectstart', this.onSessionGazeSelectStart);
+      session.addEventListener('selectend', this.onSessionGazeSelectEnd);
+      this.attachedSession = session;
+    } catch {
+      this.attachedSession = null;
+    }
+  }
+
+  private detachXRSessionListeners(): void {
+    if (!this.attachedSession) return;
+    try {
+      this.attachedSession.removeEventListener('inputsourceschange', this.onSessionInputSourcesChange);
+      this.attachedSession.removeEventListener('selectstart', this.onSessionGazeSelectStart);
+      this.attachedSession.removeEventListener('selectend', this.onSessionGazeSelectEnd);
+    } catch {
+      // Игнорируем, если сессия уже закрыта
+    }
+    this.attachedSession = null;
+  }
+
+  private syncTrackedHandMetaFromSession(): void {
+    const session = this.xrSession;
+    if (!session) {
+      this.controllerMeta[0] = { connected: false, handedness: 'none', targetRayMode: 'unknown' };
+      this.controllerMeta[1] = { connected: false, handedness: 'none', targetRayMode: 'unknown' };
+      return;
+    }
+    try {
+      const trackedSources: XRInputSource[] = [];
+      const inputSources = session.inputSources;
+      if (inputSources) {
+        for (let i = 0; i < inputSources.length; i++) {
+          const src = inputSources[i];
+          if (src && src.targetRayMode === 'tracked-pointer') {
+            trackedSources.push(src);
+          }
+        }
+      }
+      // Обновляем только незаполненные слоты, если 'connected' ещё не сработал
+      for (let i = 0; i < Math.min(2, trackedSources.length); i++) {
+        const slot = i as 0 | 1;
+        if (!this.controllerMeta[slot].connected) {
+          this.controllerMeta[slot] = {
+            connected: true,
+            handedness: trackedSources[i].handedness,
+            targetRayMode: trackedSources[i].targetRayMode
+          };
+        }
+      }
+    } catch {
+      // Игнорируем транзиентные ошибки inputSources
+    }
+  }
+
+  private hasTrackedHand(hand: 'left' | 'right'): boolean {
+    if (this.controllerMeta[0].connected && this.controllerMeta[0].handedness === hand) return true;
+    if (this.controllerMeta[1].connected && this.controllerMeta[1].handedness === hand) return true;
+    if (hand === 'right') {
+      if (
+        (this.controllerMeta[0].connected && this.controllerMeta[0].handedness === 'none') ||
+        (this.controllerMeta[1].connected && this.controllerMeta[1].handedness === 'none')
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public getControllerIndexForHand(hand: 'left' | 'right'): 0 | 1 | null {
+    if (this.controllerMeta[0].connected && this.controllerMeta[0].handedness === hand) return 0;
+    if (this.controllerMeta[1].connected && this.controllerMeta[1].handedness === hand) return 1;
+    if (hand === 'right') {
+      if (this.controllerMeta[0].connected && this.controllerMeta[0].handedness === 'none') return 0;
+      if (this.controllerMeta[1].connected && this.controllerMeta[1].handedness === 'none') return 1;
+    }
+    return null;
+  }
+
+  public getControllerForHand(hand: 'left' | 'right'): THREE.Group | null {
+    const idx = this.getControllerIndexForHand(hand);
+    if (idx === 0) return this.controller0;
+    if (idx === 1) return this.controller1;
+    return hand === 'right' ? this.controller0 : this.controller1;
+  }
+
+  public getControllerHandedness(controllerIndex: number | null | undefined): 'left' | 'right' {
+    if (controllerIndex === 0 || controllerIndex === 1) {
+      const h = this.controllerMeta[controllerIndex].handedness;
+      if (h === 'left' || h === 'right') return h;
+      return controllerIndex === 1 ? 'left' : 'right';
+    }
+    return 'right';
+  }
+
+  private syncHandRigVisibility(): void {
+    if (!this.isInVR) {
+      if (this.rightHandRig) this.rightHandRig.rootGroup.visible = false;
+      if (this.leftHandRig) this.leftHandRig.rootGroup.visible = false;
+      this.gazeReticle.visible = false;
+      return;
+    }
+    const hasRight = this.hasTrackedHand('right');
+    const hasLeft = this.hasTrackedHand('left');
+    if (this.rightHandRig) {
+      this.rightHandRig.rootGroup.visible = hasRight;
+    }
+    if (this.leftHandRig) {
+      this.leftHandRig.rootGroup.visible = hasLeft;
+    }
   }
 
   /**
@@ -406,11 +650,21 @@ export class WebXRManager {
     this.isInVR = false;
     this.xrSession = null;
     this.isTeleportActive = false;
+    this.isSqueezeGrabActive = false;
     this.isMovementFrozen = false;
     this.snapLocked = false;
     this.snapCooldown = 0;
     this.prevLeftPrimaryPressed = false;
     this.prevRightPrimaryPressed = false;
+    this.draggingUiControllerIdx = null;
+    this.isGazeSelectHeld = false;
+    this.gazeJustPressed = false;
+    this.gazeJustReleased = false;
+    this.gazeReticle.visible = false;
+    this.controllerMeta[0] = { connected: false, handedness: 'none', targetRayMode: 'unknown' };
+    this.controllerMeta[1] = { connected: false, handedness: 'none', targetRayMode: 'unknown' };
+    this.vrInputManager?.reset();
+
     if (this.prevLeftPttHeld) {
       this.prevLeftPttHeld = false;
       this.voiceTaskLogger?.stopPushToTalk();
@@ -444,44 +698,56 @@ export class WebXRManager {
     }
   }
 
-  /**
-   * Инициализация контроллеров, их хватов (ControllerGrip) и моделей рук (HazmatHandRig)
-   * СТРОГО внутри единой родительской группы игрока (this.playerGroup) для предотвращения дрифта
-   */
-  private setupControllersInPlayerGroup(): void {
-    // =========================================================
-    // 1. Контроллер 0 (Правая рука) — внутри this.playerGroup
-    // =========================================================
-    const c0 = this.renderer.xr.getController(0);
-    this.controller0 = c0;
+  private bindControllerEvents(ctrl: THREE.XRTargetRaySpace, slot: 0 | 1): void {
+    const onConnected = (event: { data?: XRInputSource } & THREE.Event) => {
+      const src = event.data;
+      this.controllerMeta[slot] = {
+        connected: true,
+        handedness: src?.handedness ?? 'none',
+        targetRayMode: src?.targetRayMode ?? 'unknown'
+      };
+      this.syncHandRigVisibility();
+    };
 
-    c0.addEventListener('selectstart', () => {
-      if (this.vrUiSystem && this.checkAndTriggerVRUIClick(c0)) {
-        this.draggingUiControllerIdx = 0;
-        return;
-      }
-      this.callbacks.onSelectStart?.(c0, 0);
-    });
-
-    c0.addEventListener('selectend', () => {
-      if (this.draggingUiControllerIdx === 0) {
+    const onDisconnected = () => {
+      this.controllerMeta[slot] = {
+        connected: false,
+        handedness: 'none',
+        targetRayMode: 'unknown'
+      };
+      if (this.draggingUiControllerIdx === slot) {
         this.draggingUiControllerIdx = null;
       }
-      this.callbacks.onSelectEnd?.(c0, 0);
-    });
+      this.syncHandRigVisibility();
+    };
 
-    c0.addEventListener('squeezestart', () => {
-      const grabbed = this.callbacks.onSqueezeStart?.(c0, 0);
+    const onSelectStart = () => {
+      if (this.vrUiSystem && this.checkAndTriggerVRUIClick(ctrl)) {
+        this.draggingUiControllerIdx = slot;
+        return;
+      }
+      this.callbacks.onSelectStart?.(ctrl, slot);
+    };
+
+    const onSelectEnd = () => {
+      if (this.draggingUiControllerIdx === slot) {
+        this.draggingUiControllerIdx = null;
+      }
+      this.callbacks.onSelectEnd?.(ctrl, slot);
+    };
+
+    const onSqueezeStart = () => {
+      const grabbed = this.callbacks.onSqueezeStart?.(ctrl, slot);
       if (grabbed) {
         this.isSqueezeGrabActive = true;
         this.isTeleportActive = false;
       } else {
         this.isTeleportActive = true;
       }
-    });
+    };
 
-    c0.addEventListener('squeezeend', () => {
-      this.callbacks.onSqueezeEnd?.(c0, 0);
+    const onSqueezeEnd = () => {
+      this.callbacks.onSqueezeEnd?.(ctrl, slot);
       this.isSqueezeGrabActive = false;
       if (this.isTeleportActive && this.targetRing.visible) {
         this.callbacks.onTeleportTrigger?.(this.targetRing.position);
@@ -489,17 +755,52 @@ export class WebXRManager {
       this.isTeleportActive = false;
       this.arcLine.visible = false;
       this.targetRing.visible = false;
-    });
+    };
 
-    // СТРОГОе добавление контроллера 0 в playerGroup (No Drift Architecture)
+    ctrl.addEventListener('connected' as never, onConnected as never);
+    ctrl.addEventListener('disconnected' as never, onDisconnected as never);
+    ctrl.addEventListener('selectstart', onSelectStart);
+    ctrl.addEventListener('selectend', onSelectEnd);
+    ctrl.addEventListener('squeezestart', onSqueezeStart);
+    ctrl.addEventListener('squeezeend', onSqueezeEnd);
+
+    this.cleanupCallbacks.push(() => {
+      ctrl.removeEventListener('connected' as never, onConnected as never);
+      ctrl.removeEventListener('disconnected' as never, onDisconnected as never);
+      ctrl.removeEventListener('selectstart', onSelectStart);
+      ctrl.removeEventListener('selectend', onSelectEnd);
+      ctrl.removeEventListener('squeezestart', onSqueezeStart);
+      ctrl.removeEventListener('squeezeend', onSqueezeEnd);
+    });
+  }
+
+  /**
+   * Инициализация контроллеров, их хватов (ControllerGrip) и моделей рук (HazmatHandRig)
+   * СТРОГО внутри единой родительской группы игрока (this.playerGroup) для предотвращения дрифта.
+   * Определение левой/правой руки выполняется динамически через inputSource.handedness.
+   */
+  private setupControllersInPlayerGroup(): void {
+    // Контроллер 0 и Хват 0 — внутри this.playerGroup
+    const c0 = this.renderer.xr.getController(0);
+    this.controller0 = c0;
+    this.bindControllerEvents(c0, 0);
     this.playerGroup.add(c0);
 
-    // Хват 0 (getControllerGrip(0)) и правая рука с дозиметром в ладони — внутри this.playerGroup
     const grip0 = this.renderer.xr.getControllerGrip(0);
     this.controllerGrip0 = grip0;
     this.playerGroup.add(grip0);
 
-    // Правая анатомическая кисть с дозиметром внутри ладони (Palmar Grip Pose: curl ≈ 0.42):
+    // Контроллер 1 и Хват 1 — внутри this.playerGroup
+    const c1 = this.renderer.xr.getController(1);
+    this.controller1 = c1;
+    this.bindControllerEvents(c1, 1);
+    this.playerGroup.add(c1);
+
+    const grip1 = this.renderer.xr.getControllerGrip(1);
+    this.controllerGrip1 = grip1;
+    this.playerGroup.add(grip1);
+
+    // Правая анатомическая кисть с дозиметром внутри ладони (Palmar Grip Pose: curl ≈ 0.42)
     this.rightHandRig = new RealisticHumanHandRig({ handedness: 'right', withRadiometer: true });
     this.rightHandRig.rootGroup.position.set(0, 0, 0);
     this.rightHandRig.rootGroup.quaternion.identity();
@@ -508,58 +809,7 @@ export class WebXRManager {
     this.rightHandRig.rootGroup.visible = false;
     this.playerGroup.add(this.rightHandRig.rootGroup);
 
-    // =========================================================
-    // 2. Контроллер 1 (Левая рука) — внутри this.playerGroup
-    //    Свободная симметричная левая кисть БЕЗ прибора по умолчанию
-    // =========================================================
-    const c1 = this.renderer.xr.getController(1);
-    this.controller1 = c1;
-
-    c1.addEventListener('selectstart', () => {
-      if (this.vrUiSystem && this.checkAndTriggerVRUIClick(c1)) {
-        this.draggingUiControllerIdx = 1;
-        return;
-      }
-      this.callbacks.onSelectStart?.(c1, 1);
-    });
-
-    c1.addEventListener('selectend', () => {
-      if (this.draggingUiControllerIdx === 1) {
-        this.draggingUiControllerIdx = null;
-      }
-      this.callbacks.onSelectEnd?.(c1, 1);
-    });
-
-    c1.addEventListener('squeezestart', () => {
-      // Захват мелких деталей и инструментов левой рукой по кнопке Grip / Squeeze
-      const grabbed = this.callbacks.onSqueezeStart?.(c1, 1);
-      if (grabbed) {
-        this.isSqueezeGrabActive = true;
-        this.isTeleportActive = false;
-      } else {
-        this.isTeleportActive = true;
-      }
-    });
-
-    c1.addEventListener('squeezeend', () => {
-      this.callbacks.onSqueezeEnd?.(c1, 1);
-      this.isSqueezeGrabActive = false;
-      if (this.isTeleportActive && this.targetRing.visible) {
-        this.callbacks.onTeleportTrigger?.(this.targetRing.position);
-      }
-      this.isTeleportActive = false;
-      this.arcLine.visible = false;
-      this.targetRing.visible = false;
-    });
-
-    // СТРОГОе добавление контроллера 1 в playerGroup (No Drift Architecture)
-    this.playerGroup.add(c1);
-
-    // Хват 1 (getControllerGrip(1)) и симметричная левая кисть с жестко интегрированным VRFlashlight — внутри this.playerGroup
-    const grip1 = this.renderer.xr.getControllerGrip(1);
-    this.controllerGrip1 = grip1;
-    this.playerGroup.add(grip1);
-
+    // Левая кисть с жестко интегрированным тактическим фонарем VRFlashlight
     this.leftHandRig = new RealisticHumanHandRig({
       handedness: 'left',
       withFlashlight: true,
@@ -572,10 +822,7 @@ export class WebXRManager {
     this.leftHandRig.rootGroup.visible = false;
     this.playerGroup.add(this.leftHandRig.rootGroup);
 
-    // =========================================================
-    // 3. Отключение длинных «лазерных палок» по умолчанию:
-    //    Короткая указка скрыта (visible = false) и включается ТОЛЬКО при наведении на плавающие UI-панели
-    // =========================================================
+    // Короткие UI-указки: скрыты по умолчанию, включаются только при наведении на VR UI-панель
     const shortPointerGeo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(0, 0, -0.07),
       new THREE.Vector3(0, 0, -0.48)
@@ -587,7 +834,7 @@ export class WebXRManager {
     });
     this.laser0 = new THREE.Line(shortPointerGeo, laserMat0);
     this.laser0.name = 'short_ui_pointer';
-    this.laser0.visible = false; // По умолчанию полностью скрыта!
+    this.laser0.visible = false;
     c0.add(this.laser0);
 
     const laserMat1 = new THREE.LineBasicMaterial({
@@ -597,7 +844,7 @@ export class WebXRManager {
     });
     this.laser1 = new THREE.Line(shortPointerGeo.clone(), laserMat1);
     this.laser1.name = 'short_ui_pointer';
-    this.laser1.visible = false; // По умолчанию полностью скрыта!
+    this.laser1.visible = false;
     c1.add(this.laser1);
 
     this.wristDisplay = new VRWristDisplay();
@@ -649,6 +896,12 @@ export class WebXRManager {
         },
         onFlashlightToggled: (isOn) => {
           this.callbacks.onToggleFlashlight?.('left', isOn);
+        },
+        onCycleTool: (dir) => {
+          this.callbacks.onCycleTool?.(dir);
+        },
+        onRightTriggerWorldHold: (raycaster, controller, isHeld, justPressed, justReleased) => {
+          this.callbacks.onRightTriggerWorldHold?.(raycaster, controller, isHeld, justPressed, justReleased);
         }
       });
     }
@@ -708,7 +961,7 @@ export class WebXRManager {
     btn.style.left = '14px';
     btn.style.transform = 'none';
     btn.style.zIndex = '45';
-    btn.style.backgroundColor = 'rgba(8, 13, 24, 0.78)';
+    btn.style.backgroundColor = 'rgba(8, 13, 24, 0.88)';
     btn.style.border = '1px solid rgba(255, 255, 255, 0.14)';
     btn.style.borderRadius = '10px';
     btn.style.padding = '7px 12px';
@@ -717,10 +970,9 @@ export class WebXRManager {
     btn.style.fontWeight = '600';
     btn.style.letterSpacing = '0.03em';
     btn.style.cursor = 'pointer';
-    btn.style.backdropFilter = 'blur(10px)';
     btn.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.45)';
     btn.style.transition = 'all 0.2s ease';
-    btn.textContent = 'VR (SteamVR / WebXR)';
+    btn.textContent = 'ВОЙТИ В VR (WEBXR)';
 
     btn.onclick = async (e: MouseEvent) => {
       e.preventDefault();
@@ -736,9 +988,10 @@ export class WebXRManager {
   public updateVRButtonText(btn?: HTMLElement): void {
     const target = btn || this.vrButtonElement;
     if (target) {
+      target.style.display = this.isInVR ? 'none' : 'block';
       target.textContent = this.isInVR
         ? 'ВЫЙТИ ИЗ VR'
-        : 'ВОЙТИ В VR (STEAMVR / HTC VIVE)';
+        : 'ВОЙТИ В VR (WEBXR)';
       target.style.borderColor = this.isInVR
         ? 'rgba(239, 68, 68, 0.8)'
         : 'rgba(234, 179, 8, 0.8)';
@@ -787,56 +1040,68 @@ export class WebXRManager {
 
     if (!this.xrSession) return target;
 
-    const sources = this.xrSession.inputSources;
-    for (let i = 0; i < sources.length; i++) {
-      const src = sources[i];
-      if (src.handedness === hand && src.gamepad) {
-        const gp = src.gamepad;
+    try {
+      const sources = this.xrSession.inputSources;
+      if (!sources) return target;
+      for (let i = 0; i < sources.length; i++) {
+        const src = sources[i];
+        if (!src || !src.gamepad) continue;
+        const matchesHand =
+          src.handedness === hand || (hand === 'right' && src.handedness === 'none');
+        if (matchesHand) {
+          const gp = src.gamepad;
 
-        // Чтение осей стика (Quest/Touch используeт axes[2..3], Vive/WMR может использовать axes[0..1])
-        let rawX = 0;
-        let rawY = 0;
-        if (
-          gp.axes.length >= 4 &&
-          (Math.abs(gp.axes[2]) > Math.abs(gp.axes[0]) || Math.abs(gp.axes[3]) > Math.abs(gp.axes[1]))
-        ) {
-          rawX = gp.axes[2];
-          rawY = gp.axes[3];
-        } else if (gp.axes.length >= 2) {
-          rawX = gp.axes[0];
-          rawY = gp.axes[1];
-        }
+          let rawX = 0;
+          let rawY = 0;
+          if (gp.axes && gp.axes.length >= 4) {
+            const mag01 = Math.hypot(gp.axes[0] ?? 0, gp.axes[1] ?? 0);
+            const mag23 = Math.hypot(gp.axes[2] ?? 0, gp.axes[3] ?? 0);
+            if (mag23 >= mag01) {
+              rawX = gp.axes[2] ?? 0;
+              rawY = gp.axes[3] ?? 0;
+            } else {
+              rawX = gp.axes[0] ?? 0;
+              rawY = gp.axes[1] ?? 0;
+            }
+          } else if (gp.axes && gp.axes.length >= 2) {
+            rawX = gp.axes[0] ?? 0;
+            rawY = gp.axes[1] ?? 0;
+          }
 
-        const normX = this.applyDeadzone(rawX, this.deadzone);
-        const normY = this.applyDeadzone(rawY, this.deadzone);
+          const normX = this.applyDeadzone(Number.isFinite(rawX) ? rawX : 0, this.deadzone);
+          const normY = this.applyDeadzone(Number.isFinite(rawY) ? rawY : 0, this.deadzone);
 
-        if (hand === 'left') {
-          target.moveX = normX;
-          target.moveY = normY;
-        } else {
-          target.turnX = normX;
-          target.turnY = normY;
-        }
+          if (hand === 'left') {
+            target.moveX = normX;
+            target.moveY = normY;
+          } else {
+            target.turnX = normX;
+            target.turnY = normY;
+          }
 
-        if (gp.buttons.length > 0 && gp.buttons[0]) {
-          target.trigger = gp.buttons[0].value ?? (gp.buttons[0].pressed ? 1.0 : 0.0);
-        }
-        if (gp.buttons.length > 1 && gp.buttons[1]) {
-          target.grip = gp.buttons[1].value ?? (gp.buttons[1].pressed ? 1.0 : 0.0);
-          target.squeezePressed = gp.buttons[1].pressed || target.grip > 0.6;
-        }
-        if (gp.buttons.length > 3 && gp.buttons[3]) {
-          target.thumbstickPressed = gp.buttons[3].pressed;
-        }
-        if (gp.buttons.length > 4 && gp.buttons[4]) {
-          target.primaryPressed = gp.buttons[4].pressed;
-        }
-        if (gp.buttons.length > 5 && gp.buttons[5]) {
-          target.secondaryPressed = gp.buttons[5].pressed;
-        }
+          if (gp.buttons?.length > 0 && gp.buttons[0]) {
+            target.trigger = gp.buttons[0].value ?? (gp.buttons[0].pressed ? 1.0 : 0.0);
+          }
+          if (gp.buttons?.length > 1 && gp.buttons[1]) {
+            target.grip = gp.buttons[1].value ?? (gp.buttons[1].pressed ? 1.0 : 0.0);
+            target.squeezePressed = gp.buttons[1].pressed || target.grip > 0.6;
+          }
+          const stickBtn = gp.buttons?.[3] ?? gp.buttons?.[2];
+          if (stickBtn) {
+            target.thumbstickPressed = stickBtn.pressed;
+          }
+          if (gp.buttons?.length > 4 && gp.buttons[4]) {
+            target.primaryPressed = gp.buttons[4].pressed;
+          }
+          if (gp.buttons?.length > 5 && gp.buttons[5]) {
+            target.secondaryPressed = gp.buttons[5].pressed;
+          }
 
-        break;
+          break;
+        }
       }
+    } catch {
+      // Игнорируем транзиентные ошибки чтения inputSources/gamepad
     }
 
     return target;
@@ -857,39 +1122,39 @@ export class WebXRManager {
     controller.getWorldDirection(outDirection).negate().normalize();
   }
 
+  private getSlotPoseObjects(slot: 0 | 1): { controller: THREE.Group | null; grip: THREE.Group | null } {
+    return slot === 0
+      ? { controller: this.controller0, grip: this.controllerGrip0 }
+      : { controller: this.controller1, grip: this.controllerGrip1 };
+  }
+
   /**
    * Синхронный 1:1 трекинг ориентации и позиции виртуальных кистей с физическими контроллерами WebXR
-   * (Direct Wrist Orientation Mapping):
-   * - Кватернион виртуальной кисти (rootGroup.quaternion) 1:1 повторяет физический кватернион контроллера
-   *   без каких-либо сглаживаний (slerp/lerp) и искусственных ограничений по Pitch, Roll, Yaw.
+   * по реальному `handedness` подключенных контроллеров (без жесткой привязки слота 0/1)
    */
   private syncWristOrientation1To1(): void {
-    if (this.rightHandRig && this.controller0) {
-      const hasCtrlPose0 =
-        this.controller0.position.lengthSq() > 1e-6 ||
-        Math.abs(this.controller0.quaternion.w - 1) > 1e-6;
-      const posSource0 =
-        hasCtrlPose0 || !this.controllerGrip0 ? this.controller0.position : this.controllerGrip0.position;
-      const quatSource0 =
-        hasCtrlPose0 || !this.controllerGrip0
-          ? this.controller0.quaternion
-          : this.controllerGrip0.quaternion;
-
-      this.rightHandRig.syncDirectWristPose(posSource0, quatSource0);
+    const rightSlot = this.getControllerIndexForHand('right');
+    if (this.rightHandRig && rightSlot !== null) {
+      const { controller, grip } = this.getSlotPoseObjects(rightSlot);
+      if (controller) {
+        const hasCtrlPose =
+          controller.position.lengthSq() > 1e-6 || Math.abs(controller.quaternion.w - 1) > 1e-6;
+        const posSource = hasCtrlPose || !grip ? controller.position : grip.position;
+        const quatSource = hasCtrlPose || !grip ? controller.quaternion : grip.quaternion;
+        this.rightHandRig.syncDirectWristPose(posSource, quatSource);
+      }
     }
 
-    if (this.leftHandRig && this.controller1) {
-      const hasCtrlPose1 =
-        this.controller1.position.lengthSq() > 1e-6 ||
-        Math.abs(this.controller1.quaternion.w - 1) > 1e-6;
-      const posSource1 =
-        hasCtrlPose1 || !this.controllerGrip1 ? this.controller1.position : this.controllerGrip1.position;
-      const quatSource1 =
-        hasCtrlPose1 || !this.controllerGrip1
-          ? this.controller1.quaternion
-          : this.controllerGrip1.quaternion;
-
-      this.leftHandRig.syncDirectWristPose(posSource1, quatSource1);
+    const leftSlot = this.getControllerIndexForHand('left');
+    if (this.leftHandRig && leftSlot !== null) {
+      const { controller, grip } = this.getSlotPoseObjects(leftSlot);
+      if (controller) {
+        const hasCtrlPose =
+          controller.position.lengthSq() > 1e-6 || Math.abs(controller.quaternion.w - 1) > 1e-6;
+        const posSource = hasCtrlPose || !grip ? controller.position : grip.position;
+        const quatSource = hasCtrlPose || !grip ? controller.quaternion : grip.quaternion;
+        this.leftHandRig.syncDirectWristPose(posSource, quatSource);
+      }
     }
   }
 
@@ -898,30 +1163,26 @@ export class WebXRManager {
    * - Smooth Locomotion по XZ-проекции взгляда камеры (только playerGroup.position.x / .z)
    * - Snap / Smooth Turn (только playerGroup.rotation.y)
    * - Синхронный 1:1 трекинг поворота кистей (Direct Wrist Orientation Mapping) и сгиба пальцев
-   * - Лазерный рейкастинг UI и параболическая телепортация от мировых координат контроллера
+   * - Лазерный рейкастинг UI, поддержка gaze fallback (без контроллеров) и телепортация
    */
   public update(dt: number, camera: THREE.Camera): void {
-    if (!this.isInVR) {
+    if (!this.isInVR || this.isDisposed) {
       this.isMoving = false;
       return;
     }
+
+    this.syncTrackedHandMetaFromSession();
+    this.syncHandRigVisibility();
 
     const leftInput = this.getControllerInput('left');
     const rightInput = this.getControllerInput('right');
     this.isMoving = Math.abs(leftInput.moveX) > 0.05 || Math.abs(leftInput.moveY) > 0.05;
 
-    // 0. Опрос физического геймпада через VRInputManager (Edge Detection / Debounce + Haptics):
-    // - Правый контроллер:
-    //   • Правый Грип: физический хват радиометра-дозиметра в ладони правой руки (Grip Pose)
-    //   • Правый Стик (X-axis): поворот Snap (шаг 30°) / Smooth Turn (deadzone 0.15)
-    //   • Нажатие на правый стик (Thumbstick Press): сброс/калибровка высоты и центра пространства playerGroup
-    //   • Кнопка A (Press): переключение плавающего окна аналитики D(t) и H(t) (AnalyticsOverlay.toggle())
-    //   • Кнопка B (Press): переключение частиц визуализации радиационного фона (RadiationBackgroundField.toggle())
-    // - Левый контроллер:
-    //   • Левый Триггер (0.0 -> 1.0): плавный динамический сгиб пальцев левой кисти
-    //   • Левый Стик (X/Y axes): плавное перемещение Smooth Locomotion по плоскости XZ (deadzone 0.15)
-    //   • Кнопка X (Push-to-Talk Hold): удержание микрофона VoiceTaskLogger.startListening() / stopListening()
-    //   • Кнопка Y (Press): включение / выключение тактического фонаря VRFlashlight.toggle() с pulse(0.4, 40)
+    const rightSlot = this.getControllerIndexForHand('right');
+    const leftSlot = this.getControllerIndexForHand('left');
+    const rightCtrl = rightSlot === 0 ? this.controller0 : rightSlot === 1 ? this.controller1 : null;
+    const leftCtrl = leftSlot === 0 ? this.controller0 : leftSlot === 1 ? this.controller1 : null;
+
     if (this.vrInputManager) {
       this.vrInputManager.moveSpeed = this.moveSpeed;
       this.vrInputManager.turnMode = this.turnMode;
@@ -933,8 +1194,8 @@ export class WebXRManager {
         dt,
         this.xrSession,
         camera,
-        this.controller0,
-        this.controller1,
+        rightCtrl,
+        leftCtrl,
         this.isMovementFrozen
       );
     }
@@ -945,86 +1206,45 @@ export class WebXRManager {
     // 3. Абсолютный 1:1 трекинг поворота кистей (Pitch, Roll, Yaw) и сгибание пальцев
     this.syncWristOrientation1To1();
 
-    if (this.leftHandRig) {
+    if (this.leftHandRig && this.leftHandRig.rootGroup.visible) {
       const leftCurl = Math.max(leftInput.trigger, this.isSqueezeGrabActive ? leftInput.grip * 0.78 : 0);
       this.leftHandRig.setFingerCurl(leftCurl);
       this.leftHandRig.update(dt, true);
     }
-    if (this.rightHandRig) {
+    if (this.rightHandRig && this.rightHandRig.rootGroup.visible) {
       if (!this.vrInputManager?.isRightGripHoldingRadiometer) {
         this.rightHandRig.setFingerCurl(rightInput.trigger);
       }
       this.rightHandRig.update(dt, true);
     }
 
-    // 3.5. Управление видимостью 3D VR HUD (HTC Vive Button Toggle):
-    // Нажатие кнопки Menu (buttons[3]/[4]) или Grip (buttons[1]) на HTC Vive контроллере переключает видимость VR HUD
-    if (this.xrSession && this.vrUiSystem) {
-      let menuNowPressed = false;
-      let viveGripNowPressed = false;
-
-      for (let i = 0; i < this.xrSession.inputSources.length; i++) {
-        const src = this.xrSession.inputSources[i];
-        if (!src.gamepad) continue;
-
-        const isViveProfile = Boolean(
-          src.profiles?.some(p => {
-            const low = p.toLowerCase();
-            return low.includes('vive') || low.includes('wand') || low.includes('generic-trigger-squeeze-touchpad');
-          })
-        );
-
-        // Кнопка Menu (buttons[3] или buttons[4] стандарта WebXR / HTC Vive / SteamVR)
-        const hasMenu = Boolean(
-          (src.gamepad.buttons.length > 3 && src.gamepad.buttons[3]?.pressed) ||
-          (src.gamepad.buttons.length > 4 && src.gamepad.buttons[4]?.pressed)
-        );
-        if (hasMenu) {
-          menuNowPressed = true;
-        }
-
-        // Кнопка Grip (buttons[1]) на HTC Vive контроллере
-        if (isViveProfile && src.gamepad.buttons.length > 1 && src.gamepad.buttons[1]?.pressed) {
-          viveGripNowPressed = true;
-        }
-      }
-
-      const justPressedMenu = menuNowPressed && !this.prevMenuButtonPressed;
-      const justPressedViveGrip = viveGripNowPressed && !this.prevViveGripButtonPressed;
-
-      if (justPressedMenu || justPressedViveGrip) {
-        const nextVisible = this.vrUiSystem.toggleHudVisibility();
-        this.callbacks.onToggleHudVisibility?.(nextVisible);
-        for (const src of this.xrSession.inputSources) {
-          if (src.gamepad) {
-            this.pulseGamepadActuator(src.gamepad, 0.35, 40);
-          }
-        }
-      }
-
-      this.prevMenuButtonPressed = menuNowPressed;
-      this.prevViveGripButtonPressed = viveGripNowPressed;
-    }
-
     // 4. Рейкастинг VR UI: короткая указка включается ИСКЛЮЧИТЕЛЬНО при наведении на UI-панели
+    const hasAnyTrackedPointer = rightCtrl !== null || leftCtrl !== null;
     if (this.vrUiSystem) {
       let uiHit0 = false;
-      if (this.controller0) {
+      if (this.controller0 && this.controllerMeta[0].connected) {
         uiHit0 = this.updateUIRaycast(this.controller0, this.laser0);
+      } else if (this.laser0) {
+        this.laser0.visible = false;
       }
-      if (this.controller1) {
+
+      if (this.controller1 && this.controllerMeta[1].connected) {
         if (!uiHit0) {
           this.updateUIRaycast(this.controller1, this.laser1);
         } else if (this.laser1) {
           this.laser1.visible = false;
         }
+      } else if (this.laser1) {
+        this.laser1.visible = false;
       }
 
       // Плавное перетаскивание ползунка виброотклика (Haptic Strength Slider) при удержании курка
       if (this.draggingUiControllerIdx !== null) {
-        const dragCtrl = this.draggingUiControllerIdx === 0 ? this.controller0 : this.controller1;
+        const dragSlot = this.draggingUiControllerIdx as 0 | 1;
+        const dragCtrl = dragSlot === 0 ? this.controller0 : this.controller1;
+        const dragHand = this.getControllerHandedness(dragSlot);
         const isTriggerHeld =
-          this.draggingUiControllerIdx === 0 ? rightInput.trigger > 0.35 : leftInput.trigger > 0.35;
+          dragHand === 'right' ? rightInput.trigger > 0.35 : leftInput.trigger > 0.35;
         if (dragCtrl && isTriggerHeld) {
           this.getControllerWorldRay(dragCtrl, this.controllerWorldPos, this.controllerWorldDir);
           this.raycaster.set(this.controllerWorldPos, this.controllerWorldDir);
@@ -1035,13 +1255,64 @@ export class WebXRManager {
       }
     }
 
+    // 4.5. Fallback для шлемов без контроллеров (gaze / transient-pointer): прицел взглядом + select
+    if (!hasAnyTrackedPointer) {
+      camera.getWorldPosition(this.tempCamPos);
+      camera.getWorldDirection(this.tempCamDir).normalize();
+      camera.getWorldQuaternion(this.tempCamQuat);
+
+      this.gazeAnchorGroup.position.copy(this.tempCamPos);
+      this.gazeAnchorGroup.quaternion.copy(this.tempCamQuat);
+      this.gazeAnchorGroup.updateMatrixWorld(true);
+
+      this.raycaster.set(this.tempCamPos, this.tempCamDir);
+      const uiHit = this.vrUiSystem ? this.vrUiSystem.testRaycast(this.raycaster) : null;
+
+      this.gazeReticle.visible = true;
+      const reticleDist = uiHit
+        ? Math.max(0.4, Math.min(3.5, this.tempCamPos.distanceTo(uiHit.point) - 0.02))
+        : 1.85;
+      this.gazeReticle.position
+        .copy(this.tempCamPos)
+        .addScaledVector(this.tempCamDir, reticleDist);
+      this.gazeReticle.quaternion.copy(this.tempCamQuat);
+      (this.gazeReticle.material as THREE.MeshBasicMaterial).color.setHex(
+        uiHit?.buttonId ? 0xfacc15 : 0x38bdf8
+      );
+
+      if (this.gazeJustPressed) {
+        const clickedUi = this.vrUiSystem ? this.vrUiSystem.triggerClick(this.raycaster) : false;
+        if (!clickedUi) {
+          this.callbacks.onSelectStart?.(this.gazeAnchorGroup, 0);
+        }
+      }
+      if (this.gazeJustPressed || this.isGazeSelectHeld || this.gazeJustReleased) {
+        this.callbacks.onRightTriggerWorldHold?.(
+          this.raycaster,
+          this.gazeAnchorGroup,
+          this.isGazeSelectHeld,
+          this.gazeJustPressed,
+          this.gazeJustReleased
+        );
+      }
+      if (this.gazeJustReleased) {
+        this.callbacks.onSelectEnd?.(this.gazeAnchorGroup, 0);
+      }
+      this.gazeJustPressed = false;
+      this.gazeJustReleased = false;
+    } else {
+      this.gazeReticle.visible = false;
+      this.gazeJustPressed = false;
+      this.gazeJustReleased = false;
+    }
+
     // 5. Параболическая телепортация от мировых координат контроллера (блокируется при заморозке в состоянии Game Over)
     if (
       !this.isMovementFrozen &&
       !this.isSqueezeGrabActive &&
       (leftInput.squeezePressed || rightInput.squeezePressed)
     ) {
-      const activeCtrl = rightInput.squeezePressed ? this.controller0 : this.controller1;
+      const activeCtrl = rightInput.squeezePressed ? rightCtrl : leftCtrl;
       if (activeCtrl) {
         this.isTeleportActive = true;
         this.getControllerWorldRay(activeCtrl, this.controllerWorldPos, this.controllerWorldDir);
@@ -1105,7 +1376,9 @@ export class WebXRManager {
     cumulativeDoseMsv: number,
     taskTitle: string,
     isFlashlightOn?: boolean,
-    hapticStrength?: number
+    hapticStrength?: number,
+    activeToolLabel?: string,
+    holdProgressPct?: number | null
   ): void {
     if (this.wristDisplay && this.isInVR) {
       const isVoiceRec = this.voiceTaskLogger?.isPushToTalkActive ?? false;
@@ -1128,7 +1401,9 @@ export class WebXRManager {
         isVoiceRec,
         voiceVol,
         voiceLine,
-        this.vrUiSystem?.isHudVisible ?? true
+        this.vrUiSystem?.isHudVisible ?? true,
+        activeToolLabel,
+        holdProgressPct
       );
     }
   }
@@ -1285,12 +1560,17 @@ export class WebXRManager {
   public triggerWarning80HapticPulse(): void {
     if (!this.isInVR || !this.xrSession || this.hapticStrength <= 0.01) return;
     const warnIntensity = THREE.MathUtils.clamp(0.65 * this.hapticStrength, 0.15, 1.0);
-    const sources = this.xrSession.inputSources;
-    for (let i = 0; i < sources.length; i++) {
-      const src = sources[i];
-      if (src.gamepad) {
-        this.pulseGamepadActuator(src.gamepad, warnIntensity, 95);
+    try {
+      const sources = this.xrSession.inputSources;
+      if (!sources) return;
+      for (let i = 0; i < sources.length; i++) {
+        const src = sources[i];
+        if (src?.gamepad) {
+          this.pulseGamepadActuator(src.gamepad, warnIntensity, 95);
+        }
       }
+    } catch {
+      // Игнорируем транзиентные ошибки inputSources
     }
   }
 
@@ -1302,12 +1582,17 @@ export class WebXRManager {
     if (!this.isInVR || !this.xrSession || this.hapticStrength <= 0.01) return;
 
     const previewIntensity = Math.max(0.08, this.hapticStrength * 0.75);
-    const sources = this.xrSession.inputSources;
-    for (let i = 0; i < sources.length; i++) {
-      const src = sources[i];
-      if (src.gamepad) {
-        this.pulseGamepadActuator(src.gamepad, previewIntensity, 45);
+    try {
+      const sources = this.xrSession.inputSources;
+      if (!sources) return;
+      for (let i = 0; i < sources.length; i++) {
+        const src = sources[i];
+        if (src?.gamepad) {
+          this.pulseGamepadActuator(src.gamepad, previewIntensity, 45);
+        }
       }
+    } catch {
+      // Игнорируем транзиентные ошибки inputSources
     }
   }
 
@@ -1336,24 +1621,28 @@ export class WebXRManager {
     }
     this.lastHapticTime = now;
 
-    const sources = this.xrSession.inputSources;
-    for (let i = 0; i < sources.length; i++) {
-      const src = sources[i];
-      if (!src.gamepad) continue;
+    try {
+      const sources = this.xrSession.inputSources;
+      if (!sources) return params.intensity;
+      const holdingHand =
+        holdingControllerIndex === null ? null : this.getControllerHandedness(holdingControllerIndex);
 
-      // Дифференциация отдачи по рукам при манипуляции с высокоактивным источником:
-      // Рука, удерживающая источник или зонд радиометра, получает 100% расчетной амплитуды, вторая рука — 80%
-      let handMultiplier = 1.0;
-      if (isHoldingHighActivitySource && holdingControllerIndex !== null) {
-        const isHoldingHand =
-          (holdingControllerIndex === 0 && src.handedness === 'right') ||
-          (holdingControllerIndex === 1 && src.handedness === 'left');
-        handMultiplier = isHoldingHand ? 1.0 : 0.78;
-      } else if (src.handedness === 'left') {
-        handMultiplier = 0.85;
+      for (let i = 0; i < sources.length; i++) {
+        const src = sources[i];
+        if (!src?.gamepad) continue;
+
+        let handMultiplier = 1.0;
+        if (isHoldingHighActivitySource && holdingHand !== null) {
+          const isHoldingHand = src.handedness === holdingHand;
+          handMultiplier = isHoldingHand ? 1.0 : 0.78;
+        } else if (src.handedness === 'left') {
+          handMultiplier = 0.85;
+        }
+
+        this.pulseGamepadActuator(src.gamepad, params.intensity * handMultiplier, params.durationMs);
       }
-
-      this.pulseGamepadActuator(src.gamepad, params.intensity * handMultiplier, params.durationMs);
+    } catch {
+      // Игнорируем транзиентные ошибки inputSources
     }
 
     return params.intensity;
@@ -1384,19 +1673,22 @@ export class WebXRManager {
   }
 
   /**
-   * Безопасное переключение XR-сессии с каскадным Reference Space fallback ('local-floor' -> 'local' -> 'viewer')
-   * и гарантированным завершением предыдущей активной сессии для устранения InvalidStateError.
+   * Безопасное переключение XR-сессии с проверкой navigator.xr / isSessionSupported,
+   * каскадным Reference Space fallback ('local-floor' -> 'local' -> 'viewer') и очисткой при сбоях.
    */
   public async toggleVRSession(): Promise<boolean> {
-    if (this.isTogglingVR) return false;
+    if (this.isTogglingVR || this.isDisposed) return false;
     this.isTogglingVR = true;
+    this.lastErrorMessageRu = null;
 
     try {
       if (typeof navigator === 'undefined' || !('xr' in navigator) || !navigator.xr) {
+        this.lastErrorMessageRu =
+          'Браузер или окружение не поддерживают WebXR. Откройте приложение в Chrome, Edge или встроенном браузере VR-шлема.';
         return false;
       }
 
-      // 1. Если сессия уже активна, обязательно корректно завершаем её
+      // 1. Если сессия уже активна, корректно завершаем её
       if (this.isInVR || this.xrSession) {
         try {
           if (this.xrSession) {
@@ -1405,44 +1697,137 @@ export class WebXRManager {
         } catch (e) {
           console.warn('Error ending previous active XR session:', e);
         } finally {
+          this.detachXRSessionListeners();
           this.cleanupSessionState();
           this.updateVRButtonText();
         }
         return false;
       }
 
-      // 2. Завершаем любую возможную зависшую сессию в Three.js WebGLRenderer
+      // 2. Проверяем аппаратную поддержку immersive-vr до запроса сессии
+      const supported = await (navigator.xr as XRSystem)
+        .isSessionSupported('immersive-vr')
+        .catch(() => false);
+      this.isSupported = supported;
+      if (!supported) {
+        this.lastErrorMessageRu =
+          'VR-гарнитура или OpenXR/SteamVR-рантайм не обнаружены. Подключите шлем и убедитесь, что VR-рантайм запущен.';
+        return false;
+      }
+
+      // 3. Завершаем любую возможную зависшую сессию в Three.js WebGLRenderer
       const activeRendererSession = this.renderer.xr.getSession();
       if (activeRendererSession) {
         try {
           await activeRendererSession.end();
-        } catch {}
+        } catch {
+          // Игнорируем ошибку закрытия устаревшей сессии
+        }
       }
 
-      // 3. КРИТИЧЕСКОЕ ТРЕБОВАНИЕ WEBXR: флаг renderer.xr.enabled = true должен быть включен до вызова requestSession
+      // 4. Включаем WebXR в рендерере до вызова requestSession
       this.renderer.xr.enabled = true;
-      const session = await (navigator.xr as XRSystem).requestSession('immersive-vr', {
-        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers']
-      });
+      let session: XRSession | null = null;
+      try {
+        session = await (navigator.xr as XRSystem).requestSession('immersive-vr', {
+          optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers']
+        });
 
-      // Каскадный выбор доступной системы координат: 'local-floor' -> 'local' -> 'viewer'
-      const resolvedSpace = await this.resolveReferenceSpaceWithFallback(session);
+        const resolvedSpace = await this.resolveReferenceSpaceWithFallback(session);
+        this.playerGroup.position.y = resolvedSpace === 'local-floor' ? 0.0 : 1.65;
 
-      // Если гарнитура (например, старый профиль SteamVR) вернула 'local' или 'viewer' без уровня пола,
-      // компенсируем базовую высоту глаз; для 'local-floor' высота строго 0.0
-      this.playerGroup.position.y = resolvedSpace === 'local-floor' ? 0.0 : 1.65;
-
-      this.xrSession = session;
-      await this.renderer.xr.setSession(session);
-      this.updateVRButtonText();
-      return true;
+        this.xrSession = session;
+        await this.renderer.xr.setSession(session);
+        this.attachXRSessionListeners(session);
+        this.updateVRButtonText();
+        return true;
+      } catch (sessionErr) {
+        if (session) {
+          try {
+            await session.end();
+          } catch {
+            // Игнорируем ошибку принудительного закрытия незапущенной сессии
+          }
+        }
+        throw sessionErr;
+      }
     } catch (err) {
+      const errName = err instanceof Error ? err.name : '';
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errName === 'NotAllowedError' || errName === 'SecurityError') {
+        this.lastErrorMessageRu =
+          'Доступ к WebXR отклонён браузером или политикой безопасности (требуется HTTPS или localhost).';
+      } else if (errName === 'NotSupportedError') {
+        this.lastErrorMessageRu =
+          'Текущее устройство или драйвер OpenXR не поддерживает режим immersive-vr.';
+      } else {
+        this.lastErrorMessageRu = `Не удалось запустить VR-сессию: ${errMsg}`;
+      }
       console.warn('VR session request failed:', err);
+      this.detachXRSessionListeners();
       this.cleanupSessionState();
       this.updateVRButtonText();
       return false;
     } finally {
       this.isTogglingVR = false;
+    }
+  }
+
+  /**
+   * Полное освобождение слушателей, контроллеров и ресурсов WebXRManager при размонтировании сцены
+   */
+  public dispose(): void {
+    if (this.isDisposed) return;
+    this.isDisposed = true;
+
+    const activeSession = this.xrSession ?? this.renderer.xr.getSession();
+    if (activeSession) {
+      try {
+        void activeSession.end();
+      } catch {
+        // Игнорируем ошибку закрытия при dispose
+      }
+    }
+
+    this.detachXRSessionListeners();
+    this.renderer.xr.removeEventListener('sessionstart', this.onRendererSessionStart);
+    this.renderer.xr.removeEventListener('sessionend', this.onRendererSessionEnd);
+
+    for (const cleanup of this.cleanupCallbacks) {
+      cleanup();
+    }
+    this.cleanupCallbacks.length = 0;
+
+    this.cleanupSessionState();
+
+    this.arcLine.parent?.remove(this.arcLine);
+    this.arcLine.geometry.dispose();
+    (this.arcLine.material as THREE.Material).dispose();
+
+    this.targetRing.parent?.remove(this.targetRing);
+    this.targetRing.geometry.dispose();
+    (this.targetRing.material as THREE.Material).dispose();
+
+    this.gazeReticle.parent?.remove(this.gazeReticle);
+    this.gazeReticle.geometry.dispose();
+    (this.gazeReticle.material as THREE.Material).dispose();
+
+    if (this.laser0) {
+      this.laser0.parent?.remove(this.laser0);
+      this.laser0.geometry.dispose();
+      (this.laser0.material as THREE.Material).dispose();
+    }
+    if (this.laser1) {
+      this.laser1.parent?.remove(this.laser1);
+      this.laser1.geometry.dispose();
+      (this.laser1.material as THREE.Material).dispose();
+    }
+
+    this.wristDisplay?.dispose();
+    if (this.vrButtonElement) {
+      this.vrButtonElement.onclick = null;
+      this.vrButtonElement.parentElement?.removeChild(this.vrButtonElement);
+      this.vrButtonElement = null;
     }
   }
 }

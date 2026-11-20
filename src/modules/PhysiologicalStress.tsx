@@ -228,32 +228,7 @@ export const PhysiologicalStress: React.FC<PhysiologicalStressProps> = ({
     }
   }, [ppeState.oxygenOrFilterReservePercent]);
 
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      const next = stepPhysiologicalModel(
-        telemetryRef.current,
-        ppeState,
-        currentDoseRateMsvPerHour,
-        accumulatedDoseMsv,
-        isPhysicalExertion,
-        ambientTemperatureC,
-        0.5
-      );
-      telemetryRef.current = next;
-
-      if (onUpdateTelemetry) {
-        onUpdateTelemetry(next);
-      }
-      if (onOxygenDepletion) {
-        const nextPressureMpa = Number(((next.remainingOxygenPercent / 100.0) * 29.4).toFixed(2));
-        onOxygenDepletion(next.remainingOxygenPercent, nextPressureMpa);
-      }
-    }, 500);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [
+  const latestPropsRef = useRef({
     ppeState,
     currentDoseRateMsvPerHour,
     accumulatedDoseMsv,
@@ -261,7 +236,44 @@ export const PhysiologicalStress: React.FC<PhysiologicalStressProps> = ({
     ambientTemperatureC,
     onUpdateTelemetry,
     onOxygenDepletion
-  ]);
+  });
+  latestPropsRef.current = {
+    ppeState,
+    currentDoseRateMsvPerHour,
+    accumulatedDoseMsv,
+    isPhysicalExertion,
+    ambientTemperatureC,
+    onUpdateTelemetry,
+    onOxygenDepletion
+  };
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      const props = latestPropsRef.current;
+      const next = stepPhysiologicalModel(
+        telemetryRef.current,
+        props.ppeState,
+        props.currentDoseRateMsvPerHour,
+        props.accumulatedDoseMsv,
+        props.isPhysicalExertion,
+        props.ambientTemperatureC,
+        0.5
+      );
+      telemetryRef.current = next;
+
+      if (props.onUpdateTelemetry) {
+        props.onUpdateTelemetry(next);
+      }
+      if (props.onOxygenDepletion) {
+        const nextPressureMpa = Number(((next.remainingOxygenPercent / 100.0) * 29.4).toFixed(2));
+        props.onOxygenDepletion(next.remainingOxygenPercent, nextPressureMpa);
+      }
+    }, 500);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   return null;
 };

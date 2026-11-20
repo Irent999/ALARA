@@ -403,8 +403,13 @@ export const VisorPostProcessing: React.FC<VisorPostProcessingProps> = ({
     }
 
     let lastTimeMs = performance.now();
+    let hasRenderedOnce = false;
     controller.visorMesh.onBeforeRender = () => {
       const nowMs = performance.now();
+      if (hasRenderedOnce && nowMs - lastTimeMs < 2) {
+        return;
+      }
+      hasRenderedOnce = true;
       const dt = Math.min(0.1, Math.max(0.0, (nowMs - lastTimeMs) / 1000.0));
       lastTimeMs = nowMs;
 

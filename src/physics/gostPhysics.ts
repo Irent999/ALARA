@@ -569,7 +569,7 @@ export const SHIELD_PROPERTIES = SHIELD_MATERIALS;
 // ============================================================================
 // 3. СРЕДСТВА ИНДИВИДУАЛЬНОЙ ЗАЩИТЫ (СИЗ - PPE) И РАСЧЕТ ПРОБЕГА БЕТА-ЧАСТИЦ
 // ============================================================================
-export type PPELoadoutId = 'none' | 'basic_ppe' | 'hazmat_suit' | 'pneumosuit_lead';
+export type PPELoadoutId = 'none' | 'basic_ppe' | 'bop_firefighter' | 'hazmat_suit' | 'pneumosuit_lead';
 
 export interface PPELoadoutProfile {
   id: PPELoadoutId;
@@ -584,6 +584,8 @@ export interface PPELoadoutProfile {
   betaAttenuationPercent: number;  // Паспортное подавление бета-излучения (90..99%)
   gammaAttenuationPercent: number;
   neutronAttenuationPercent: number;
+  thermalRatingC?: number;         // Термостойкость костюма МЧС (°C)
+  isDielectricRated?: boolean;     // Допуск к электроустановкам / кабельным трассам
 }
 
 export const PPE_LOADOUTS: Record<PPELoadoutId, PPELoadoutProfile> = {
@@ -599,12 +601,14 @@ export const PPE_LOADOUTS: Record<PPELoadoutId, PPELoadoutProfile> = {
     alphaAttenuationPercent: 0,
     betaAttenuationPercent: 0,
     gammaAttenuationPercent: 0,
-    neutronAttenuationPercent: 0
+    neutronAttenuationPercent: 0,
+    thermalRatingC: 40,
+    isDielectricRated: false
   },
   basic_ppe: {
     id: 'basic_ppe',
-    nameRu: 'Комплект №1: Спецодежда, бахилы, респиратор «Лепесток-200»',
-    shortNameRu: 'Спецодежда + Лепесток',
+    nameRu: 'Комплект №1: Костюм Л-1, перчатки, респиратор «Лепесток-200»',
+    shortNameRu: 'Л-1 + Лепесток-200',
     descriptionRu: '100% задержка альфа-частиц и аэрозолей, поглощение 90% мягкого и среднего бета-спектра.',
     polymerThicknessMm: 1.2,
     polymerDensityGcm3: 1.15,
@@ -613,12 +617,30 @@ export const PPE_LOADOUTS: Record<PPELoadoutId, PPELoadoutProfile> = {
     alphaAttenuationPercent: 100,
     betaAttenuationPercent: 90,
     gammaAttenuationPercent: 0,
-    neutronAttenuationPercent: 0
+    neutronAttenuationPercent: 0,
+    thermalRatingC: 65,
+    isDielectricRated: false
+  },
+  bop_firefighter: {
+    id: 'bop_firefighter',
+    nameRu: 'Комплект МЧС БОП-1 / ТОК-200 (Термостойкий + ППМ-88)',
+    shortNameRu: 'БОП-1 МЧС (до 350°C)',
+    descriptionRu: 'Боевая одежда пожарного МЧС со светоотражающими полосами, термозащитой до 350°C, диэлектрическими крагами (до 10 кВ) и панорамной маской ППМ-88.',
+    polymerThicknessMm: 3.2,
+    polymerDensityGcm3: 1.22,
+    arealDensityGcm2: 0.390,
+    leadEquivalentMm: 0.05,
+    alphaAttenuationPercent: 100,
+    betaAttenuationPercent: 94,
+    gammaAttenuationPercent: 6,
+    neutronAttenuationPercent: 0,
+    thermalRatingC: 350,
+    isDielectricRated: true
   },
   hazmat_suit: {
     id: 'hazmat_suit',
-    nameRu: 'Комплект №2: Пластикатовый костюм КЗМ + перчатки и СИЗОД',
-    shortNameRu: 'Химзащита КЗМ (95% β)',
+    nameRu: 'Комплект №2: Изолирующий костюм КИХ-4 + ГП-7ВМ / СИЗОД',
+    shortNameRu: 'Химзащита КИХ-4 (95% β)',
     descriptionRu: '100% задержка альфа-излучения и 95% бета-частиц слоем ПВХ/резины 2.5 мм (0.325 г/см²).',
     polymerThicknessMm: 2.5,
     polymerDensityGcm3: 1.30,
@@ -627,12 +649,14 @@ export const PPE_LOADOUTS: Record<PPELoadoutId, PPELoadoutProfile> = {
     alphaAttenuationPercent: 100,
     betaAttenuationPercent: 95,
     gammaAttenuationPercent: 4,
-    neutronAttenuationPercent: 0
+    neutronAttenuationPercent: 0,
+    thermalRatingC: 90,
+    isDielectricRated: true
   },
   pneumosuit_lead: {
     id: 'pneumosuit_lead',
-    nameRu: 'Комплект №3: Изолирующий пневмокостюм ЛГ-4 + фартук (0.5 мм Pb)',
-    shortNameRu: 'Пневмокостюм ЛГ-4 + Pb',
+    nameRu: 'Комплект №3: Бронежилет / фартук (0.5–2.5 мм Pb) + АСВ-2',
+    shortNameRu: 'Ликвидатор Pb + АСВ-2',
     descriptionRu: '100% задержка альфа, 99% бета-излучения (полное перекрытие пробега R_max) и ослабление гамма/рентгена.',
     polymerThicknessMm: 4.8,
     polymerDensityGcm3: 1.35,
@@ -641,7 +665,9 @@ export const PPE_LOADOUTS: Record<PPELoadoutId, PPELoadoutProfile> = {
     alphaAttenuationPercent: 100,
     betaAttenuationPercent: 99,
     gammaAttenuationPercent: 28,
-    neutronAttenuationPercent: 5
+    neutronAttenuationPercent: 5,
+    thermalRatingC: 120,
+    isDielectricRated: false
   }
 };
 
@@ -652,6 +678,9 @@ export const PPE_LOADOUTS: Record<PPELoadoutId, PPELoadoutProfile> = {
 export function mapCharacterPpeToLoadout(state: CharacterPPEState): PPELoadoutId {
   if (state.suitId === 'lead_apron' || state.suitId === 'heavy_lead_armor') {
     return 'pneumosuit_lead';
+  }
+  if (state.suitId === 'bop_suit') {
+    return 'bop_firefighter';
   }
   if (state.suitId === 'kih4_suit') {
     return 'hazmat_suit';
@@ -675,8 +704,10 @@ export function mapLoadoutToCharacterPpe(
   switch (loadoutId) {
     case 'pneumosuit_lead':
       return { suitId: 'lead_apron', respiratorId: 'asv2_scba', instrumentId: currentInstrumentId };
+    case 'bop_firefighter':
+      return { suitId: 'bop_suit', respiratorId: 'ppm88_mask', instrumentId: currentInstrumentId };
     case 'hazmat_suit':
-      return { suitId: 'kih4_suit', respiratorId: 'gp7_gasmask', instrumentId: currentInstrumentId };
+      return { suitId: 'kih4_suit', respiratorId: 'gp7vm_gasmask', instrumentId: currentInstrumentId };
     case 'basic_ppe':
       return { suitId: 'l1_suit', respiratorId: 'lepestok_200', instrumentId: currentInstrumentId };
     case 'none':

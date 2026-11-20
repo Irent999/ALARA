@@ -216,6 +216,8 @@ export class PBRSceneLightingRig {
     this.rootGroup.add(this.emergencyPulseLight);
   }
 
+  private lastAppliedEnvMapIntensity = -1;
+
   /**
    * Применяет физически корректные параметры освещения, экспоненциального тумана
    * и интенсивности IBL-отражений ко всей Three.js сцене и рендереру.
@@ -231,12 +233,14 @@ export class PBRSceneLightingRig {
     }
     const preset = this.currentPreset;
 
-    // 1. Настройка физически корректного пайплайна рендерера
+    // 1. Настройка физически корректного пайплайна рендерера со статическим кэшем теней
     if (renderer) {
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.shadowMap.autoUpdate = false;
+      renderer.shadowMap.needsUpdate = true;
     }
 
     // 2. Объемный экспоненциальный туман гермозоны
@@ -255,18 +259,21 @@ export class PBRSceneLightingRig {
     this.emergencyPulseLight.intensity =
       preset.emergencyAmbientIntensity * Math.max(0.05, emergencyGlowMultiplier);
 
-    // 4. Синхронизация интенсивности отражений окружения (envMapIntensity) на всех PBR-материалах
-    scene.traverse(obj => {
-      const mesh = obj as THREE.Mesh;
-      if (!mesh.isMesh || !mesh.material) return;
-      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      for (const mat of materials) {
-        const stdMat = mat as THREE.MeshStandardMaterial;
-        if ('envMapIntensity' in stdMat && typeof stdMat.envMapIntensity === 'number') {
-          stdMat.envMapIntensity = preset.envMapIntensity;
+    // 4. Синхронизация интенсивности отражений окружения только при реальном изменении
+    if (Math.abs(this.lastAppliedEnvMapIntensity - preset.envMapIntensity) > 0.001) {
+      this.lastAppliedEnvMapIntensity = preset.envMapIntensity;
+      scene.traverse(obj => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.material) return;
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of materials) {
+          const stdMat = mat as THREE.MeshStandardMaterial;
+          if ('envMapIntensity' in stdMat && typeof stdMat.envMapIntensity === 'number') {
+            stdMat.envMapIntensity = preset.envMapIntensity;
+          }
         }
-      }
-    });
+      });
+    }
   }
 
   public update(deltaTimeSeconds: number, isLowLightMode: boolean): void {

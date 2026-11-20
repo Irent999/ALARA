@@ -11,6 +11,7 @@ import {
   X,
   Award
 } from 'lucide-react';
+import type { MchsMissionMetrics } from '../scene/EvacuationManager';
 
 export interface ScenarioSuccessModalProps {
   isOpen: boolean;
@@ -22,6 +23,7 @@ export interface ScenarioSuccessModalProps {
   alaraRating?: string;
   completedTasksCount?: number;
   totalTasksCount?: number;
+  mchsMetrics?: MchsMissionMetrics;
   onNextScenario: () => void;
   onRestartScenario: () => void;
   onOpenReport: () => void;
@@ -38,6 +40,7 @@ export const ScenarioSuccessModal: React.FC<ScenarioSuccessModalProps> = ({
   alaraRating,
   completedTasksCount = 3,
   totalTasksCount = 3,
+  mchsMetrics,
   onNextScenario,
   onRestartScenario,
   onOpenReport,
@@ -89,7 +92,7 @@ export const ScenarioSuccessModal: React.FC<ScenarioSuccessModalProps> = ({
                 СЦЕНАРИЙ УСПЕШНО ЗАВЕРШЕН
               </span>
               <span className="font-mono text-xs text-emerald-400 font-bold">
-                Сценарий #{scenarioId} / 12
+                Сценарий #{scenarioId} / 4
               </span>
             </div>
             <h2 className="text-xl md:text-2xl font-black text-white mt-1.5 leading-tight">
@@ -171,6 +174,18 @@ export const ScenarioSuccessModal: React.FC<ScenarioSuccessModalProps> = ({
             (ALARA): минимальное время пребывания в поле излучения, соблюдение безопасной дистанции
             и эффективное применение экранирующих барьеров.
           </p>
+          {mchsMetrics && (mchsMetrics.operationsCompleted > 0 || mchsMetrics.totalExtractable > 0) && (
+            <div className="pt-2 border-t border-emerald-500/20 flex flex-wrap gap-3 font-mono text-[11px] text-emerald-200">
+              <span>Операций МЧС: {mchsMetrics.operationsCompleted}</span>
+              <span>Эвакуация в САР: {mchsMetrics.extractedCount}/{mchsMetrics.totalExtractable}</span>
+              <span>Щипцы ЦМ-1.5: {mchsMetrics.tongsCompliantExtractions}</span>
+              {mchsMetrics.bareHandViolations > 0 && (
+                <span className="text-rose-400">
+                  Нарушения (хват без щипцов): {mchsMetrics.bareHandViolations}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Кнопки действий */}

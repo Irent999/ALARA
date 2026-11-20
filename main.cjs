@@ -5,6 +5,7 @@ const path = require('path');
 app.commandLine.appendSwitch('enable-webgl2-compute-context');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-features', 'WebXR,OpenXR');
+app.commandLine.appendSwitch('webxr-runtime', 'openxr');
 
 function createWindow() {
   const mainWindow = new BrowserWindow({

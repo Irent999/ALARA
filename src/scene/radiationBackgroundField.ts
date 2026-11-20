@@ -338,7 +338,7 @@ export class RadiationBackgroundField {
       uniforms: {
         uTime: { value: 0 },
         uGlobalDoseRate: { value: 0.15 },
-        uPixelRatio: { value: Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2) },
+        uPixelRatio: { value: Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 1.5) },
         uSourceCount: { value: 0 },
         uSourcePositions: { value: this.sourcePositionsUniform },
         uSourceActivities: { value: this.sourceActivitiesUniform },

@@ -16,7 +16,9 @@ import {
   Mic,
   Send,
   X,
-  Layers
+  Layers,
+  FileText,
+  Loader2
 } from 'lucide-react';
 import {
   ComprehensiveProtectionAnalysis,
@@ -30,6 +32,12 @@ import {
 import type { VoiceLogEntry, VoiceLoggerMode } from '../vr/voiceTaskLogger';
 import type { IScenarioConfig } from '../scene/scenarioConfigRegistry';
 import type { ScenarioRulesEvaluationResult } from '../scene/scenarioRulesEngine';
+import {
+  exportDoseHistoryPdfReport,
+  type ScenarioMetadataSummary,
+  type SessionExposureLimitsTracker
+} from '../utils/pdfDoseReportExporter';
+import type { MchsMissionMetrics } from '../scene/EvacuationManager';
 
 ChartJS.register(...registerables);
 
@@ -78,8 +86,12 @@ interface FloatingAnalyticsWindowProps {
   exportCsvSignal?: number;
   onSubmitVoiceFallbackText?: (text: string, mode?: VoiceLoggerMode) => void;
   scenarioConfig?: IScenarioConfig;
+  scenarioMeta?: ScenarioMetadataSummary;
   rulesEvaluation?: ScenarioRulesEvaluationResult | null;
   onResetScenario?: () => void;
+  doseResetCount?: number;
+  getSessionLimitsSummary?: () => SessionExposureLimitsTracker;
+  mchsMetrics?: MchsMissionMetrics;
 }
 
 const MAX_CHART_POINTS = 40;
@@ -105,13 +117,18 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
   exportCsvSignal = 0,
   onSubmitVoiceFallbackText,
   scenarioConfig,
+  scenarioMeta,
   rulesEvaluation,
-  onResetScenario
+  onResetScenario,
+  doseResetCount = 0,
+  getSessionLimitsSummary,
+  mchsMetrics
 }) => {
   const [isMinimizedInternal, setIsMinimizedInternal] = useState(false);
   const [activeTab, setActiveTab] = useState<'charts' | 'protection' | 'voice'>('charts');
   const [spectralChartMode, setSpectralChartMode] = useState<'doughnut' | 'bar'>('bar');
   const [fallbackInputText, setFallbackInputText] = useState('');
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   const isMinimized = isMinimizedExternal !== undefined ? isMinimizedExternal : isMinimizedInternal;
   const setMinimizedState = useCallback(
@@ -621,6 +638,51 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
     }
   }, [exportCsvSignal, handleExportCsv]);
 
+  const handleExportPdf = useCallback(async () => {
+    if (isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      await exportDoseHistoryPdfReport({
+        history,
+        currentAnalysis,
+        cumulativeDoseMsv: safeAccumDoseMsv,
+        missionTimeSec: safeMissionTimeSec,
+        permitLimitMsv: safePermitLimitMsv,
+        selectedPpeId,
+        selectedRemoteToolId,
+        scenarioTitle,
+        scenarioConfig,
+        scenarioMeta,
+        rulesEvaluation,
+        voiceLogs,
+        doseResetCount,
+        sessionLimits: getSessionLimitsSummary?.() ?? null,
+        mchsMetrics
+      });
+    } catch (err) {
+      console.error('Ошибка формирования PDF-отчета телеметрии:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }, [
+    isExportingPdf,
+    history,
+    currentAnalysis,
+    safeAccumDoseMsv,
+    safeMissionTimeSec,
+    safePermitLimitMsv,
+    selectedPpeId,
+    selectedRemoteToolId,
+    scenarioTitle,
+    scenarioConfig,
+    scenarioMeta,
+    rulesEvaluation,
+    voiceLogs,
+    doseResetCount,
+    getSessionLimitsSummary,
+    mchsMetrics
+  ]);
+
   if (!isOpen) return null;
 
   if (isMinimized) {
@@ -695,6 +757,20 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
           >
             <Download className="w-3 h-3" />
             <span>CSV</span>
+          </button>
+
+          <button
+            onClick={handleExportPdf}
+            disabled={isExportingPdf}
+            className="px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 disabled:opacity-60 text-sky-300 border border-sky-500/30 text-[11px] font-semibold flex items-center gap-1 transition whitespace-nowrap cursor-pointer"
+            title="Экспорт структурированного PDF-отчета по телеметрии дозы и пределам"
+          >
+            {isExportingPdf ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <FileText className="w-3 h-3" />
+            )}
+            <span>PDF</span>
           </button>
 
           <button

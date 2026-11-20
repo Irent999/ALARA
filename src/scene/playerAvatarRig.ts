@@ -21,10 +21,14 @@ import * as THREE from 'three';
 import {
   CharacterPPEState,
   SUIT_DEFINITIONS,
-  RESPIRATOR_DEFINITIONS,
   SuitTypeId,
   RespiratorTypeId
 } from '../components/CharacterCustomizer3D';
+import {
+  createBopReflectiveStripeTexture,
+  createMchsBackPatchTexture,
+  createMchsChevronTexture
+} from './mchsTextures';
 
 export class PlayerAvatarRig {
   public rootGroup: THREE.Group;
@@ -53,7 +57,12 @@ export class PlayerAvatarRig {
   private leadPauldronsGroup: THREE.Group;
   private scbaUnitGroup: THREE.Group;
   private helmetGroup: THREE.Group;
+  private bopGearGroup: THREE.Group;
+  private bopHeadMeshes: THREE.Object3D[] = [];
+  private mchsInsigniaGroup: THREE.Group;
   private gasMaskGroup: THREE.Group;
+  private gp7vmTubeMesh: THREE.Mesh;
+  private ppm88MaskGroup: THREE.Group;
   private lepestokGroup: THREE.Group;
 
   // Детали экипировки (нагрудный дозиметр и бейдж допуска)
@@ -61,6 +70,9 @@ export class PlayerAvatarRig {
 
   public currentSuitId: SuitTypeId = 'none';
   public currentRespiratorId: RespiratorTypeId = 'none';
+  public firstPersonHeadHidden = true;
+  public isFirstPersonMode = false;
+  private readonly tempCamEuler = new THREE.Euler(0, 0, 0, 'YXZ');
 
   constructor(initialState: CharacterPPEState = { suitId: 'none', respiratorId: 'none', instrumentId: 'dp5' }) {
     this.rootGroup = new THREE.Group();
@@ -328,7 +340,99 @@ export class PlayerAvatarRig {
     this.rootGroup.add(this.scbaUnitGroup);
 
     // ------------------------------------------------------------------------
-    // 9. ГОЛОВНЫЕ УБОРЫ И СИЗОД (Шлем КИХ-4, Противогаз ГП-7, Лепесток-200)
+    // 8.5. БОЕВАЯ ОДЕЖДА ПОЖАРНОГО МЧС (БОП-1) И НАШИВКИ «МЧС РОССИИ»
+    // ------------------------------------------------------------------------
+    this.mchsInsigniaGroup = new THREE.Group();
+    const chevronMat = new THREE.MeshBasicMaterial({
+      map: createMchsChevronTexture(),
+      transparent: true,
+      side: THREE.DoubleSide
+    });
+    const chevronGeo = new THREE.PlaneGeometry(0.082, 0.102);
+    const leftChevron = new THREE.Mesh(chevronGeo, chevronMat);
+    leftChevron.position.set(-0.37, 1.32, 0.01);
+    leftChevron.rotation.y = -Math.PI / 2;
+    this.mchsInsigniaGroup.add(leftChevron);
+
+    const rightChevron = new THREE.Mesh(chevronGeo, chevronMat);
+    rightChevron.position.set(0.37, 1.32, 0.01);
+    rightChevron.rotation.y = Math.PI / 2;
+    this.mchsInsigniaGroup.add(rightChevron);
+
+    const backPatchMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.32, 0.10),
+      new THREE.MeshBasicMaterial({ map: createMchsBackPatchTexture(), side: THREE.DoubleSide })
+    );
+    backPatchMesh.position.set(0, 1.34, -0.185);
+    backPatchMesh.rotation.y = Math.PI;
+    this.mchsInsigniaGroup.add(backPatchMesh);
+    this.mchsInsigniaGroup.visible = false;
+    this.rootGroup.add(this.mchsInsigniaGroup);
+
+    this.bopGearGroup = new THREE.Group();
+    const bopStripeMat = new THREE.MeshStandardMaterial({
+      map: createBopReflectiveStripeTexture(),
+      roughness: 0.24,
+      metalness: 0.45,
+      emissive: new THREE.Color(0x65a30d),
+      emissiveIntensity: 0.25
+    });
+    const bopChestBand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.255, 0.238, 0.06, 24, 1, true),
+      bopStripeMat
+    );
+    bopChestBand.scale.set(1.16, 1.0, 0.74);
+    bopChestBand.position.set(0, 1.24, -0.04);
+    this.bopGearGroup.add(bopChestBand);
+
+    const bopWaistBand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.215, 0.220, 0.06, 24, 1, true),
+      bopStripeMat
+    );
+    bopWaistBand.scale.set(1.14, 1.0, 0.76);
+    bopWaistBand.position.set(0, 0.96, -0.04);
+    this.bopGearGroup.add(bopWaistBand);
+
+    const bopLegBandL = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.087, 0.084, 0.055, 18),
+      bopStripeMat
+    );
+    bopLegBandL.position.set(-0.14, 0.34, -0.04);
+    this.bopGearGroup.add(bopLegBandL);
+
+    const bopLegBandR = bopLegBandL.clone();
+    bopLegBandR.position.x = 0.14;
+    this.bopGearGroup.add(bopLegBandR);
+
+    // Пожарный шлем МЧС ШПМ с золотистым забралом
+    const bopHelmetShell = new THREE.Mesh(
+      new THREE.SphereGeometry(0.175, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.62),
+      new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.25, metalness: 0.22 })
+    );
+    bopHelmetShell.position.set(0, 1.62, -0.04);
+    this.bopGearGroup.add(bopHelmetShell);
+    this.bopHeadMeshes.push(bopHelmetShell);
+
+    const bopVisor = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.165, 0.165, 0.10, 20, 1, true, -Math.PI * 0.38, Math.PI * 0.76),
+      new THREE.MeshStandardMaterial({
+        color: 0xfacc15,
+        metalness: 0.9,
+        roughness: 0.08,
+        transparent: true,
+        opacity: 0.75,
+        side: THREE.DoubleSide
+      })
+    );
+    bopVisor.position.set(0, 1.58, -0.02);
+    this.bopGearGroup.add(bopVisor);
+    this.bopHeadMeshes.push(bopVisor);
+
+    this.bopGearGroup.visible = false;
+    this.rootGroup.add(this.bopGearGroup);
+
+    // ------------------------------------------------------------------------
+    // 9. ГОЛОВНЫЕ УБОРЫ И СИЗОД (Шлем КИХ-4, ППМ-88, ГП-7 / ГП-7ВМ, Лепесток-200)
     // ------------------------------------------------------------------------
     this.helmetGroup = new THREE.Group();
     const helmetSphereGeo = new THREE.SphereGeometry(0.21, 24, 24);
@@ -358,7 +462,40 @@ export class PlayerAvatarRig {
     this.helmetGroup.visible = false;
     this.rootGroup.add(this.helmetGroup);
 
-    // Противогаз ГП-7
+    // Панорамная маска ППМ-88
+    this.ppm88MaskGroup = new THREE.Group();
+    const ppmSeal = new THREE.Mesh(
+      new THREE.SphereGeometry(0.145, 18, 18),
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.72 })
+    );
+    ppmSeal.position.set(0, 1.58, 0.01);
+    this.ppm88MaskGroup.add(ppmSeal);
+
+    const ppmGlass = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.138, 0.128, 0.13, 24, 1, true, -Math.PI * 0.4, Math.PI * 0.8),
+      new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        roughness: 0.08,
+        metalness: 0.88,
+        transparent: true,
+        opacity: 0.72,
+        side: THREE.DoubleSide
+      })
+    );
+    ppmGlass.position.set(0, 1.59, 0.035);
+    this.ppm88MaskGroup.add(ppmGlass);
+
+    const ppmFilter = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.046, 0.046, 0.08, 16),
+      new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.35, metalness: 0.65 })
+    );
+    ppmFilter.rotation.x = Math.PI / 2;
+    ppmFilter.position.set(0, 1.49, 0.15);
+    this.ppm88MaskGroup.add(ppmFilter);
+    this.ppm88MaskGroup.visible = false;
+    this.rootGroup.add(this.ppm88MaskGroup);
+
+    // Противогаз ГП-7 / ГП-7ВМ
     this.gasMaskGroup = new THREE.Group();
     const maskFaceGeo = new THREE.SphereGeometry(0.15, 18, 18);
     const maskMat = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.65 });
@@ -373,6 +510,15 @@ export class PlayerAvatarRig {
     filterBox.position.set(0.12, 1.52, 0.06);
     filterBox.rotation.z = Math.PI / 3;
     this.gasMaskGroup.add(filterBox);
+
+    this.gp7vmTubeMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.008, 0.008, 0.16, 10),
+      new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.35 })
+    );
+    this.gp7vmTubeMesh.position.set(-0.08, 1.48, 0.13);
+    this.gp7vmTubeMesh.rotation.z = -0.35;
+    this.gp7vmTubeMesh.visible = false;
+    this.gasMaskGroup.add(this.gp7vmTubeMesh);
 
     this.gasMaskGroup.visible = false;
     this.rootGroup.add(this.gasMaskGroup);
@@ -474,20 +620,46 @@ export class PlayerAvatarRig {
       this.leadPauldronsGroup.visible = false;
     }
 
-    // 3. Гермошлем КИХ-4
-    this.helmetGroup.visible = state.suitId === 'kih4_suit';
+    // 3. Гермошлем КИХ-4, БОП-1 и шевроны МЧС
+    //    В режиме от первого лица (firstPersonHeadHidden) скрываем шлемы и маски на уровне глаз,
+    //    чтобы исключить клиппинг/клинья по краям фрустума камеры.
+    this.helmetGroup.visible = !this.firstPersonHeadHidden && state.suitId === 'kih4_suit';
+    this.bopGearGroup.visible = state.suitId === 'bop_suit';
+    this.bopHeadMeshes.forEach(m => {
+      m.visible = !this.firstPersonHeadHidden;
+    });
+    this.mchsInsigniaGroup.visible = state.suitId !== 'none';
 
-    // 4. СИЗОД: АСВ-2 (баллоны на спине), ГП-7, Лепесток-200
+    // 4. СИЗОД: АСВ-2 (баллоны на спине), ППМ-88, ГП-7 / ГП-7ВМ, Лепесток-200
     this.scbaUnitGroup.visible = state.respiratorId === 'asv2_scba';
-    this.gasMaskGroup.visible = state.respiratorId === 'gp7_gasmask';
-    this.lepestokGroup.visible = state.respiratorId === 'lepestok_200';
+    this.ppm88MaskGroup.visible = !this.firstPersonHeadHidden && state.respiratorId === 'ppm88_mask';
+    this.gasMaskGroup.visible =
+      !this.firstPersonHeadHidden &&
+      (state.respiratorId === 'gp7_gasmask' || state.respiratorId === 'gp7vm_gasmask');
+    this.gp7vmTubeMesh.visible = !this.firstPersonHeadHidden && state.respiratorId === 'gp7vm_gasmask';
+    this.lepestokGroup.visible = !this.firstPersonHeadHidden && state.respiratorId === 'lepestok_200';
+
+    if (this.isFirstPersonMode) {
+      this.rootGroup.visible = false;
+    }
+  }
+
+  /**
+   * Полное скрытие 3D-тела/СИЗ персонажа в режиме от первого лица,
+   * гарантирующее отсутствие клиппинга торса, плеч и воротника в кадре камеры.
+   */
+  public setFirstPersonMode(enabled: boolean): void {
+    this.isFirstPersonMode = enabled;
+    this.firstPersonHeadHidden = enabled;
+    this.rootGroup.visible = !enabled;
   }
 
   /**
    * Следование за поворотом взгляда оператора в десктопном режиме
    */
   public updatePose(camera: THREE.Camera): void {
-    const camEuler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
-    this.rootGroup.rotation.y = camEuler.y;
+    if (this.isFirstPersonMode) return;
+    this.tempCamEuler.setFromQuaternion(camera.quaternion, 'YXZ');
+    this.rootGroup.rotation.y = this.tempCamEuler.y;
   }
 }

@@ -782,7 +782,7 @@ export class VRUISystem {
     // 3. Блок сценария и задачи (справа)
     const midX = 520;
 
-    // Интерактивные кнопки выбора сценария в VR: [ ◀ СЦЕНАРИЙ ] [ # / 12 ] [ СЦЕНАРИЙ ▶ ]
+    // Интерактивные кнопки выбора сценария в VR: [ ◀ СЦЕНАРИЙ ] [ # / 4 ] [ СЦЕНАРИЙ ▶ ]
     const scenBtnY = 96;
     const scenBtnH = 34;
     const prevBtnW = 100;
@@ -805,7 +805,7 @@ export class VRUISystem {
       width: prevBtnW,
       height: scenBtnH,
       onClick: () => {
-        const prevId = curScenarioId <= 1 ? 12 : curScenarioId - 1;
+        const prevId = curScenarioId <= 1 ? 4 : curScenarioId - 1;
         this.onScenarioChange?.(prevId);
       }
     });
@@ -828,14 +828,14 @@ export class VRUISystem {
       width: nextBtnW,
       height: scenBtnH,
       onClick: () => {
-        const nextId = (curScenarioId % 12) + 1;
+        const nextId = (curScenarioId % 4) + 1;
         this.onScenarioChange?.(nextId);
       }
     });
 
     ctx.fillStyle = '#f59e0b';
     ctx.font = 'bold 15px monospace';
-    ctx.fillText(`СЦЕНАРИЙ ${curScenarioId} / 12`, midX + prevBtnW + 16, scenBtnY + 22);
+    ctx.fillText(`СЦЕНАРИЙ ${curScenarioId} / 4`, midX + prevBtnW + 16, scenBtnY + 22);
 
     ctx.fillStyle = '#f8fafc';
     ctx.font = 'bold 21px sans-serif';
@@ -1814,7 +1814,7 @@ export class VRUISystem {
 
     ctx.fillStyle = '#fef08a';
     ctx.font = 'bold 18px monospace';
-    ctx.fillText(`Сценарий ${data.scenarioId}/12: ${data.scenarioTitle}`, 36, 88);
+    ctx.fillText(`Сценарий ${data.scenarioId}/4: ${data.scenarioTitle}`, 36, 88);
 
     // Кнопка закрытия [ ✕ ]
     const closeBtnX = w - 80;

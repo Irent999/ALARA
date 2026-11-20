@@ -11,6 +11,7 @@
 import React, { useMemo } from 'react';
 import { PPEChecklistResult, ProtectionCoefficientsResult } from './PPECheckModule';
 import { PhysiologicalTelemetry } from './PhysiologicalStress';
+import type { MchsMissionMetrics } from '../scene/EvacuationManager';
 
 export interface AARTrajectorySample {
   timestampSec: number;
@@ -57,6 +58,7 @@ export interface AARSummaryReport {
   trajectorySamples: AARTrajectorySample[];
   violations: AARProtocolViolation[];
   scoreBreakdown: AARScoreBreakdown;
+  mchsMetrics?: MchsMissionMetrics;
   generatedAtIso: string;
 }
 
@@ -76,6 +78,7 @@ export function evaluateAARSummary(params: {
   physiology: PhysiologicalTelemetry;
   trajectorySamples: AARTrajectorySample[];
   violations: AARProtocolViolation[];
+  mchsMetrics?: MchsMissionMetrics;
 }): AARSummaryReport {
   const {
     scenarioId,
@@ -88,7 +91,8 @@ export function evaluateAARSummary(params: {
     ppeChecklist,
     physiology,
     trajectorySamples,
-    violations
+    violations,
+    mchsMetrics
   } = params;
 
   let peakDoseRate = 0;
@@ -135,8 +139,17 @@ export function evaluateAARSummary(params: {
   }
   ppeComplianceScore = Number(ppeComplianceScore.toFixed(1));
 
+  const hasLoggedBareHand = violations.some(v => v.code === 'BARE_HAND_ISOTOPE_GRAB');
+  const extraBareHandPenalty =
+    mchsMetrics && mchsMetrics.bareHandViolations > 0 && !hasLoggedBareHand
+      ? mchsMetrics.bareHandViolations * 15
+      : 0;
+  if (extraBareHandPenalty > 0) {
+    ppeComplianceScore = Number(Math.max(0, ppeComplianceScore - extraBareHandPenalty * 0.5).toFixed(1));
+  }
+
   const doseResetPenalty = doseResetCount * 25;
-  const penaltySum = violations.reduce((acc, v) => acc + v.penaltyPoints, 0);
+  const penaltySum = violations.reduce((acc, v) => acc + v.penaltyPoints, 0) + extraBareHandPenalty;
   const rawTotal =
     timeEfficiencyScore + distanceOptimizationScore + shieldingUsageScore + ppeComplianceScore - penaltySum * 0.35 - doseResetPenalty;
   const totalScore = Number(Math.max(0, Math.min(100, rawTotal)).toFixed(1));
@@ -174,6 +187,7 @@ export function evaluateAARSummary(params: {
       gradeRu,
       passedCertification: totalScore >= 70 && finalAccumulatedDoseMsv <= doseLimitMsv && doseResetCount === 0
     },
+    mchsMetrics,
     generatedAtIso: new Date().toISOString()
   };
 }
@@ -215,12 +229,13 @@ export interface AARAnalyticsModalProps {
   isOpen: boolean;
   onClose: () => void;
   report: AARSummaryReport;
+  onExportPdf?: () => void | Promise<void>;
 }
 
 /**
  * Интерактивная панель послеполетного разбора (After Action Review) с тепловой картой маршрута
  */
-export const AARAnalytics: React.FC<AARAnalyticsModalProps> = ({ isOpen, onClose, report }) => {
+export const AARAnalytics: React.FC<AARAnalyticsModalProps> = ({ isOpen, onClose, report, onExportPdf }) => {
   const heatmapPoints = useMemo(() => {
     if (report.trajectorySamples.length === 0) return [];
     const maxRate = Math.max(0.01, report.peakDoseRateMsvPerHour);
@@ -276,21 +291,29 @@ export const AARAnalytics: React.FC<AARAnalyticsModalProps> = ({ isOpen, onClose
             <h2 className="text-lg font-bold text-white mt-0.5">{report.scenarioTitle}</h2>
           </div>
           <div className="flex items-center gap-2">
+            {onExportPdf && (
+              <button
+                onClick={onExportPdf}
+                className="px-3 py-1.5 text-xs font-mono bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded transition cursor-pointer"
+              >
+                ЭКСПОРТ PDF
+              </button>
+            )}
             <button
               onClick={handleDownloadCsv}
-              className="px-3 py-1.5 text-xs font-mono bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded transition"
+              className="px-3 py-1.5 text-xs font-mono bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded transition cursor-pointer"
             >
               ЭКСПОРТ CSV
             </button>
             <button
               onClick={handleDownloadJson}
-              className="px-3 py-1.5 text-xs font-mono bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded transition"
+              className="px-3 py-1.5 text-xs font-mono bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded transition cursor-pointer"
             >
               ЭКСПОРТ JSON
             </button>
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition"
+              className="px-3 py-1.5 text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition cursor-pointer"
             >
               ЗАКРЫТЬ [ESC]
             </button>
@@ -471,6 +494,45 @@ export const AARAnalytics: React.FC<AARAnalyticsModalProps> = ({ isOpen, onClose
                 <span className="text-slate-200">{report.averageDoseRateMsvPerHour.toFixed(3)} мЗв/ч</span>
               </div>
             </div>
+
+            {report.mchsMetrics &&
+              (report.mchsMetrics.operationsCompleted > 0 ||
+                report.mchsMetrics.totalExtractable > 0 ||
+                report.mchsMetrics.bareHandViolations > 0) && (
+                <div className="p-3.5 rounded bg-slate-950/90 border border-cyan-500/30 space-y-1.5 text-xs font-mono">
+                  <div className="text-cyan-300 uppercase font-bold">
+                    Операции МЧС и эвакуация (САР)
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Технологических операций:</span>
+                    <span className="text-white font-bold">{report.mchsMetrics.operationsCompleted}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Изолировано в САР:</span>
+                    <span className="text-emerald-300 font-bold">
+                      {report.mchsMetrics.extractedCount} / {report.mchsMetrics.totalExtractable}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Захват щипцами ЦМ-1.5:</span>
+                    <span className="text-sky-300 font-bold">
+                      {report.mchsMetrics.tongsCompliantExtractions}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Хват ИИИ без щипцов:</span>
+                    <span
+                      className={
+                        report.mchsMetrics.bareHandViolations > 0
+                          ? 'text-rose-400 font-bold'
+                          : 'text-emerald-400'
+                      }
+                    >
+                      {report.mchsMetrics.bareHandViolations}
+                    </span>
+                  </div>
+                </div>
+              )}
           </div>
         </div>
       </div>

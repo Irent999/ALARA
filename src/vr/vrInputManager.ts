@@ -182,6 +182,16 @@ export interface VRInputManagerCallbacks {
   onPushToTalkStateChange?: (isListening: boolean) => void;
   /** Уведомление о переключении фонарика (Кнопка Y) */
   onFlashlightToggled?: (isOn: boolean) => void;
+  /** Правый стик вверх/вниз: циклическое переключение инструментов МЧС (1..5) */
+  onCycleTool?: (dir: 1 | -1) => void;
+  /** Правый триггер: удержание в 3D-мире (дезактивация, тушение, арматура, пуск) */
+  onRightTriggerWorldHold?: (
+    raycaster: THREE.Raycaster,
+    controller: THREE.Group,
+    isHeld: boolean,
+    justPressed: boolean,
+    justReleased: boolean
+  ) => void;
 }
 
 /**
@@ -245,6 +255,7 @@ export class VRInputManager {
   /** Защелка для одиночного срабатывания Snap Turn при отклонении правого стика */
   private snapTurnLocked = false;
   private snapCooldownSec = 0;
+  private rightStickCycleLocked = false;
 
   /** Флаг удержания радиометра-дозиметра в правой руке (Правый Грип) */
   public isRightGripHoldingRadiometer = false;
@@ -268,6 +279,7 @@ export class VRInputManager {
   private readonly tempControllerWorldPos = new THREE.Vector3();
   private readonly tempControllerWorldDir = new THREE.Vector3();
   private readonly tempControllerQuat = new THREE.Quaternion();
+  private readonly tempCalibOffset = new THREE.Vector3();
 
   /** Троттлинг тревожной пульсации дозиметра */
   private lastDangerPulseTimeMs = 0;
@@ -343,39 +355,64 @@ export class VRInputManager {
   }
 
   /**
-   * Чтение осей стика и кнопок из WebXR Gamepad (стандартный маппинг xr-standard)
+   * Полный сброс состояния менеджера ввода при завершении или сбое XR-сессии
+   */
+  public reset(): void {
+    this.snapTurnLocked = false;
+    this.snapCooldownSec = 0;
+    this.rightStickCycleLocked = false;
+    this.isRightGripHoldingRadiometer = false;
+    this.isLeftGripHoldingObject = false;
+    if (this.isLeftPushToTalkActive) {
+      this.isLeftPushToTalkActive = false;
+      this.callbacks.voiceTaskLogger?.stopListening(null);
+      this.callbacks.onPushToTalkStateChange?.(false);
+    }
+    this.resetControllerState(this.leftState);
+    this.resetControllerState(this.rightState);
+  }
+
+  /**
+   * Чтение осей стика и кнопок из WebXR Gamepad (универсально для Quest, Vive, Pico, Index, WMR)
    */
   private pollGamepadIntoState(gamepad: Gamepad, state: VRControllerFrameState): void {
     state.connected = true;
     state.gamepad = gamepad;
 
-    // В стандарте xr-standard стик (thumbstick) находится на axes[2] (X) и axes[3] (Y),
-    // fallback на axes[0] / axes[1] для нестандартных профилей
-    const rawX =
-      gamepad.axes.length >= 4 && (Math.abs(gamepad.axes[2]) > 0.001 || Math.abs(gamepad.axes[3]) > 0.001)
-        ? gamepad.axes[2]
-        : gamepad.axes[0] ?? 0;
-    const rawY =
-      gamepad.axes.length >= 4 && (Math.abs(gamepad.axes[2]) > 0.001 || Math.abs(gamepad.axes[3]) > 0.001)
-        ? gamepad.axes[3]
-        : gamepad.axes[1] ?? 0;
+    const axes = gamepad.axes;
+    let rawX = 0;
+    let rawY = 0;
+    if (axes && axes.length >= 4) {
+      const mag01 = Math.hypot(axes[0] ?? 0, axes[1] ?? 0);
+      const mag23 = Math.hypot(axes[2] ?? 0, axes[3] ?? 0);
+      if (mag23 >= mag01) {
+        rawX = axes[2] ?? 0;
+        rawY = axes[3] ?? 0;
+      } else {
+        rawX = axes[0] ?? 0;
+        rawY = axes[1] ?? 0;
+      }
+    } else if (axes && axes.length >= 2) {
+      rawX = axes[0] ?? 0;
+      rawY = axes[1] ?? 0;
+    }
 
-    state.rawStickX = rawX;
-    state.rawStickY = rawY;
-    state.stickX = this.applyDeadzone(rawX);
-    state.stickY = this.applyDeadzone(rawY);
+    state.rawStickX = Number.isFinite(rawX) ? rawX : 0;
+    state.rawStickY = Number.isFinite(rawY) ? rawY : 0;
+    state.stickX = this.applyDeadzone(state.rawStickX);
+    state.stickY = this.applyDeadzone(state.rawStickY);
 
-    // Стандартная раскладка кнопок xr-standard (Meta Quest Touch / Pico / Index):
-    // buttons[0] = Trigger (select)
-    // buttons[1] = Squeeze / Grip
-    // buttons[3] = Thumbstick Press
-    // buttons[4] = Кнопка A (правый) / Кнопка X (левый)
-    // buttons[5] = Кнопка B (правый) / Кнопка Y (левый)
-    this.updateButtonEdge(state.trigger, gamepad.buttons[0], 0.55);
-    this.updateButtonEdge(state.grip, gamepad.buttons[1], 0.5);
-    this.updateButtonEdge(state.thumbstickPress, gamepad.buttons[3], 0.5);
-    this.updateButtonEdge(state.buttonAOrX, gamepad.buttons[4], 0.5);
-    this.updateButtonEdge(state.buttonBOrY, gamepad.buttons[5], 0.5);
+    // Универсальный маппинг кнопок xr-standard с fallback для 2/3-кнопочных контроллеров (HTC Vive Wand):
+    // buttons[0] = Trigger (select), buttons[1] = Squeeze / Grip,
+    // buttons[3] (или buttons[2] touchpad) = Thumbstick/Touchpad Press,
+    // buttons[4] = A / X, buttons[5] = B / Y
+    const buttons = gamepad.buttons;
+    const stickBtn = buttons?.[3] ?? buttons?.[2];
+    this.updateButtonEdge(state.trigger, buttons?.[0], 0.55);
+    this.updateButtonEdge(state.grip, buttons?.[1], 0.5);
+    this.updateButtonEdge(state.thumbstickPress, stickBtn, 0.5);
+    this.updateButtonEdge(state.buttonAOrX, buttons?.[4], 0.5);
+    this.updateButtonEdge(state.buttonBOrY, buttons?.[5], 0.5);
   }
 
   /**
@@ -403,18 +440,28 @@ export class VRInputManager {
     let seenLeft = false;
     let seenRight = false;
 
-    const inputSources = xrSession.inputSources;
-    for (let i = 0; i < inputSources.length; i++) {
-      const source = inputSources[i];
-      if (!source.gamepad) continue;
+    try {
+      const inputSources = xrSession.inputSources;
+      if (inputSources) {
+        for (let i = 0; i < inputSources.length; i++) {
+          const source = inputSources[i];
+          if (!source || !source.gamepad) continue;
 
-      if (source.handedness === 'left') {
-        seenLeft = true;
-        this.pollGamepadIntoState(source.gamepad, this.leftState);
-      } else if (source.handedness === 'right') {
-        seenRight = true;
-        this.pollGamepadIntoState(source.gamepad, this.rightState);
+          if (source.handedness === 'left') {
+            seenLeft = true;
+            this.pollGamepadIntoState(source.gamepad, this.leftState);
+          } else if (source.handedness === 'right') {
+            seenRight = true;
+            this.pollGamepadIntoState(source.gamepad, this.rightState);
+          } else if (source.handedness === 'none' && !seenRight) {
+            // Одноручный или немаркированный контроллер (3DoF / Go / GearVR) — направляем в правый слот действия
+            seenRight = true;
+            this.pollGamepadIntoState(source.gamepad, this.rightState);
+          }
+        }
       }
+    } catch {
+      // Игнорируем транзиентные ошибки WebXR inputSources при горячем подключении/отключении контроллеров
     }
 
     if (!seenLeft) {
@@ -476,6 +523,19 @@ export class VRInputManager {
       this.callbacks.onRightTriggerUiRelease?.(rightController);
     }
 
+    if (
+      rightController &&
+      (right.trigger.justPressed || right.trigger.isHeld || right.trigger.justReleased)
+    ) {
+      this.callbacks.onRightTriggerWorldHold?.(
+        this.rightRaycaster,
+        rightController,
+        right.trigger.isHeld,
+        right.trigger.justPressed,
+        right.trigger.justReleased
+      );
+    }
+
     // 1.2. Правый Грип (squeeze / Grip):
     // - Удерживание: Физический хват радиометра-дозиметра в ладони правой руки (перевод пальцев в позу Grip Pose)
     // - Отпускание: Возврат радиометра в дефолтную позицию хватов
@@ -492,6 +552,7 @@ export class VRInputManager {
 
     // 1.3. Правый Стик (thumbstick):
     // - Отклонение влево/вправо (X-axis): Дискретный или плавный поворот камеры игрока (шаг 30°, deadzone 0.15)
+    // - Отклонение вверх/вниз (Y-axis): Переключение активного инструмента МЧС (слоты 1..5)
     if (!isMovementFrozen) {
       if (this.snapCooldownSec > 0) {
         this.snapCooldownSec = Math.max(0, this.snapCooldownSec - dt);
@@ -510,6 +571,17 @@ export class VRInputManager {
         }
       } else if (Math.abs(right.stickX) > 0) {
         this.playerGroup.rotation.y -= right.stickX * this.smoothTurnSpeedRad * dt;
+      }
+
+      if (Math.abs(right.stickY) >= 0.72 && Math.abs(right.stickX) < 0.45) {
+        if (!this.rightStickCycleLocked) {
+          const dir: 1 | -1 = right.stickY < 0 ? 1 : -1;
+          this.rightStickCycleLocked = true;
+          this.triggerHapticProfile('right', 'mode_toggle');
+          this.callbacks.onCycleTool?.(dir);
+        }
+      } else if (Math.abs(right.stickY) < 0.25) {
+        this.rightStickCycleLocked = false;
       }
     }
 
@@ -629,8 +701,8 @@ export class VRInputManager {
     if (xrCamera) {
       const localCamPos = xrCamera.position;
       if (localCamPos.lengthSq() > 0.0001) {
-        const offset = new THREE.Vector3(localCamPos.x, 0, localCamPos.z);
-        offset.applyAxisAngle(this.upAxis, this.playerGroup.rotation.y);
+        this.tempCalibOffset.set(localCamPos.x, 0, localCamPos.z);
+        this.tempCalibOffset.applyAxisAngle(this.upAxis, this.playerGroup.rotation.y);
         // Центрируем положение группы игрока плавной калибровкой
         this.playerGroup.position.x = THREE.MathUtils.clamp(this.playerGroup.position.x, -7.5, 7.5);
         this.playerGroup.position.z = THREE.MathUtils.clamp(this.playerGroup.position.z, -5.5, 5.5);

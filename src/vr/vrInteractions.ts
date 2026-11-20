@@ -71,6 +71,30 @@ export const GRIP_OFFSETS: Record<string, GripOffset> = {
     position: new THREE.Vector3(-0.02, 0.01, -0.03),
     rotation: new THREE.Euler(0, 0, 0)
   },
+  // МЧС Сценарий 1: Выпавший топливный элемент ТВЭЛ / ИИИ (захват щипцами ЦМ-1.5)
+  fuel_pin_source: {
+    position: new THREE.Vector3(0, -0.01, -0.10),
+    rotation: new THREE.Euler(Math.PI / 2, 0, 0)
+  },
+  // МЧС Сценарий 2: Повреждённая бочка РАО и пострадавший оператор
+  damaged_rao_drum: {
+    position: new THREE.Vector3(0, -0.22, -0.52),
+    rotation: new THREE.Euler(0, 0, 0)
+  },
+  injured_operator: {
+    position: new THREE.Vector3(0, -0.35, -0.72),
+    rotation: new THREE.Euler(0, Math.PI / 2, 0)
+  },
+  // МЧС Сценарий 3: Критический блок управления АСУ ТП
+  critical_control_unit: {
+    position: new THREE.Vector3(0, -0.03, -0.14),
+    rotation: new THREE.Euler(0, 0, 0)
+  },
+  // Хват на конце губок дистанционных щипцов ЦМ-1.5
+  tongs_tip: {
+    position: new THREE.Vector3(0, 0, -0.04),
+    rotation: new THREE.Euler(Math.PI / 2, 0, 0)
+  },
   // Универсальный фоллбэк для мелкого ручного инвентаря (дозиметры, датчики, флешки)
   default: {
     position: new THREE.Vector3(0, -0.025, -0.09),
@@ -250,6 +274,8 @@ export class InteractionSystem {
   private readonly tempEuler = new THREE.Euler(0, 0, 0, 'YXZ');
   private readonly tempRayOrigin = new THREE.Vector3();
   private readonly tempBox = new THREE.Box3();
+  private readonly tempWorldNormal = new THREE.Vector3();
+  private readonly tempInteractMeshes: THREE.Object3D[] = [];
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -270,8 +296,15 @@ export class InteractionSystem {
       }
       if (itemMeta.placementType === 'floor') return true;
       if (itemMeta.placementType === 'prop') return false;
-      if (itemMeta.type === 'shield' || itemMeta.type === 'container') return true;
-      if (itemMeta.type === 'source' || itemMeta.type === 'sample') return false;
+      if (itemMeta.type === 'shield' || itemMeta.type === 'container' || itemMeta.type === 'drop_zone') return true;
+      if (
+        itemMeta.type === 'source' ||
+        itemMeta.type === 'sample' ||
+        itemMeta.type === 'extractable' ||
+        itemMeta.type === 'control_unit'
+      ) {
+        return false;
+      }
     }
 
     const ud = object.userData;
@@ -316,8 +349,11 @@ export class InteractionSystem {
     this.interactRaycaster.near = 0.01;
     this.interactRaycaster.far = maxDistance;
 
-    const meshes = interactiveList.map(item => item.mesh);
-    const hits = this.interactRaycaster.intersectObjects(meshes, true);
+    this.tempInteractMeshes.length = 0;
+    for (let i = 0; i < interactiveList.length; i++) {
+      this.tempInteractMeshes.push(interactiveList[i].mesh);
+    }
+    const hits = this.interactRaycaster.intersectObjects(this.tempInteractMeshes, true);
 
     if (hits.length > 0) {
       let currentObj: THREE.Object3D | null = hits[0].object;
@@ -353,7 +389,8 @@ export class InteractionSystem {
   public grabObject(
     item: InteractiveObjectInstance,
     holder: THREE.Object3D,
-    controllerIndex: number | null = null
+    controllerIndex: number | null = null,
+    customGripOffset?: GripOffset
   ): void {
     // Если в руке уже был другой предмет — сначала корректно отпускаем его
     if (this.grabbedObject && this.grabbedObject !== item.mesh) {
@@ -367,7 +404,7 @@ export class InteractionSystem {
     holder.attach(targetMesh);
 
     // Применяем калиброванный Grip Offset для данного типа предмета
-    const gripConf = GRIP_OFFSETS[item.id] || GRIP_OFFSETS.default;
+    const gripConf = customGripOffset || GRIP_OFFSETS[item.id] || GRIP_OFFSETS.default;
     targetMesh.position.copy(gripConf.position);
     targetMesh.rotation.copy(gripConf.rotation);
 
@@ -562,8 +599,8 @@ export class InteractionSystem {
 
       // Если пересекли горизонтальную опорную поверхность (пол или рабочий стол бокса) ниже точки старта
       if (hit.face && hit.face.normal) {
-        const worldNormal = hit.face.normal.clone().transformDirection(obj.matrixWorld);
-        if (worldNormal.y > 0.7 && hit.point.y <= releaseWorldPos.y + 0.35) {
+        this.tempWorldNormal.copy(hit.face.normal).transformDirection(obj.matrixWorld);
+        if (this.tempWorldNormal.y > 0.7 && hit.point.y <= releaseWorldPos.y + 0.35) {
           return hit.point.y;
         }
       } else if (Math.abs(hit.point.y) < 0.05) {

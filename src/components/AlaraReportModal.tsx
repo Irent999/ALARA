@@ -1,9 +1,24 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Chart as ChartJS,
   registerables
 } from 'chart.js';
-import { Award, Clock, Radiation, Shield, X, RotateCcw, TrendingDown } from 'lucide-react';
+import { Award, Clock, Radiation, X, RotateCcw, TrendingDown, FileText, Loader2 } from 'lucide-react';
+import type {
+  ComprehensiveProtectionAnalysis,
+  PPELoadoutId,
+  RemoteToolId
+} from '../physics/gostPhysics';
+import type { IScenarioConfig } from '../scene/scenarioConfigRegistry';
+import type { ScenarioRulesEvaluationResult } from '../scene/scenarioRulesEngine';
+import type { VoiceLogEntry } from '../vr/voiceTaskLogger';
+import type { TelemetryHistoryPoint } from './FloatingAnalyticsWindow';
+import {
+  exportDoseHistoryPdfReport,
+  type ScenarioMetadataSummary,
+  type SessionExposureLimitsTracker
+} from '../utils/pdfDoseReportExporter';
+import type { MchsMissionMetrics } from '../scene/EvacuationManager';
 
 ChartJS.register(...registerables);
 
@@ -16,6 +31,18 @@ interface AlaraReportModalProps {
   chartDoseRate: number[];
   onRestartMission: () => void;
   scenarioTitle: string;
+  telemetryHistory?: ReadonlyArray<TelemetryHistoryPoint>;
+  protectionAnalysis?: ComprehensiveProtectionAnalysis;
+  permitLimitMsv?: number;
+  selectedPpeId?: PPELoadoutId;
+  selectedRemoteToolId?: RemoteToolId;
+  scenarioConfig?: IScenarioConfig;
+  scenarioMeta?: ScenarioMetadataSummary;
+  rulesEvaluation?: ScenarioRulesEvaluationResult | null;
+  voiceLogs?: ReadonlyArray<VoiceLogEntry>;
+  doseResetCount?: number;
+  getSessionLimitsSummary?: () => SessionExposureLimitsTracker;
+  mchsMetrics?: MchsMissionMetrics;
 }
 
 export const AlaraReportModal: React.FC<AlaraReportModalProps> = ({
@@ -26,10 +53,68 @@ export const AlaraReportModal: React.FC<AlaraReportModalProps> = ({
   chartLabels,
   chartDoseRate,
   onRestartMission,
-  scenarioTitle
+  scenarioTitle,
+  telemetryHistory = [],
+  protectionAnalysis,
+  permitLimitMsv = 0.1,
+  selectedPpeId = 'hazmat_suit',
+  selectedRemoteToolId = 'hand',
+  scenarioConfig,
+  scenarioMeta,
+  rulesEvaluation,
+  voiceLogs = [],
+  doseResetCount = 0,
+  getSessionLimitsSummary,
+  mchsMetrics
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartInstanceRef = useRef<ChartJS | null>(null);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleExportPdf = useCallback(async () => {
+    if (isExportingPdf || !protectionAnalysis) return;
+    setIsExportingPdf(true);
+    try {
+      await exportDoseHistoryPdfReport({
+        history: telemetryHistory,
+        currentAnalysis: protectionAnalysis,
+        cumulativeDoseMsv,
+        missionTimeSec,
+        permitLimitMsv,
+        selectedPpeId,
+        selectedRemoteToolId,
+        scenarioTitle,
+        scenarioConfig,
+        scenarioMeta,
+        rulesEvaluation,
+        voiceLogs,
+        doseResetCount,
+        sessionLimits: getSessionLimitsSummary?.() ?? null,
+        mchsMetrics
+      });
+    } catch (err) {
+      console.error('Ошибка формирования PDF-отчета ALARA:', err);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }, [
+    isExportingPdf,
+    protectionAnalysis,
+    telemetryHistory,
+    cumulativeDoseMsv,
+    missionTimeSec,
+    permitLimitMsv,
+    selectedPpeId,
+    selectedRemoteToolId,
+    scenarioTitle,
+    scenarioConfig,
+    scenarioMeta,
+    rulesEvaluation,
+    voiceLogs,
+    doseResetCount,
+    getSessionLimitsSummary,
+    mchsMetrics
+  ]);
 
   useEffect(() => {
     if (!isOpen || !canvasRef.current) return;
@@ -133,7 +218,7 @@ export const AlaraReportModal: React.FC<AlaraReportModalProps> = ({
               <p className="text-xs text-slate-400">{scenarioTitle}</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg">
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -194,21 +279,52 @@ export const AlaraReportModal: React.FC<AlaraReportModalProps> = ({
               Свинцовые и стальные экраны поглощают фотоны с учетом фактора накопления Тейлора.
             </div>
           </div>
+          {mchsMetrics &&
+            (mchsMetrics.operationsCompleted > 0 ||
+              mchsMetrics.totalExtractable > 0 ||
+              mchsMetrics.bareHandViolations > 0) && (
+              <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center gap-4 font-mono text-[11px] text-cyan-300">
+                <span>Операций МЧС: {mchsMetrics.operationsCompleted}</span>
+                <span>
+                  Эвакуация в САР: {mchsMetrics.extractedCount}/{mchsMetrics.totalExtractable}
+                </span>
+                <span>Щипцы ЦМ-1.5: {mchsMetrics.tongsCompliantExtractions}</span>
+                {mchsMetrics.bareHandViolations > 0 && (
+                  <span className="text-rose-400 font-bold">
+                    Хват ИИИ без щипцов: {mchsMetrics.bareHandViolations}
+                  </span>
+                )}
+              </div>
+            )}
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          {protectionAnalysis && (
+            <button
+              onClick={handleExportPdf}
+              disabled={isExportingPdf}
+              className="px-5 py-3 bg-sky-500/20 hover:bg-sky-500/30 disabled:opacity-60 text-sky-300 border border-sky-400/40 font-bold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {isExportingPdf ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <FileText className="w-4 h-4" />
+              )}
+              <span>Экспорт PDF</span>
+            </button>
+          )}
           <button
             onClick={() => {
               onClose();
               onRestartMission();
             }}
-            className="flex-1 py-3 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-xl transition flex items-center justify-center gap-2"
+            className="flex-1 py-3 bg-yellow-500 hover:bg-yellow-400 text-black font-bold rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
           >
             <RotateCcw className="w-4 h-4" /> Пройти миссию заново
           </button>
           <button
             onClick={onClose}
-            className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition"
+            className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition cursor-pointer"
           >
             Продолжить
           </button>

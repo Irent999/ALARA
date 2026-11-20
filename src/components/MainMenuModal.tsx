@@ -88,7 +88,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   const currentLabScenario = SCENARIOS.find(s => s.id === activeScenarioId) || SCENARIOS[0];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-lg flex items-center justify-center p-3 sm:p-5 font-sans select-none">
+    <div className="fixed inset-0 z-50 bg-slate-950/92 flex items-center justify-center p-3 sm:p-5 font-sans select-none">
       <div className="glass-panel max-w-6xl w-full h-[92vh] rounded-3xl border border-sky-500/40 flex flex-col overflow-hidden shadow-2xl bg-slate-950/95 text-slate-100">
         
         {/* Верхняя шапка Главного Меню */}
@@ -100,14 +100,14 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-black tracking-tight text-white uppercase">
-                  Виртуальный Лабораторный Практикум
+                  ALARA МЧС — Тренажёр Ликвидации ЧС на АЭС
                 </h1>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono font-bold">
-                  ГОСТ Р 8.804 • НРБ-99/2009
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30 font-mono font-bold">
+                  МЧС РОССИИ • НРБ-99/2009
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Дозиметрия, радиационная физика и защита от ионизирующего излучения в среде WebXR / Three.js
+                Обучение подразделений МЧС действиям при радиационных выбросах, кабельных пожарах и обесточивании БПУ АЭС
               </p>
             </div>
           </div>
@@ -239,10 +239,108 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                 </div>
               </div>
 
-              {/* Карточки 3 академических лабораторных работ */}
+              {/* Быстрое комплектование экипировки и СИЗ МЧС перед выходом на сцену */}
+              <div className="p-4 rounded-2xl bg-slate-900/75 border border-slate-800 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-xs font-bold text-orange-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Shield className="w-4 h-4 text-orange-400" />
+                      <span>Предстартовое комплектование экипировки МЧС (СИЗ и приборы):</span>
+                    </h2>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Выберите регламентированный комплект перед стартом сценария или перейдите во вкладку «3. Экипировка (СИЗ) и 3D-Манекен».
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('ppe')}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold border border-slate-700 transition"
+                  >
+                    Открыть 3D-манекен →
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  <button
+                    onClick={() => {
+                      onSelectInstrument('dp5');
+                      onChangePPE({ suitId: 'bop_suit', respiratorId: 'ppm88_mask', instrumentId: 'dp5' });
+                    }}
+                    className={`p-3.5 rounded-xl border text-left transition ${
+                      ppeState.suitId === 'bop_suit'
+                        ? 'bg-orange-950/40 border-orange-400 ring-1 ring-orange-400/70'
+                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-orange-300 flex items-center gap-1.5">
+                        <Flame className="w-3.5 h-3.5" />
+                        Пожарный расчёт БОП-1
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-200">
+                        350°C • 10 кВ
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-300 mt-1">
+                      БОП-1 термостойкий + Маска ППМ-88 + ДП-5В
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onSelectInstrument('dp5');
+                      onChangePPE({ suitId: 'kih4_suit', respiratorId: 'gp7vm_gasmask', instrumentId: 'dp5' });
+                    }}
+                    className={`p-3.5 rounded-xl border text-left transition ${
+                      ppeState.suitId === 'kih4_suit'
+                        ? 'bg-amber-950/40 border-amber-400 ring-1 ring-amber-400/70'
+                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                        <Shield className="w-3.5 h-3.5" />
+                        РХБ-защита КИХ-4 / ГП-7ВМ
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200">
+                        α/β 100%
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-300 mt-1">
+                      Изолирующий КИХ-4 + Противогаз ГП-7ВМ + ДП-5В
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onSelectInstrument('dp5');
+                      onChangePPE({ suitId: 'l1_suit', respiratorId: 'asv2_scba', instrumentId: 'dp5' });
+                    }}
+                    className={`p-3.5 rounded-xl border text-left transition ${
+                      ppeState.suitId === 'l1_suit'
+                        ? 'bg-emerald-950/40 border-emerald-400 ring-1 ring-emerald-400/70'
+                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-300 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Разведка Л-1 + АСВ-2
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-200">
+                        300 бар
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-300 mt-1">
+                      Костюм Л-1 МЧС + Дыхательный аппарат АСВ-2 + ДП-5В
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Карточки 3 основных сценариев МЧС на АЭС */}
               <div>
                 <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-3">
-                  Академические лабораторные работы (Основной курс):
+                  Базовые оперативные сценарии МЧС на объектах АЭС:
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {SCENARIOS.slice(0, 3).map((scenario) => {
@@ -259,12 +357,12 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                       >
                         <div className="space-y-2.5">
                           <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-sky-400 font-bold border border-slate-700">
-                              ЛАБА #{scenario.id}
+                            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-orange-300 font-bold border border-slate-700">
+                              СЦЕНАРИЙ МЧС #{scenario.id}
                             </span>
                             {isSelected && (
                               <span className="text-xs text-emerald-400 font-bold flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Активна
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Активен
                               </span>
                             )}
                           </div>
@@ -278,7 +376,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
 
                         <div className="pt-4 border-t border-slate-800/80 mt-4 flex items-center justify-between text-xs">
                           <span className="text-slate-500 font-mono">
-                            Изотопы: {scenario.dominantIsotopes.join(', ')}
+                            Факторы: {scenario.dominantIsotopes.join(', ')}
                           </span>
                           <button
                             onClick={(e) => {
@@ -292,7 +390,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                                 : 'bg-slate-800 text-slate-200 group-hover:bg-slate-700'
                             }`}
                           >
-                            <span>Начать</span>
+                            <span>Выезд</span>
                             <ChevronRight className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -302,33 +400,64 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                 </div>
               </div>
 
-              {/* Дополнительные практические сценарии радиационной безопасности */}
-              <div>
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Дополнительные прикладные кейсы и инспекции (Свободный режим):
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5">
-                  {SCENARIOS.slice(3).map((scenario) => {
-                    const isSelected = scenario.id === activeScenarioId;
+              {/* Комплексный практический тренажёр МЧС на 3D-модели АЭС (.glb) — Сценарий #4 */}
+              {SCENARIOS.find(s => s.id === 4) && (
+                <div>
+                  <h2 className="text-sm font-bold text-emerald-300 uppercase tracking-wider mb-2.5 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    Практический VR-тренажёр МЧС на 3D-модели комплекса АЭС (.glb):
+                  </h2>
+                  {(() => {
+                    const scen4 = SCENARIOS.find(s => s.id === 4)!;
+                    const isSelected = scen4.id === activeScenarioId;
                     return (
-                      <button
-                        key={scenario.id}
-                        onClick={() => {
-                          onSelectScenario(scenario.id);
-                        }}
-                        className={`p-3 rounded-xl border text-left transition ${
+                      <div
+                        onClick={() => onSelectScenario(scen4.id)}
+                        className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 ${
                           isSelected
-                            ? 'bg-sky-950/40 border-sky-400 text-sky-200'
-                            : 'bg-slate-900/40 border-slate-800/80 hover:bg-slate-800 text-slate-300'
+                            ? 'bg-emerald-950/45 border-emerald-400 ring-1 ring-emerald-400 shadow-lg shadow-emerald-500/10'
+                            : 'bg-slate-900/70 border-emerald-500/35 hover:border-emerald-400/70 hover:bg-slate-900'
                         }`}
                       >
-                        <div className="text-[10px] text-slate-500 font-mono">Кейс #{scenario.id}</div>
-                        <div className="text-xs font-semibold truncate mt-0.5">{scenario.titleRu}</div>
-                      </button>
+                        <div className="space-y-1.5 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
+                              СЦЕНАРИЙ #{scen4.id} • КОМПЛЕКС АЭС (.GLB)
+                            </span>
+                            <span className="text-[11px] font-mono text-slate-400">
+                              6 шагов FSM • 3 очага • Эвакуация персонала • ОУ-5 (CO₂)
+                            </span>
+                            {isSelected && (
+                              <span className="text-xs text-emerald-400 font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Активен
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="font-bold text-sm text-white">{scen4.titleRu}</h3>
+                          <p className="text-xs text-slate-300 leading-relaxed">
+                            {scen4.shortDescriptionRu}
+                          </p>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onSelectScenario(scen4.id);
+                            onClose();
+                          }}
+                          className={`px-4 py-2.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 shrink-0 ${
+                            isSelected
+                              ? 'bg-emerald-400 text-slate-950'
+                              : 'bg-emerald-500/90 hover:bg-emerald-400 text-slate-950'
+                          }`}
+                        >
+                          <span>Запустить комплекс АЭС</span>
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
                     );
-                  })}
+                  })()}
                 </div>
-              </div>
+              )}
 
             </div>
           )}
@@ -653,7 +782,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
               className="px-6 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-slate-950 font-black rounded-xl transition shadow-lg shadow-sky-500/20 flex items-center gap-2"
             >
               <Play className="w-4 h-4 fill-current" />
-              <span>Начать работу в 3D лаборатории</span>
+              <span>Начать операцию на 3D-сцене АЭС</span>
             </button>
           </div>
         </footer>

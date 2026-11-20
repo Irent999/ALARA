@@ -17,9 +17,27 @@ import {
 } from 'lucide-react';
 import { InstrumentId, GOST_INSTRUMENTS } from '../instruments/gostInstruments';
 import { RemoteToolId, REMOTE_TOOLS } from '../physics/gostPhysics';
+import {
+  createBopReflectiveStripeTexture,
+  createMchsBackPatchTexture,
+  createMchsChevronTexture
+} from '../scene/mchsTextures';
 
-export type SuitTypeId = 'none' | 'lead_apron' | 'l1_suit' | 'kih4_suit' | 'heavy_lead_armor';
-export type RespiratorTypeId = 'none' | 'lepestok_200' | 'gp7_gasmask' | 'asv2_scba';
+export type SuitTypeId =
+  | 'none'
+  | 'bop_suit'
+  | 'l1_suit'
+  | 'kih4_suit'
+  | 'lead_apron'
+  | 'heavy_lead_armor';
+
+export type RespiratorTypeId =
+  | 'none'
+  | 'lepestok_200'
+  | 'ppm88_mask'
+  | 'gp7_gasmask'
+  | 'gp7vm_gasmask'
+  | 'asv2_scba';
 
 export interface CharacterPPEState {
   suitId: SuitTypeId;
@@ -41,61 +59,86 @@ export const SUIT_DEFINITIONS: Record<SuitTypeId, {
   alphaBlockingPercent: number;
   betaAttenuationFactor: number;
   gammaAttenuationFactor: number;
+  thermalRatingC: number;
+  isDielectric: boolean;
   colorHex: number;
   metalness: number;
   roughness: number;
 }> = {
   none: {
-    nameRu: 'Х/б Спецодежда (Лабораторный халат)',
-    descRu: 'Базовая хлопчатобумажная форма без специальных экранирующих свойств. Задерживает только альфа-частицы при прямом оседании на ткань.',
+    nameRu: 'Х/б Спецодежда (Повседневная)',
+    descRu: 'Базовая хлопчатобумажная форма без специальных экранирующих и термостойких свойств.',
     leadEquivalentMm: 0.0,
     alphaBlockingPercent: 95.0,
     betaAttenuationFactor: 1.05,
     gammaAttenuationFactor: 1.0,
+    thermalRatingC: 40,
+    isDielectric: false,
     colorHex: 0xf1f5f9,
     metalness: 0.05,
     roughness: 0.9
   },
-  lead_apron: {
-    nameRu: 'Свинцовый фартук (0.50 мм Pb)',
-    descRu: 'Медицинский рентгенозащитный фартук с виниловым свинцовым наполнителем для защиты гонад, щитовидной железы и кроветворных органов.',
-    leadEquivalentMm: 0.50,
+  bop_suit: {
+    nameRu: 'БОП-1 МЧС / Термостойкий (ТОК-200)',
+    descRu: 'Боевая одежда пожарного МЧС со световозвращающими полосами, термозащитой до 350°C и диэлектрическими крагами для тушения кабельных отсеков АЭС.',
+    leadEquivalentMm: 0.05,
     alphaBlockingPercent: 100.0,
-    betaAttenuationFactor: 5.5,
-    gammaAttenuationFactor: 1.85,
-    colorHex: 0x0284c7,
-    metalness: 0.2,
-    roughness: 0.5
+    betaAttenuationFactor: 4.6,
+    gammaAttenuationFactor: 1.08,
+    thermalRatingC: 350,
+    isDielectric: true,
+    colorHex: 0x1e293b,
+    metalness: 0.14,
+    roughness: 0.62
   },
   l1_suit: {
-    nameRu: 'Костюм защитный Л-1 (УКК)',
-    descRu: 'Прорезиненный комбинезон с капюшоном, защитными чулками и перчатками. Полная защита от радиоактивной пыли и брызг.',
+    nameRu: 'Костюм химзащиты Л-1 (МЧС)',
+    descRu: 'Прорезиненный изолирующий комбинезон с капюшоном, чулками и перчатками. Защита от радиоактивной пыли, аэрозолей и брызг.',
     leadEquivalentMm: 0.08,
     alphaBlockingPercent: 100.0,
     betaAttenuationFactor: 3.2,
     gammaAttenuationFactor: 1.1,
+    thermalRatingC: 65,
+    isDielectric: false,
     colorHex: 0x4d7c0f,
     metalness: 0.15,
     roughness: 0.7
   },
   kih4_suit: {
     nameRu: 'Изолирующий комплекс КИХ-4',
-    descRu: 'Герметичный скафандр высшего класса защиты с панорамным иллюминатором для работы в экстремальных аварийных зонах.',
+    descRu: 'Герметичный химико-радиационный скафандр высшего класса защиты с панорамным иллюминатором для экстремальных аварийных зон АЭС.',
     leadEquivalentMm: 0.25,
     alphaBlockingPercent: 100.0,
     betaAttenuationFactor: 8.0,
     gammaAttenuationFactor: 1.35,
+    thermalRatingC: 90,
+    isDielectric: true,
     colorHex: 0xf59e0b,
     metalness: 0.3,
     roughness: 0.4
   },
+  lead_apron: {
+    nameRu: 'Свинцовый фартук (0.50 мм Pb)',
+    descRu: 'Рентгенозащитный свинцово-виниловый фартук для защиты щитовидной железы и органов грудной клетки от гамма-квантов.',
+    leadEquivalentMm: 0.50,
+    alphaBlockingPercent: 100.0,
+    betaAttenuationFactor: 5.5,
+    gammaAttenuationFactor: 1.85,
+    thermalRatingC: 60,
+    isDielectric: false,
+    colorHex: 0x0284c7,
+    metalness: 0.2,
+    roughness: 0.5
+  },
   heavy_lead_armor: {
-    nameRu: 'Тяжелый экранирующий комплект ликвидатора',
-    descRu: 'Многослойный жилет и набедренники из свинцовых пластин толщиной 2.5 мм Pb для кратковременных операций в полях высокой мощности дозы.',
+    nameRu: 'Тяжелый бронекомплект ликвидатора (2.5 мм Pb)',
+    descRu: 'Многослойный свинцово-стальной жилет и наплечники для кратковременных операций в полях высокой мощности дозы.',
     leadEquivalentMm: 2.5,
     alphaBlockingPercent: 100.0,
     betaAttenuationFactor: 45.0,
     gammaAttenuationFactor: 3.8,
+    thermalRatingC: 120,
+    isDielectric: false,
     colorHex: 0x334155,
     metalness: 0.8,
     roughness: 0.3
@@ -111,28 +154,42 @@ export const RESPIRATOR_DEFINITIONS: Record<RespiratorTypeId, {
 }> = {
   none: {
     nameRu: 'Без защиты органов дыхания',
-    descRu: 'Свободное дыхание атмосферным воздухом. Высокий риск ингаляционного поступления аэрозолей и радона.',
+    descRu: 'Свободное дыхание атмосферным воздухом. Риск ингаляции радиоактивных аэрозолей и продуктов горения.',
     filtrationEfficiencyPercent: 0.0,
     inhalationProtectionFactor: 1.0,
     colorHex: 0x000000
   },
   lepestok_200: {
     nameRu: 'Респиратор ШБ-1 «Лепесток-200»',
-    descRu: 'Бесклапанный фильтрующий респиратор на материале ФПП-15. Эффективность задержания радиоактивных аэрозолей 99.9%.',
+    descRu: 'Фильтрующий респиратор на материале ФПП-15. Эффективность задержания радиоактивных аэрозолей 99.9%.',
     filtrationEfficiencyPercent: 99.9,
     inhalationProtectionFactor: 200.0,
     colorHex: 0xffffff
   },
+  ppm88_mask: {
+    nameRu: 'Панорамная маска ППМ-88 (МЧС)',
+    descRu: 'Полнолицевая панорамная маска с поликарбонатным стеклом, переговорным устройством и комбинированным фильтром от дыма и аэрозолей.',
+    filtrationEfficiencyPercent: 99.99,
+    inhalationProtectionFactor: 2500.0,
+    colorHex: 0x111827
+  },
   gp7_gasmask: {
     nameRu: 'Противогаз ГП-7 с фильтром ФПК',
-    descRu: 'Фильтрующий противогаз с резиновой маской и коробкой с активированным углем и аэрозольным фильтром (защита от паров и йода-131).',
+    descRu: 'Фильтрующий гражданский противогаз с активированным углем и аэрозольным фильтром.',
     filtrationEfficiencyPercent: 99.98,
     inhalationProtectionFactor: 1000.0,
     colorHex: 0x1c1917
   },
+  gp7vm_gasmask: {
+    nameRu: 'Противогаз ГП-7ВМ (с питьевой системой)',
+    descRu: 'Модернизированный противогаз МЧС с трапециевидными очковыми стеклами, ФПК от ¹³¹I и трубкой для приема воды в зоне заражения.',
+    filtrationEfficiencyPercent: 99.99,
+    inhalationProtectionFactor: 2000.0,
+    colorHex: 0x1e293b
+  },
   asv2_scba: {
     nameRu: 'Дыхательный аппарат АСВ-2 (Изолирующий)',
-    descRu: 'Автономный аппарат со сжатым воздухом (300 бар) и панорамной маской избыточного давления. 100% изоляция от внешней среды.',
+    descRu: 'Автономный аппарат со сжатым воздухом (300 бар) и панорамной маской избыточного давления. 100% изоляция при задымлении и ЧС.',
     filtrationEfficiencyPercent: 100.0,
     inhalationProtectionFactor: 10000.0,
     colorHex: 0x0284c7
@@ -162,6 +219,7 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     camera.position.set(0, 1.35, 2.85);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -363,8 +421,87 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     head.castShadow = true;
     group.add(head);
 
-    // Особенности костюма (Фартук, Капюшон, Скафандр)
-    if (ppeState.suitId === 'lead_apron') {
+    // Особенности костюма (БОП МЧС, Фартук, КИХ-4, Шевроны МЧС России)
+    if (ppeState.suitId !== 'none') {
+      const chevronMat = new THREE.MeshBasicMaterial({
+        map: createMchsChevronTexture(),
+        transparent: true,
+        side: THREE.DoubleSide
+      });
+      const chevronGeo = new THREE.PlaneGeometry(0.085, 0.105);
+      const leftChevron = new THREE.Mesh(chevronGeo, chevronMat);
+      leftChevron.position.set(-0.375, 1.40, 0.01);
+      leftChevron.rotation.y = -Math.PI / 2;
+      group.add(leftChevron);
+
+      const rightChevron = new THREE.Mesh(chevronGeo, chevronMat);
+      rightChevron.position.set(0.375, 1.40, 0.06);
+      rightChevron.rotation.y = Math.PI / 2;
+      group.add(rightChevron);
+
+      const backPatch = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.34, 0.105),
+        new THREE.MeshBasicMaterial({ map: createMchsBackPatchTexture(), side: THREE.DoubleSide })
+      );
+      backPatch.position.set(0, 1.38, -0.146);
+      backPatch.rotation.y = Math.PI;
+      group.add(backPatch);
+    }
+
+    if (ppeState.suitId === 'bop_suit') {
+      // Световозвращающие лимонно-серебристые полосы БОП на груди, поясе, рукавах и ногах
+      const stripeMat = new THREE.MeshStandardMaterial({
+        map: createBopReflectiveStripeTexture(),
+        roughness: 0.25,
+        metalness: 0.45,
+        emissive: new THREE.Color(0x65a30d),
+        emissiveIntensity: 0.28
+      });
+      const chestStripe = new THREE.Mesh(new THREE.BoxGeometry(0.49, 0.055, 0.292), stripeMat);
+      chestStripe.position.set(0, 1.24, 0);
+      group.add(chestStripe);
+
+      const waistStripe = new THREE.Mesh(new THREE.BoxGeometry(0.49, 0.055, 0.292), stripeMat);
+      waistStripe.position.set(0, 0.96, 0);
+      group.add(waistStripe);
+
+      const legStripeL = new THREE.Mesh(new THREE.CylinderGeometry(0.092, 0.088, 0.06, 16), stripeMat);
+      legStripeL.position.set(-0.16, 0.34, 0);
+      group.add(legStripeL);
+
+      const legStripeR = legStripeL.clone();
+      legStripeR.position.x = 0.16;
+      group.add(legStripeR);
+
+      // Пожарная каска МЧС ШПМ с золотистым термостойким щитком
+      const bopHelmet = new THREE.Mesh(
+        new THREE.SphereGeometry(0.165, 24, 18, 0, Math.PI * 2, 0, Math.PI * 0.62),
+        new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.25, metalness: 0.2 })
+      );
+      bopHelmet.position.set(0, 1.79, 0);
+      group.add(bopHelmet);
+
+      const brim = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.175, 0.185, 0.025, 24),
+        new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.3 })
+      );
+      brim.position.set(0, 1.79, -0.02);
+      group.add(brim);
+
+      const goldVisor = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.158, 0.158, 0.10, 20, 1, true, -Math.PI * 0.38, Math.PI * 0.76),
+        new THREE.MeshStandardMaterial({
+          color: 0xfacc15,
+          metalness: 0.92,
+          roughness: 0.08,
+          transparent: true,
+          opacity: 0.78,
+          side: THREE.DoubleSide
+        })
+      );
+      goldVisor.position.set(0, 1.75, 0.02);
+      group.add(goldVisor);
+    } else if (ppeState.suitId === 'lead_apron') {
       const apronGeo = new THREE.BoxGeometry(0.44, 0.75, 0.06);
       const apronMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3, metalness: 0.4 });
       const apron = new THREE.Mesh(apronGeo, apronMat);
@@ -392,7 +529,29 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
       mask.rotation.x = Math.PI / 2;
       mask.position.set(0, 1.73, 0.14);
       group.add(mask);
-    } else if (ppeState.respiratorId === 'gp7_gasmask') {
+    } else if (ppeState.respiratorId === 'ppm88_mask') {
+      const sealMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.148, 20, 20),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.7 })
+      );
+      sealMesh.position.set(0, 1.76, 0.02);
+      group.add(sealMesh);
+
+      const panoVisor = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.14, 0.13, 0.14, 24, 1, true, -Math.PI * 0.4, Math.PI * 0.8),
+        new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.08, metalness: 0.85, transparent: true, opacity: 0.68, side: THREE.DoubleSide })
+      );
+      panoVisor.position.set(0, 1.77, 0.045);
+      group.add(panoVisor);
+
+      const frontFilter = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.048, 0.048, 0.085, 18),
+        new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.65, roughness: 0.3 })
+      );
+      frontFilter.rotation.x = Math.PI / 2;
+      frontFilter.position.set(0, 1.66, 0.16);
+      group.add(frontFilter);
+    } else if (ppeState.respiratorId === 'gp7_gasmask' || ppeState.respiratorId === 'gp7vm_gasmask') {
       const maskGeo = new THREE.SphereGeometry(0.15, 16, 16);
       const maskMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.8 });
       const mask = new THREE.Mesh(maskGeo, maskMat);
@@ -406,6 +565,17 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
       filterCanister.position.set(-0.09, 1.66, 0.13);
       filterCanister.rotation.z = 0.35;
       group.add(filterCanister);
+
+      if (ppeState.respiratorId === 'gp7vm_gasmask') {
+        // Питьевая трубка и панорамные очки ГП-7ВМ
+        const drinkTube = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.009, 0.009, 0.18, 10),
+          new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.3 })
+        );
+        drinkTube.position.set(0.08, 1.64, 0.14);
+        drinkTube.rotation.z = -0.3;
+        group.add(drinkTube);
+      }
     } else if (ppeState.respiratorId === 'asv2_scba') {
       const tankGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.55, 16);
       const tankMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.8, roughness: 0.2 });
@@ -414,7 +584,7 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
       group.add(tank);
     }
 
-    // 6. Прибор в правой руке
+    // 6. Прибор в правой руке (ДП-5В / спектрометр)
     const instProfile = GOST_INSTRUMENTS[ppeState.instrumentId];
     const devBox = new THREE.Mesh(
       new THREE.BoxGeometry(0.12, 0.20, 0.07),
@@ -423,6 +593,16 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     devBox.position.set(0.33, 1.0, 0.28);
     devBox.rotation.x = -0.3;
     group.add(devBox);
+
+    if (ppeState.instrumentId === 'dp5') {
+      const probeRod = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.016, 0.016, 0.28, 16),
+        new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.85, roughness: 0.2 })
+      );
+      probeRod.rotation.x = Math.PI / 2.4;
+      probeRod.position.set(0.33, 1.02, 0.44);
+      group.add(probeRod);
+    }
   }, [ppeState]);
 
   return (
@@ -536,16 +716,20 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
             <span className="text-cyan-300 font-bold">{SUIT_DEFINITIONS[ppeState.suitId].leadEquivalentMm} мм Pb</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-400">Задержка альфа-потока:</span>
-            <span className="text-emerald-300 font-bold">{SUIT_DEFINITIONS[ppeState.suitId].alphaBlockingPercent}%</span>
+            <span className="text-slate-400">Задержка α / Коэф. β:</span>
+            <span className="text-emerald-300 font-bold">
+              {SUIT_DEFINITIONS[ppeState.suitId].alphaBlockingPercent}% / ×{SUIT_DEFINITIONS[ppeState.suitId].betaAttenuationFactor}
+            </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-400">Коэф. ослабления бета (K_β):</span>
-            <span className="text-cyan-300 font-bold">×{SUIT_DEFINITIONS[ppeState.suitId].betaAttenuationFactor}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-400">Коэф. ослабления гамма (K_γ):</span>
+            <span className="text-slate-400">Коэф. ослабления γ:</span>
             <span className="text-amber-300 font-bold">×{SUIT_DEFINITIONS[ppeState.suitId].gammaAttenuationFactor}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-400">Термостойкость / Диэлектрик:</span>
+            <span className="text-orange-300 font-bold">
+              {SUIT_DEFINITIONS[ppeState.suitId].thermalRatingC}°C {SUIT_DEFINITIONS[ppeState.suitId].isDielectric ? '• 10 кВ' : ''}
+            </span>
           </div>
         </div>
 

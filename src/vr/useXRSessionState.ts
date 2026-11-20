@@ -46,10 +46,11 @@ export function useXR(
       }
       const presenting = Boolean(activeRenderer.xr.isPresenting || externalIsPresenting);
       const currentSession = activeRenderer.xr.getSession?.() ?? null;
-      setXrState({
-        isPresenting: presenting,
-        session: currentSession
-      });
+      setXrState(prev =>
+        prev.isPresenting === presenting && prev.session === currentSession
+          ? prev
+          : { isPresenting: presenting, session: currentSession }
+      );
     };
 
     if (activeRenderer?.xr) {

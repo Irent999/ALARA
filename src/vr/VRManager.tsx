@@ -14,7 +14,7 @@
  *    - Цветовая температура тактического светодиода: `5500K` (`#fff6e5` / `0xfff6e5`)
  */
 
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 
 // ============================================================================
@@ -331,34 +331,40 @@ export class LeftControllerFlashlightPoller {
       return;
     }
 
-    for (const inputSource of session.inputSources) {
-      if (inputSource.handedness !== 'left' || !inputSource.gamepad) {
-        continue;
+    try {
+      const inputSources = session.inputSources;
+      if (!inputSources) return;
+      for (const inputSource of inputSources) {
+        if (!inputSource || inputSource.handedness !== 'left' || !inputSource.gamepad) {
+          continue;
+        }
+
+        const buttons = inputSource.gamepad.buttons;
+        const isXPressed = Boolean(buttons?.[LEFT_CONTROLLER_BUTTON_INDICES.BUTTON_X]?.pressed);
+        const isYPressed = Boolean(buttons?.[LEFT_CONTROLLER_BUTTON_INDICES.BUTTON_Y]?.pressed);
+        const isSqueezePressed = Boolean(
+          buttons?.[LEFT_CONTROLLER_BUTTON_INDICES.SQUEEZE_GRIP]?.pressed
+        );
+
+        // Детектор переднего фронта нажатия (Rising Edge) для исключения дребезга
+        const justPressedX = isXPressed && !this.prevXPressed;
+        const justPressedY = isYPressed && !this.prevYPressed;
+        const justPressedSqueeze =
+          Boolean(this.options.allowSqueezeToggle) &&
+          isSqueezePressed &&
+          !this.prevSqueezePressed;
+
+        if (justPressedX || justPressedY || justPressedSqueeze) {
+          const nextState = this.flashlightRig.toggle(inputSource.gamepad);
+          this.options.onFlashlightToggle?.(nextState);
+        }
+
+        this.prevXPressed = isXPressed;
+        this.prevYPressed = isYPressed;
+        this.prevSqueezePressed = isSqueezePressed;
       }
-
-      const buttons = inputSource.gamepad.buttons;
-      const isXPressed = Boolean(buttons[LEFT_CONTROLLER_BUTTON_INDICES.BUTTON_X]?.pressed);
-      const isYPressed = Boolean(buttons[LEFT_CONTROLLER_BUTTON_INDICES.BUTTON_Y]?.pressed);
-      const isSqueezePressed = Boolean(
-        buttons[LEFT_CONTROLLER_BUTTON_INDICES.SQUEEZE_GRIP]?.pressed
-      );
-
-      // Детектор переднего фронта нажатия (Rising Edge) для исключения дребезга
-      const justPressedX = isXPressed && !this.prevXPressed;
-      const justPressedY = isYPressed && !this.prevYPressed;
-      const justPressedSqueeze =
-        Boolean(this.options.allowSqueezeToggle) &&
-        isSqueezePressed &&
-        !this.prevSqueezePressed;
-
-      if (justPressedX || justPressedY || justPressedSqueeze) {
-        const nextState = this.flashlightRig.toggle(inputSource.gamepad);
-        this.options.onFlashlightToggle?.(nextState);
-      }
-
-      this.prevXPressed = isXPressed;
-      this.prevYPressed = isYPressed;
-      this.prevSqueezePressed = isSqueezePressed;
+    } catch {
+      // Игнорируем транзиентные ошибки inputSources при переключении контроллеров
     }
   }
 }
@@ -376,6 +382,8 @@ export interface VRManagerProps {
   readonly isInVR?: boolean;
   /** Разрешить переключение фонаря кнопкой Squeeze помимо кнопок X и Y */
   readonly enableSqueezeFlashlightToggle?: boolean;
+  /** Отключить дублирующий SpotLight и фоновый pollLoop, если фонарём управляет WebXRManager */
+  readonly disableInternalFlashlightRig?: boolean;
   /** Коллбэк синхронизации состояния фонаря с родительским приложением */
   readonly onFlashlightChange?: (isOn: boolean) => void;
   /**
@@ -390,6 +398,7 @@ export const VRManager: React.FC<VRManagerProps> = ({
   leftControllerRef,
   isInVR = false,
   enableSqueezeFlashlightToggle = true,
+  disableInternalFlashlightRig = false,
   onFlashlightChange,
   children
 }) => {
@@ -398,21 +407,21 @@ export const VRManager: React.FC<VRManagerProps> = ({
   const [isFlashlightOn, setIsFlashlightOn] = useState<boolean>(false);
 
   const flashlightRigRef = useRef<LeftControllerFlashlightRig | null>(null);
-  if (!flashlightRigRef.current) {
+  if (!disableInternalFlashlightRig && !flashlightRigRef.current) {
     flashlightRigRef.current = new LeftControllerFlashlightRig(false);
   }
 
-  const toggleFlashlight = useCallback(
-    (forceState?: boolean): boolean => {
-      const rig = flashlightRigRef.current;
-      if (!rig) return false;
-      const next = typeof forceState === 'boolean' ? rig.setPower(forceState) : rig.toggle();
-      setIsFlashlightOn(next);
-      onFlashlightChange?.(next);
-      return next;
-    },
-    [onFlashlightChange]
-  );
+  const onFlashlightChangeRef = useRef(onFlashlightChange);
+  onFlashlightChangeRef.current = onFlashlightChange;
+
+  const toggleFlashlight = useCallback((forceState?: boolean): boolean => {
+    const rig = flashlightRigRef.current;
+    if (!rig) return false;
+    const next = typeof forceState === 'boolean' ? rig.setPower(forceState) : rig.toggle();
+    setIsFlashlightOn(next);
+    onFlashlightChangeRef.current?.(next);
+    return next;
+  }, []);
 
   const requestVRSession = useCallback(async (): Promise<boolean> => {
     const renderer = rendererRef?.current;
@@ -435,6 +444,18 @@ export const VRManager: React.FC<VRManagerProps> = ({
       const newSession = await navigator.xr.requestSession('immersive-vr', {
         optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers']
       });
+      const spaceChain: XRReferenceSpaceType[] = ['local-floor', 'local', 'viewer'];
+      let resolvedSpace: XRReferenceSpaceType = 'viewer';
+      for (const spaceType of spaceChain) {
+        try {
+          await newSession.requestReferenceSpace(spaceType);
+          resolvedSpace = spaceType;
+          break;
+        } catch {
+          // fallback к следующему reference space
+        }
+      }
+      renderer.xr.setReferenceSpaceType(resolvedSpace);
       await renderer.xr.setSession(newSession);
       return true;
     } catch (err) {
@@ -456,12 +477,13 @@ export const VRManager: React.FC<VRManagerProps> = ({
 
   // Привязка физического SpotLight (30°, penumbra 0.4, 5500K, 1/r²) к левому контроллеру
   useEffect(() => {
+    if (disableInternalFlashlightRig) return;
     const leftCtrl = leftControllerRef?.current;
     const rig = flashlightRigRef.current;
     if (leftCtrl && rig) {
       rig.attachToLeftController(leftCtrl);
     }
-  }, [leftControllerRef]);
+  }, [leftControllerRef, disableInternalFlashlightRig]);
 
   // Отслеживание статуса VR-сессии (`sessionstart` / `sessionend`) и опрос левого контроллера
   useEffect(() => {
@@ -471,15 +493,32 @@ export const VRManager: React.FC<VRManagerProps> = ({
       return;
     }
 
-    const poller = new LeftControllerFlashlightPoller(flashlightRigRef.current!, {
+    const syncSession = () => {
+      const activeSession = renderer.xr.getSession?.() ?? null;
+      const presentingNow = Boolean(renderer.xr.isPresenting || isInVR);
+      setIsPresenting(prev => (prev === presentingNow ? prev : presentingNow));
+      setSession(prev => (prev === activeSession ? prev : activeSession));
+    };
+
+    syncSession();
+    renderer.xr.addEventListener('sessionstart', syncSession);
+    renderer.xr.addEventListener('sessionend', syncSession);
+
+    if (disableInternalFlashlightRig || !flashlightRigRef.current) {
+      return () => {
+        renderer.xr.removeEventListener('sessionstart', syncSession);
+        renderer.xr.removeEventListener('sessionend', syncSession);
+      };
+    }
+
+    const poller = new LeftControllerFlashlightPoller(flashlightRigRef.current, {
       allowSqueezeToggle: enableSqueezeFlashlightToggle,
       onFlashlightToggle: nextOn => {
         setIsFlashlightOn(nextOn);
-        onFlashlightChange?.(nextOn);
+        onFlashlightChangeRef.current?.(nextOn);
       }
     });
 
-    // Подключаем к левому контроллеру WebGLRenderer.xr (индекс 0 или 1 с handedness === 'left')
     const controllerGrip0 = renderer.xr.getControllerGrip(0);
     const controllerGrip1 = renderer.xr.getControllerGrip(1);
 
@@ -495,18 +534,6 @@ export const VRManager: React.FC<VRManagerProps> = ({
     controllerGrip0.addEventListener('connected' as never, onConnected as never);
     controllerGrip1.addEventListener('connected' as never, onConnected as never);
 
-    const syncSession = () => {
-      const activeSession = renderer.xr.getSession?.() ?? null;
-      const presentingNow = Boolean(renderer.xr.isPresenting || isInVR);
-      setIsPresenting(presentingNow);
-      setSession(activeSession);
-    };
-
-    syncSession();
-    renderer.xr.addEventListener('sessionstart', syncSession);
-    renderer.xr.addEventListener('sessionend', syncSession);
-
-    // Фоновый опрос кнопок X / Y / Squeeze левого контроллера с частотой WebXR-сессии
     let rafId = 0;
     const pollLoop = () => {
       const activeSession = renderer.xr.getSession?.() ?? null;
@@ -524,19 +551,22 @@ export const VRManager: React.FC<VRManagerProps> = ({
       controllerGrip0.removeEventListener('connected' as never, onConnected as never);
       controllerGrip1.removeEventListener('connected' as never, onConnected as never);
     };
-  }, [rendererRef, leftControllerRef, isInVR, enableSqueezeFlashlightToggle, onFlashlightChange]);
+  }, [rendererRef, leftControllerRef, isInVR, enableSqueezeFlashlightToggle, disableInternalFlashlightRig]);
 
   const effectivePresenting = Boolean(isPresenting || isInVR);
 
-  const contextValue: XRContextValue = {
-    isPresenting: effectivePresenting,
-    session,
-    isFlashlightOn,
-    toggleFlashlight,
-    leftFlashlightRig: flashlightRigRef.current,
-    requestVRSession,
-    endVRSession
-  };
+  const contextValue: XRContextValue = useMemo(
+    () => ({
+      isPresenting: effectivePresenting,
+      session,
+      isFlashlightOn,
+      toggleFlashlight,
+      leftFlashlightRig: flashlightRigRef.current,
+      requestVRSession,
+      endVRSession
+    }),
+    [effectivePresenting, session, isFlashlightOn, toggleFlashlight, requestVRSession, endVRSession]
+  );
 
   // КРИТИЧЕСКОЕ ПРАВИЛО БЕЗОПАСНОСТИ VR:
   // Если пользователь надел VR-шлем (isPresenting === true), 2D HTML-оверлей (HUD)

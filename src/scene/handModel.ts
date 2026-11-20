@@ -30,6 +30,10 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { InstrumentId } from '../instruments/gostInstruments';
 import {
+  createBopReflectiveStripeTexture,
+  createMchsChevronTexture
+} from './mchsTextures';
+import {
   createPolymerCasingMaterial,
   createMetalConnectorMaterial,
   createRubberSSSMaterial,
@@ -239,12 +243,7 @@ export class VRFlashlight {
     this.spotLight.name = 'flashlight_spot_light';
     this.spotLight.position.set(0, 0, -0.126);
     this.spotLight.target = this.spotLightTarget;
-    this.spotLight.castShadow = true;
-    this.spotLight.shadow.mapSize.width = 1024;
-    this.spotLight.shadow.mapSize.height = 1024;
-    this.spotLight.shadow.camera.near = 0.08;
-    this.spotLight.shadow.camera.far = 25;
-    this.spotLight.shadow.bias = -0.0003;
+    this.spotLight.castShadow = false;
     this.spotLight.visible = initialOn;
 
     // Прикрепляем SpotLight и spotLight.target напрямую к модели фонаря
@@ -317,7 +316,7 @@ export class VRFlashlight {
     this.spotLight.angle = Math.PI / 6;
     this.spotLight.penumbra = 0.4;
     this.spotLight.decay = 2.0;
-    this.spotLight.castShadow = true;
+    this.spotLight.castShadow = false;
     this.spotLight.target.position.set(0, 0, -5);
 
     this.bounceLight.visible = isOn;
@@ -578,6 +577,8 @@ export class RealisticHumanHandRig {
   private sleeveMeshes: THREE.Mesh[] = [];
   private cuffSealMeshes: THREE.Mesh[] = [];
   private bareWristMeshes: THREE.Mesh[] = [];
+  private sleeveEmblemMeshes: THREE.Mesh[] = [];
+  private bopReflectiveMeshes: THREE.Mesh[] = [];
   private currentSuitId: string = 'none';
   private currentGripProgress = 0; // 0.0 = пальцы расправлены, 0.42/0.45 = Grip Pose прибора/фонаря, 1.0 = сжаты в кулак
   private targetGripProgress = 0;
@@ -586,6 +587,12 @@ export class RealisticHumanHandRig {
   private currentExtension = 0;
   private targetExtension = 0;
   private currentInstrumentId: InstrumentId = 'dp5';
+  private desktopCameraPitch = 0;
+  private smoothedPitchComp = 0;
+  private swapOffsetZ = 0;
+  private swapOffsetY = 0;
+  private lastLcdRenderTimeMs = 0;
+  private lastLcdKey = '';
 
   // Естественная базовая поза хвата прибора правой рукой (Grip Pose: curl = 0.42 в строгом диапазоне 0.35–0.50)
   public static readonly RADIOMETER_GRIP_POSE_CURL = 0.42;
@@ -609,10 +616,10 @@ export class RealisticHumanHandRig {
   public static readonly VR_WRIST_OFFSET_ROT = new THREE.Euler(0, 0, 0, 'YXZ');
 
   // Переиспользуемые векторы и кватернионы без аллокаций в цикле update()
-  private static readonly tempBaseRight = new THREE.Vector3(0.23, -0.20, -0.42);
-  private static readonly tempBaseLeft = new THREE.Vector3(-0.23, -0.22, -0.40);
-  private static readonly tempExtRight = new THREE.Vector3(0.08, -0.12, -0.86);
-  private static readonly tempExtLeft = new THREE.Vector3(-0.10, -0.14, -0.78);
+  private static readonly tempBaseRight = new THREE.Vector3(0.24, -0.22, -0.43);
+  private static readonly tempBaseLeft = new THREE.Vector3(-0.24, -0.24, -0.42);
+  private static readonly tempExtRight = new THREE.Vector3(0.09, -0.14, -0.84);
+  private static readonly tempExtLeft = new THREE.Vector3(-0.11, -0.16, -0.76);
   private readonly tempTargetPos = new THREE.Vector3();
   private readonly tempProbeOffset = new THREE.Vector3();
   private readonly tempWorldQuat = new THREE.Quaternion();
@@ -867,6 +874,38 @@ export class RealisticHumanHandRig {
       this.palmGroup.add(ringMesh);
       this.cuffSealMeshes.push(ringMesh);
     });
+
+    // Световозвращающая манжетная полоса БОП на рукаве
+    const bopStripeGeo = new THREE.CylinderGeometry(0.0365, 0.0355, 0.018, 28, 1, true);
+    bopStripeGeo.rotateX(Math.PI / 2);
+    bopStripeGeo.scale(1.16, 0.84, 1.0);
+    const bopStripeMat = new THREE.MeshStandardMaterial({
+      map: createBopReflectiveStripeTexture(),
+      roughness: 0.25,
+      metalness: 0.45,
+      emissive: new THREE.Color(0x65a30d),
+      emissiveIntensity: 0.22
+    });
+    const bopStripeMesh = new THREE.Mesh(bopStripeGeo, bopStripeMat);
+    bopStripeMesh.position.set(0, palmBaseY, 0.068);
+    bopStripeMesh.visible = false;
+    this.palmGroup.add(bopStripeMesh);
+    this.bopReflectiveMeshes.push(bopStripeMesh);
+
+    // Нарукавный шеврон «МЧС РОССИИ» на внешней стороне рукава
+    const emblemMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.034, 0.042),
+      new THREE.MeshBasicMaterial({
+        map: createMchsChevronTexture(),
+        transparent: true,
+        side: THREE.DoubleSide
+      })
+    );
+    emblemMesh.position.set(isLeft ? -0.0435 : 0.0435, palmBaseY + 0.004, 0.095);
+    emblemMesh.rotation.y = isLeft ? -Math.PI / 2 : Math.PI / 2;
+    emblemMesh.visible = false;
+    this.palmGroup.add(emblemMesh);
+    this.sleeveEmblemMeshes.push(emblemMesh);
 
     return wristMesh;
   }
@@ -1656,7 +1695,32 @@ export class RealisticHumanHandRig {
     let cuffMat: THREE.Material | null = null;
     let isGloved = true;
 
-    if (suitOrPpeId === 'lead_apron' || suitOrPpeId === 'pneumosuit_lead') {
+    if (suitOrPpeId === 'bop_suit' || suitOrPpeId === 'bop_firefighter') {
+      // Боевая одежда пожарного МЧС БОП-1: термостойкие диэлектрические краги + арамидный темно-синий рукав
+      gloveMat = new THREE.MeshPhysicalMaterial({
+        color: 0x1c1917,
+        roughness: 0.48,
+        metalness: 0.14,
+        clearcoat: 0.25,
+        clearcoatRoughness: 0.35,
+        bumpMap: gloveBump,
+        bumpScale: 0.0013,
+        name: 'bop_dielectric_gloves'
+      });
+      sleeveMat = new THREE.MeshStandardMaterial({
+        color: 0x1e293b,
+        roughness: 0.65,
+        metalness: 0.10,
+        bumpMap: sleeveBump,
+        bumpScale: 0.0018,
+        name: 'bop_aramid_sleeve'
+      });
+      cuffMat = new THREE.MeshStandardMaterial({
+        color: 0xea580c,
+        roughness: 0.36,
+        metalness: 0.25
+      });
+    } else if (suitOrPpeId === 'lead_apron' || suitOrPpeId === 'pneumosuit_lead') {
       // Свинцовые виниловые перчатки (цианово-синий резиносвинец) + свинцово-синий рукав
       gloveMat = new THREE.MeshPhysicalMaterial({
         color: 0x0284c7,
@@ -1780,6 +1844,13 @@ export class RealisticHumanHandRig {
       const c = this.cuffSealMeshes[i];
       c.visible = isGloved;
       if (cuffMat) c.material = cuffMat;
+    }
+    const isBop = suitOrPpeId === 'bop_suit' || suitOrPpeId === 'bop_firefighter';
+    for (let i = 0; i < this.bopReflectiveMeshes.length; i++) {
+      this.bopReflectiveMeshes[i].visible = isBop;
+    }
+    for (let i = 0; i < this.sleeveEmblemMeshes.length; i++) {
+      this.sleeveEmblemMeshes[i].visible = isGloved;
     }
   }
 
@@ -1924,6 +1995,15 @@ export class RealisticHumanHandRig {
     });
   }
 
+  public setDesktopCameraPitch(pitchRad: number): void {
+    this.desktopCameraPitch = pitchRad;
+  }
+
+  public triggerToolSwapAnimation(): void {
+    this.swapOffsetZ = 0.09;
+    this.swapOffsetY = -0.055;
+  }
+
   public update(delta: number, isVR: boolean = false): void {
     // 1. Плавное обновление сгиба фаланг пальцев (Grip Pose 0.42 для радиометра в правой руке / 0.45 для фонаря в левой руке)
     this.currentGripProgress +=
@@ -1935,6 +2015,12 @@ export class RealisticHumanHandRig {
     if (!isVR) {
       this.currentExtension += (this.targetExtension - this.currentExtension) * Math.min(1, delta * 8);
 
+      // Плавная компенсация наклона головы вниз и анимация смены инструмента
+      const targetPitchComp = Math.max(0, -this.desktopCameraPitch);
+      this.smoothedPitchComp += (targetPitchComp - this.smoothedPitchComp) * Math.min(1, delta * 10);
+      this.swapOffsetZ += (0 - this.swapOffsetZ) * Math.min(1, delta * 13);
+      this.swapOffsetY += (0 - this.swapOffsetY) * Math.min(1, delta * 13);
+
       const baseHandPos =
         this.handedness === 'right'
           ? RealisticHumanHandRig.tempBaseRight
@@ -1945,9 +2031,11 @@ export class RealisticHumanHandRig {
           : RealisticHumanHandRig.tempExtLeft;
 
       this.tempTargetPos.copy(baseHandPos).lerp(extendedHandPos, this.currentExtension);
+      this.tempTargetPos.y += this.smoothedPitchComp * 0.045 + this.swapOffsetY;
+      this.tempTargetPos.z += this.smoothedPitchComp * 0.065 + this.swapOffsetZ;
       this.rootGroup.position.copy(this.tempTargetPos);
       this.handGroup.position.set(0, 0, 0);
-      this.handGroup.rotation.set(0, 0, this.wristAngle);
+      this.handGroup.rotation.set(this.smoothedPitchComp * 0.16, 0, this.wristAngle);
     }
 
     // 3. Мировая позиция кончика выносного датчика (вдоль оси -Z указательного пальца) или обновление матрицы фонаря левой руки
@@ -1971,9 +2059,24 @@ export class RealisticHumanHandRig {
     if (!this.hasRadiometer || !this.lcdContext || !this.lcdCanvas || !this.lcdTexture) return;
 
     const validId = (['dp5', 'ion', 'nai', 'neutron'].includes(instrumentId) ? instrumentId : 'dp5') as InstrumentId;
-    if (validId !== this.currentInstrumentId) {
+    const instrumentChanged = validId !== this.currentInstrumentId;
+    if (instrumentChanged) {
       this.rebuildProbeGeometry(validId);
     }
+
+    const quantizedDoseKey =
+      doseRateMicroSv >= 1000000
+        ? (doseRateMicroSv / 1000000).toFixed(3)
+        : doseRateMicroSv >= 1000
+        ? (doseRateMicroSv / 1000).toFixed(2)
+        : doseRateMicroSv.toFixed(1);
+    const lcdKey = `${validId}:${quantizedDoseKey}:${doseRateMicroSv > 12 ? 1 : 0}`;
+    const nowMs = performance.now();
+    if (!instrumentChanged && (lcdKey === this.lastLcdKey || nowMs - this.lastLcdRenderTimeMs < 100)) {
+      return;
+    }
+    this.lastLcdKey = lcdKey;
+    this.lastLcdRenderTimeMs = nowMs;
 
     const ctx = this.lcdContext;
     const w = this.lcdCanvas.width;
