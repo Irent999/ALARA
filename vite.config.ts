@@ -9,13 +9,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig(() => {
+  // В локальной среде (ПК / локальная сеть для HTC Vive) включаем HTTPS по умолчанию через basicSsl().
+  // В облачном превью (Cloud Run за nginx-прокси, где TLS уже терминируется снаружи и задан K_SERVICE)
+  // внутренний dev-сервер должен слушать HTTP на 0.0.0.0:3000, иначе reverse-proxy не пройдёт healthcheck.
+  const isCloudProxy = Boolean(process.env.K_SERVICE) && process.env.HTTPS !== 'true';
+  const useHttps = process.env.HTTPS !== 'false' && !isCloudProxy;
+
   return {
     base: './',
     plugins: [
       react(),
       tailwindcss(),
-      // WebXR (HTC Vive / SteamVR) требует безопасный HTTPS-контекст для navigator.xr по локальной сети
-      basicSsl(),
+      ...(useHttps ? [basicSsl()] : []),
     ],
     resolve: {
       alias: {
@@ -25,8 +30,7 @@ export default defineConfig(() => {
     server: {
       host: '0.0.0.0',
       port: 3000,
-      // Для @vitejs/plugin-basic-ssl >=2.x пустой объект https: {} активирует HTTPS-сервер (cert/key подставляются плагином)
-      https: {},
+      ...(useHttps ? { https: {} } : {}),
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
@@ -34,7 +38,7 @@ export default defineConfig(() => {
     preview: {
       host: '0.0.0.0',
       port: 3000,
-      https: {},
+      ...(useHttps ? { https: {} } : {}),
     },
   };
 });
