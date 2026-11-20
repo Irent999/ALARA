@@ -1,0 +1,6 @@
+{
+  "name": "ALARA-Planner Pro VR",
+  "description": "3D и WebXR симулятор радиационной безопасности, дозиметрии и планирования работ по принципам ALARA, ГОСТ Р 8.804-2012 и ОСПОРБ-99/2010.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

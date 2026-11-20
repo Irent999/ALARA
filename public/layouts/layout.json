@@ -1,0 +1,7081 @@
+{
+ "version": 1,
+ "rooms": {
+  "scenario_1": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "workbench",
+     "position": [
+      -2.5,
+      0,
+      -0.8
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      -2.55,
+      0.9,
+      -1.25
+     ],
+     "rotation": [
+      0,
+      16.8,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      -2.48,
+      0.9,
+      -0.85
+     ],
+     "rotation": [
+      0,
+      -10.8,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      -2.52,
+      0.9,
+      -0.45
+     ],
+     "rotation": [
+      0,
+      21.9,
+      0
+     ]
+    },
+    {
+     "type": "folder",
+     "position": [
+      -2.38,
+      0.9,
+      -0.28
+     ],
+     "rotation": [
+      0,
+      -11.5,
+      0
+     ]
+    },
+    {
+     "type": "first_aid_box",
+     "position": [
+      -2.5,
+      0.9,
+      -0.18
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      2.7,
+      0,
+      -0.4
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      -1.9,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      -1.9,
+      0.78,
+      -2.98
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      1.9,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      1.9,
+      0.78,
+      -2.98
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -1.5,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.9,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.3,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.3,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.9,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      1.5,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "pump_motor",
+     "position": [
+      -2.5,
+      0,
+      -4.6
+     ]
+    },
+    {
+     "type": "pump_motor",
+     "position": [
+      2.5,
+      0,
+      -4.6
+     ]
+    },
+    {
+     "type": "large_vessel",
+     "position": [
+      -2.8,
+      0,
+      -8.0
+     ]
+    },
+    {
+     "type": "large_vessel",
+     "position": [
+      2.8,
+      0,
+      -8.0
+     ]
+    },
+    {
+     "type": "pipe_vertical",
+     "position": [
+      -1.7,
+      0,
+      -4.6
+     ]
+    },
+    {
+     "type": "pipe_vertical",
+     "position": [
+      1.7,
+      0,
+      -4.6
+     ]
+    },
+    {
+     "type": "pipe_vertical",
+     "position": [
+      -1.7,
+      0,
+      -6.4
+     ]
+    },
+    {
+     "type": "pipe_vertical",
+     "position": [
+      1.7,
+      0,
+      -6.4
+     ]
+    },
+    {
+     "type": "valve_actuator",
+     "position": [
+      -1.7,
+      2.0,
+      -5.5
+     ]
+    },
+    {
+     "type": "valve_actuator",
+     "position": [
+      1.7,
+      2.0,
+      -5.5
+     ]
+    },
+    {
+     "type": "valve_actuator",
+     "position": [
+      -2.1,
+      0,
+      -3.4
+     ]
+    },
+    {
+     "type": "pallet",
+     "position": [
+      2.5,
+      0,
+      -1.8
+     ]
+    },
+    {
+     "type": "lead_blanket",
+     "position": [
+      2.5,
+      0.14,
+      -1.8
+     ]
+    },
+    {
+     "type": "lead_blanket",
+     "position": [
+      2.5,
+      0.165,
+      -1.8
+     ]
+    },
+    {
+     "type": "lead_blanket",
+     "position": [
+      2.5,
+      0.19,
+      -1.8
+     ]
+    },
+    {
+     "type": "lead_blanket",
+     "position": [
+      2.5,
+      0.215,
+      -1.8
+     ]
+    },
+    {
+     "type": "lead_blanket",
+     "position": [
+      2.5,
+      0.24,
+      -1.8
+     ]
+    },
+    {
+     "type": "lead_blanket",
+     "position": [
+      2.5,
+      0.265,
+      -1.8
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.71,
+      0.0,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.71,
+      0.0,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.71,
+      0.05,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.71,
+      0.05,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.71,
+      0.1,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.71,
+      0.1,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.71,
+      0.15,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.71,
+      0.15,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.71,
+      0.2,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.71,
+      0.2,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.5,
+      0.0,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.5,
+      0.0,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.5,
+      0.05,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.5,
+      0.05,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.5,
+      0.1,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.5,
+      0.1,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.5,
+      0.15,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.5,
+      0.15,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.5,
+      0.2,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.5,
+      0.2,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.29,
+      0.0,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.29,
+      0.0,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.29,
+      0.05,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.29,
+      0.05,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.29,
+      0.1,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.29,
+      0.1,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.29,
+      0.15,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.29,
+      0.15,
+      -1.945
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.29,
+      0.2,
+      -2.055
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.29,
+      0.2,
+      -1.945
+     ]
+    },
+    {
+     "type": "tongs",
+     "position": [
+      -2.0,
+      0,
+      -2.8
+     ],
+     "rotation": [
+      0,
+      15,
+      0
+     ]
+    },
+    {
+     "type": "lead_container",
+     "position": [
+      2.0,
+      0,
+      -2.6
+     ]
+    },
+    {
+     "type": "waste_bag_yellow",
+     "position": [
+      3.0,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "waste_bag_yellow",
+     "position": [
+      3.1,
+      0,
+      -3.4
+     ],
+     "rotation": [
+      0,
+      30,
+      0
+     ]
+    },
+    {
+     "type": "waste_drum_yellow",
+     "position": [
+      3.1,
+      0,
+      -0.6
+     ]
+    },
+    {
+     "type": "ppe_locker",
+     "position": [
+      3.2,
+      0,
+      0.6
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "ppe_locker",
+     "position": [
+      3.2,
+      0,
+      1.2
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      -2.5,
+      0.6,
+      -2.0
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      2.5,
+      0.6,
+      -1.8
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      -1.9,
+      1.1,
+      -3.0
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      1.9,
+      1.1,
+      -3.0
+     ]
+    }
+   ]
+  },
+  "scenario_2": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "workbench",
+     "position": [
+      -2.5,
+      0,
+      -0.8
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      -2.55,
+      0.9,
+      -1.25
+     ],
+     "rotation": [
+      0,
+      2.2,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      -2.48,
+      0.9,
+      -0.85
+     ],
+     "rotation": [
+      0,
+      4.1,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      -2.52,
+      0.9,
+      -0.45
+     ],
+     "rotation": [
+      0,
+      1.3,
+      0
+     ]
+    },
+    {
+     "type": "folder",
+     "position": [
+      -2.38,
+      0.9,
+      -0.28
+     ],
+     "rotation": [
+      0,
+      1.4,
+      0
+     ]
+    },
+    {
+     "type": "first_aid_box",
+     "position": [
+      -2.5,
+      0.9,
+      -0.18
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      2.7,
+      0,
+      -0.4
+     ]
+    },
+    {
+     "type": "shielded_door",
+     "position": [
+      0,
+      0,
+      -2.6
+     ]
+    },
+    {
+     "type": "warning_lamp_red",
+     "position": [
+      0,
+      2.3,
+      -2.4
+     ]
+    },
+    {
+     "type": "warning_lamp_red",
+     "position": [
+      -1.5,
+      2.3,
+      -2.4
+     ]
+    },
+    {
+     "type": "gamma_therapy_unit",
+     "position": [
+      -2.5,
+      0,
+      -7.2
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "patient_couch",
+     "position": [
+      2.3,
+      0,
+      -6.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "pet_ct_gantry",
+     "position": [
+      2.8,
+      0,
+      -3.8
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "hot_cell",
+     "position": [
+      -2.7,
+      0,
+      -4.2
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "syringe_shield",
+     "position": [
+      -2.7,
+      1.2,
+      -4.0
+     ]
+    },
+    {
+     "type": "syringe_shield",
+     "position": [
+      -2.7,
+      1.2,
+      -4.3
+     ]
+    },
+    {
+     "type": "lead_container",
+     "position": [
+      -2.7,
+      1.2,
+      -4.6
+     ]
+    },
+    {
+     "type": "monitor",
+     "position": [
+      -2.7,
+      0.9,
+      -1.3
+     ],
+     "rotation": [
+      0,
+      70,
+      0
+     ]
+    },
+    {
+     "type": "lead_apron",
+     "position": [
+      1.9,
+      0.9,
+      -1.0
+     ]
+    },
+    {
+     "type": "lead_apron",
+     "position": [
+      2.4,
+      0.9,
+      -1.0
+     ]
+    },
+    {
+     "type": "lead_apron",
+     "position": [
+      2.9,
+      0.9,
+      -1.0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.005,
+      0.0,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.005,
+      0.05,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.005,
+      0.1,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.005,
+      0.15,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.005,
+      0.2,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -2.005,
+      0.25,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -1.795,
+      0.0,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -1.795,
+      0.05,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -1.795,
+      0.1,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -1.795,
+      0.15,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -1.795,
+      0.2,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_brick",
+     "position": [
+      -1.795,
+      0.25,
+      -5.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tongs",
+     "position": [
+      -1.9,
+      0,
+      -6.0
+     ],
+     "rotation": [
+      0,
+      10,
+      0
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      -1.9,
+      0,
+      -2.0
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      -1.9,
+      0.78,
+      -1.98
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      1.9,
+      0,
+      -2.0
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      1.9,
+      0.78,
+      -1.98
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      2.3,
+      1.3,
+      -8.4
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      0,
+      0.2,
+      -3.0
+     ]
+    }
+   ]
+  },
+  "scenario_3": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "crate",
+     "position": [
+      2.4,
+      0,
+      -0.8
+     ],
+     "rotation": [
+      0,
+      10,
+      0
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      2.4,
+      0.45,
+      -0.8
+     ],
+     "rotation": [
+      0,
+      -5,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      2.3,
+      0.9,
+      -0.9
+     ],
+     "rotation": [
+      0,
+      20,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      2.5,
+      0.9,
+      -0.68
+     ],
+     "rotation": [
+      0,
+      -15,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      2.65,
+      0.9,
+      -0.85
+     ],
+     "rotation": [
+      0,
+      10,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      2.4,
+      0,
+      -0.1
+     ]
+    },
+    {
+     "type": "portal_monitor",
+     "position": [
+      -1.3,
+      0,
+      -2.2
+     ]
+    },
+    {
+     "type": "portal_monitor",
+     "position": [
+      1.3,
+      0,
+      -2.2
+     ]
+    },
+    {
+     "type": "indicator_light_green",
+     "position": [
+      -1.3,
+      2.3,
+      -2.2
+     ]
+    },
+    {
+     "type": "indicator_light_green",
+     "position": [
+      1.3,
+      2.3,
+      -2.2
+     ]
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -3.09,
+      0.0,
+      -4.0
+     ],
+     "rotation": [
+      0,
+      235.4,
+      0
+     ],
+     "scale": 0.952767870047754
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.361,
+      0.0,
+      -4.5
+     ],
+     "rotation": [
+      0,
+      169.5,
+      0
+     ],
+     "scale": 0.9954282560695311
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.667,
+      0.0,
+      -5.0
+     ],
+     "rotation": [
+      0,
+      285.9,
+      0
+     ],
+     "scale": 1.0172990825512782
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.682,
+      0.0,
+      -5.5
+     ],
+     "rotation": [
+      0,
+      0.5,
+      0
+     ],
+     "scale": 0.7021160989711631
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.269,
+      0.0,
+      -6.0
+     ],
+     "rotation": [
+      0,
+      193.9,
+      0
+     ],
+     "scale": 1.0794488405614697
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.518,
+      0.25,
+      -4.0
+     ],
+     "rotation": [
+      0,
+      231.9,
+      0
+     ],
+     "scale": 0.8353957681747477
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -3.194,
+      0.25,
+      -4.5
+     ],
+     "rotation": [
+      0,
+      291.1,
+      0
+     ],
+     "scale": 0.8401882936553438
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.469,
+      0.25,
+      -5.0
+     ],
+     "rotation": [
+      0,
+      143.1,
+      0
+     ],
+     "scale": 1.0400699887898748
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.385,
+      0.25,
+      -5.5
+     ],
+     "rotation": [
+      0,
+      144.6,
+      0
+     ],
+     "scale": 1.2034309412669935
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -3.21,
+      0.25,
+      -6.0
+     ],
+     "rotation": [
+      0,
+      173.9,
+      0
+     ],
+     "scale": 1.334096296297468
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.254,
+      0.5,
+      -4.0
+     ],
+     "rotation": [
+      0,
+      263.0,
+      0
+     ],
+     "scale": 0.847892581592109
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -3.521,
+      0.5,
+      -4.5
+     ],
+     "rotation": [
+      0,
+      44.6,
+      0
+     ],
+     "scale": 0.7343410390215527
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.456,
+      0.5,
+      -5.0
+     ],
+     "rotation": [
+      0,
+      23.3,
+      0
+     ],
+     "scale": 0.8575379480884413
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.301,
+      0.5,
+      -5.5
+     ],
+     "rotation": [
+      0,
+      180.2,
+      0
+     ],
+     "scale": 1.2187724634173294
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.308,
+      0.5,
+      -6.0
+     ],
+     "rotation": [
+      0,
+      53.4,
+      0
+     ],
+     "scale": 0.8281528553316508
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.72,
+      0.75,
+      -4.0
+     ],
+     "rotation": [
+      0,
+      325.8,
+      0
+     ],
+     "scale": 1.031197625576037
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -2.947,
+      0.75,
+      -4.5
+     ],
+     "rotation": [
+      0,
+      179.3,
+      0
+     ],
+     "scale": 1.2450529915284392
+    },
+    {
+     "type": "scrap_chunk",
+     "position": [
+      -3.01,
+      0.75,
+      -5.0
+     ],
+     "rotation": [
+      0,
+      83.8,
+      0
+     ],
+     "scale": 1.087428955131895
+    },
+    {
+     "type": "steel_beam",
+     "position": [
+      -2.5,
+      0,
+      -5.5
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "steel_beam",
+     "position": [
+      -2.5,
+      0.2,
+      -5.5
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "steel_beam",
+     "position": [
+      -2.5,
+      0.4,
+      -5.5
+     ],
+     "rotation": [
+      0,
+      80,
+      0
+     ]
+    },
+    {
+     "type": "steel_beam",
+     "position": [
+      -3.0,
+      0,
+      -7.5
+     ],
+     "rotation": [
+      0,
+      10,
+      0
+     ]
+    },
+    {
+     "type": "steel_beam",
+     "position": [
+      -2.6,
+      0,
+      -7.5
+     ],
+     "rotation": [
+      0,
+      -5,
+      0
+     ]
+    },
+    {
+     "type": "rebar_bundle",
+     "position": [
+      -1.9,
+      0,
+      -3.4
+     ]
+    },
+    {
+     "type": "rebar_bundle",
+     "position": [
+      -1.7,
+      0,
+      -3.7
+     ]
+    },
+    {
+     "type": "rebar_bundle",
+     "position": [
+      -2.1,
+      0,
+      -3.6
+     ]
+    },
+    {
+     "type": "shipping_container",
+     "position": [
+      3.6,
+      0,
+      -8.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "waste_drum_rusty",
+     "position": [
+      2.5,
+      0,
+      -4.2
+     ]
+    },
+    {
+     "type": "waste_drum_rusty",
+     "position": [
+      2.9,
+      0,
+      -4.6
+     ]
+    },
+    {
+     "type": "waste_drum_rusty",
+     "position": [
+      2.5,
+      0,
+      -5.1
+     ]
+    },
+    {
+     "type": "waste_drum_rusty",
+     "position": [
+      2.9,
+      0,
+      -5.6
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      -0.9,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      -0.3,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      0.3,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      0.9,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      -1.4,
+      0,
+      -6.5
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      -1.4,
+      0.78,
+      -6.48
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      1.4,
+      0,
+      -6.5
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      1.4,
+      0.78,
+      -6.48
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -1.0,
+      0,
+      -6.5
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.333,
+      0,
+      -6.5
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.333,
+      0,
+      -6.5
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      1.0,
+      0,
+      -6.5
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      3.0,
+      0,
+      -1.5
+     ],
+     "rotation": [
+      0,
+      15,
+      0
+     ]
+    }
+   ]
+  },
+  "scenario_4": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "workbench",
+     "position": [
+      -2.5,
+      0,
+      -0.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      -2.55,
+      0.9,
+      -1.05
+     ],
+     "rotation": [
+      0,
+      -9.6,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      -2.48,
+      0.9,
+      -0.65
+     ],
+     "rotation": [
+      0,
+      0.9,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      -2.52,
+      0.9,
+      -0.25
+     ],
+     "rotation": [
+      0,
+      -11.5,
+      0
+     ]
+    },
+    {
+     "type": "folder",
+     "position": [
+      -2.38,
+      0.9,
+      -0.08
+     ],
+     "rotation": [
+      0,
+      12.2,
+      0
+     ]
+    },
+    {
+     "type": "first_aid_box",
+     "position": [
+      -2.5,
+      0.9,
+      0.02
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      2.7,
+      0,
+      -0.2
+     ]
+    },
+    {
+     "type": "portal_monitor_yantar",
+     "position": [
+      -1.3,
+      0,
+      -2.6
+     ]
+    },
+    {
+     "type": "portal_monitor_yantar",
+     "position": [
+      1.3,
+      0,
+      -2.6
+     ]
+    },
+    {
+     "type": "indicator_light_green",
+     "position": [
+      -1.3,
+      2.3,
+      -2.6
+     ]
+    },
+    {
+     "type": "indicator_light_red",
+     "position": [
+      1.3,
+      2.3,
+      -2.6
+     ]
+    },
+    {
+     "type": "barrier_gate",
+     "position": [
+      0,
+      1.0,
+      -1.6
+     ]
+    },
+    {
+     "type": "customs_booth",
+     "position": [
+      3.4,
+      0,
+      -1.4
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "shipping_container",
+     "position": [
+      -3.0,
+      0,
+      -6.5
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "shipping_container",
+     "position": [
+      -3.0,
+      0,
+      -10.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "xray_scanner",
+     "position": [
+      2.5,
+      0,
+      -5.5
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "conveyor_table",
+     "position": [
+      2.5,
+      0,
+      -3.8
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "conveyor_table",
+     "position": [
+      2.5,
+      0,
+      -7.2
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "pallet",
+     "position": [
+      1.8,
+      0,
+      -9.0
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      1.49,
+      0.14,
+      -9.26
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      1.49,
+      0.14,
+      -8.74
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      1.49,
+      0.59,
+      -9.26
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      1.49,
+      0.59,
+      -8.74
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      2.11,
+      0.14,
+      -9.26
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      2.11,
+      0.14,
+      -8.74
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      2.11,
+      0.59,
+      -9.26
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      2.11,
+      0.59,
+      -8.74
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      -0.9,
+      0,
+      -4.0
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      -0.9,
+      0,
+      -5.0
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      -0.9,
+      0,
+      -6.0
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      0.9,
+      0,
+      -4.0
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      0.9,
+      0,
+      -5.0
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      0.9,
+      0,
+      -6.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -1.0,
+      0,
+      -3.8
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.333,
+      0,
+      -3.8
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.333,
+      0,
+      -3.8
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      1.0,
+      0,
+      -3.8
+     ]
+    },
+    {
+     "type": "info_board",
+     "position": [
+      -3.3,
+      0,
+      -1.5
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      1.9,
+      0.8,
+      -3.8
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      1.9,
+      0,
+      -3.8
+     ]
+    }
+   ]
+  },
+  "scenario_5": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "crate",
+     "position": [
+      -2.4,
+      0,
+      -0.8
+     ],
+     "rotation": [
+      0,
+      10,
+      0
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      -2.4,
+      0.45,
+      -0.8
+     ],
+     "rotation": [
+      0,
+      -5,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      -2.5,
+      0.9,
+      -0.9
+     ],
+     "rotation": [
+      0,
+      20,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      -2.3,
+      0.9,
+      -0.68
+     ],
+     "rotation": [
+      0,
+      -15,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      -2.15,
+      0.9,
+      -0.85
+     ],
+     "rotation": [
+      0,
+      10,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      -2.4,
+      0,
+      -0.1
+     ]
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -4.1,
+      0,
+      -7.837
+     ],
+     "rotation": [
+      0,
+      171.6,
+      0
+     ],
+     "scale": 1.01
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -1.912,
+      0,
+      -4.385
+     ],
+     "rotation": [
+      0,
+      253.9,
+      0
+     ],
+     "scale": 0.95
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -2.542,
+      0,
+      -2.466
+     ],
+     "rotation": [
+      0,
+      25.3,
+      0
+     ],
+     "scale": 1.46
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -3.668,
+      0,
+      -8.598
+     ],
+     "rotation": [
+      0,
+      306.7,
+      0
+     ],
+     "scale": 1.47
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -3.373,
+      0,
+      -4.512
+     ],
+     "rotation": [
+      0,
+      352.8,
+      0
+     ],
+     "scale": 1.46
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -2.862,
+      0,
+      -7.192
+     ],
+     "rotation": [
+      0,
+      271.5,
+      0
+     ],
+     "scale": 1.02
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -2.245,
+      0,
+      -7.782
+     ],
+     "rotation": [
+      0,
+      280.4,
+      0
+     ],
+     "scale": 1.44
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -3.62,
+      0,
+      -5.077
+     ],
+     "rotation": [
+      0,
+      55.4,
+      0
+     ],
+     "scale": 1.08
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -1.879,
+      0,
+      -6.146
+     ],
+     "rotation": [
+      0,
+      54.8,
+      0
+     ],
+     "scale": 0.5
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -3.497,
+      0,
+      -7.394
+     ],
+     "rotation": [
+      0,
+      269.3,
+      0
+     ],
+     "scale": 0.56
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -3.537,
+      0,
+      -2.476
+     ],
+     "rotation": [
+      0,
+      21.5,
+      0
+     ],
+     "scale": 0.7
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -1.912,
+      0,
+      -6.786
+     ],
+     "rotation": [
+      0,
+      230.7,
+      0
+     ],
+     "scale": 1.07
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -3.21,
+      0,
+      -2.594
+     ],
+     "rotation": [
+      0,
+      237.8,
+      0
+     ],
+     "scale": 1.04
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      -2.947,
+      0,
+      -8.083
+     ],
+     "rotation": [
+      0,
+      98.3,
+      0
+     ],
+     "scale": 1.4
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      3.726,
+      0,
+      -7.313
+     ],
+     "rotation": [
+      0,
+      262.4,
+      0
+     ],
+     "scale": 0.96
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      4.132,
+      0,
+      -5.363
+     ],
+     "rotation": [
+      0,
+      40.8,
+      0
+     ],
+     "scale": 1.41
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      1.845,
+      0,
+      -2.902
+     ],
+     "rotation": [
+      0,
+      56.7,
+      0
+     ],
+     "scale": 0.77
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      2.363,
+      0,
+      -8.493
+     ],
+     "rotation": [
+      0,
+      89.5,
+      0
+     ],
+     "scale": 1.49
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      2.217,
+      0,
+      -4.554
+     ],
+     "rotation": [
+      0,
+      204.8,
+      0
+     ],
+     "scale": 0.72
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      2.572,
+      0,
+      -2.872
+     ],
+     "rotation": [
+      0,
+      11.7,
+      0
+     ],
+     "scale": 0.68
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      2.189,
+      0,
+      -3.469
+     ],
+     "rotation": [
+      0,
+      246.6,
+      0
+     ],
+     "scale": 0.51
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      2.334,
+      0,
+      -7.842
+     ],
+     "rotation": [
+      0,
+      213.7,
+      0
+     ],
+     "scale": 1.22
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      2.63,
+      0,
+      -5.649
+     ],
+     "rotation": [
+      0,
+      175.4,
+      0
+     ],
+     "scale": 0.66
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      3.852,
+      0,
+      -2.279
+     ],
+     "rotation": [
+      0,
+      123.3,
+      0
+     ],
+     "scale": 0.56
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      2.79,
+      0,
+      -3.082
+     ],
+     "rotation": [
+      0,
+      27.8,
+      0
+     ],
+     "scale": 1.18
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      2.57,
+      0,
+      -8.588
+     ],
+     "rotation": [
+      0,
+      72.7,
+      0
+     ],
+     "scale": 1.03
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      3.971,
+      0,
+      -5.938
+     ],
+     "rotation": [
+      0,
+      10.2,
+      0
+     ],
+     "scale": 1.46
+    },
+    {
+     "type": "granite_boulder",
+     "position": [
+      4.099,
+      0,
+      -7.737
+     ],
+     "rotation": [
+      0,
+      76.7,
+      0
+     ],
+     "scale": 1.3
+    },
+    {
+     "type": "ore_chunk",
+     "position": [
+      2.003,
+      0,
+      -2.285
+     ],
+     "rotation": [
+      0,
+      92.6,
+      0
+     ]
+    },
+    {
+     "type": "ore_chunk",
+     "position": [
+      2.476,
+      0,
+      -2.961
+     ],
+     "rotation": [
+      0,
+      176.2,
+      0
+     ]
+    },
+    {
+     "type": "ore_chunk",
+     "position": [
+      1.902,
+      0,
+      -3.067
+     ],
+     "rotation": [
+      0,
+      69.6,
+      0
+     ]
+    },
+    {
+     "type": "ore_chunk",
+     "position": [
+      -1.997,
+      0,
+      -3.198
+     ],
+     "rotation": [
+      0,
+      118.8,
+      0
+     ]
+    },
+    {
+     "type": "ore_chunk",
+     "position": [
+      -2.141,
+      0,
+      -3.701
+     ],
+     "rotation": [
+      0,
+      171.2,
+      0
+     ]
+    },
+    {
+     "type": "ore_chunk",
+     "position": [
+      2.191,
+      0,
+      -6.139
+     ],
+     "rotation": [
+      0,
+      239.9,
+      0
+     ]
+    },
+    {
+     "type": "ore_chunk",
+     "position": [
+      2.26,
+      0,
+      -6.398
+     ],
+     "rotation": [
+      0,
+      190.1,
+      0
+     ]
+    },
+    {
+     "type": "soil_mound",
+     "position": [
+      -1.0,
+      0,
+      -9.2
+     ],
+     "scale": 1.6
+    },
+    {
+     "type": "soil_mound",
+     "position": [
+      1.4,
+      0,
+      -9.6
+     ],
+     "scale": 1.4
+    },
+    {
+     "type": "soil_mound",
+     "position": [
+      3.2,
+      0,
+      -9.0
+     ],
+     "scale": 1.2
+    },
+    {
+     "type": "marker_stake",
+     "position": [
+      -1.6,
+      0,
+      -2.0
+     ]
+    },
+    {
+     "type": "marker_stake",
+     "position": [
+      1.6,
+      0,
+      -2.0
+     ]
+    },
+    {
+     "type": "marker_stake",
+     "position": [
+      -1.6,
+      0,
+      -4.5
+     ]
+    },
+    {
+     "type": "marker_stake",
+     "position": [
+      1.6,
+      0,
+      -4.5
+     ]
+    },
+    {
+     "type": "marker_stake",
+     "position": [
+      -1.6,
+      0,
+      -7.0
+     ]
+    },
+    {
+     "type": "marker_stake",
+     "position": [
+      1.6,
+      0,
+      -7.0
+     ]
+    },
+    {
+     "type": "spectrometer_field",
+     "position": [
+      -2.55,
+      0.9,
+      -0.7
+     ],
+     "rotation": [
+      0,
+      20,
+      0
+     ]
+    },
+    {
+     "type": "sample_bag",
+     "position": [
+      -2.2,
+      0.9,
+      -0.9
+     ]
+    },
+    {
+     "type": "sample_bag",
+     "position": [
+      -2.2,
+      0.9,
+      -0.6
+     ],
+     "rotation": [
+      0,
+      15,
+      0
+     ]
+    },
+    {
+     "type": "geo_hammer",
+     "position": [
+      -2.6,
+      0.9,
+      -1.0
+     ],
+     "rotation": [
+      0,
+      80,
+      0
+     ]
+    },
+    {
+     "type": "jerrycan",
+     "position": [
+      2.6,
+      0,
+      -0.4
+     ],
+     "rotation": [
+      0,
+      25,
+      0
+     ]
+    },
+    {
+     "type": "water_barrel",
+     "position": [
+      3.0,
+      0,
+      -0.9
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      -0.9,
+      0,
+      -1.0
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      0.9,
+      0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  "scenario_6": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "workbench",
+     "position": [
+      -2.5,
+      0,
+      -0.8
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      -2.55,
+      0.9,
+      -1.25
+     ],
+     "rotation": [
+      0,
+      -15.4,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      -2.48,
+      0.9,
+      -0.85
+     ],
+     "rotation": [
+      0,
+      19.2,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      -2.52,
+      0.9,
+      -0.45
+     ],
+     "rotation": [
+      0,
+      20.7,
+      0
+     ]
+    },
+    {
+     "type": "folder",
+     "position": [
+      -2.38,
+      0.9,
+      -0.28
+     ],
+     "rotation": [
+      0,
+      0.2,
+      0
+     ]
+    },
+    {
+     "type": "first_aid_box",
+     "position": [
+      -2.5,
+      0.9,
+      -0.18
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      2.7,
+      0,
+      -0.4
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      -1.9,
+      0,
+      -2.8
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      -1.9,
+      0.78,
+      -2.78
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      1.9,
+      0,
+      -2.8
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      1.9,
+      0.78,
+      -2.78
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -1.5,
+      0,
+      -2.8
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.9,
+      0,
+      -2.8
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.3,
+      0,
+      -2.8
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.3,
+      0,
+      -2.8
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.9,
+      0,
+      -2.8
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      1.5,
+      0,
+      -2.8
+     ]
+    },
+    {
+     "type": "cask_transport",
+     "position": [
+      -2.5,
+      0,
+      -4.2
+     ]
+    },
+    {
+     "type": "cask_transport",
+     "position": [
+      -2.5,
+      0,
+      -6.4
+     ]
+    },
+    {
+     "type": "concrete_module",
+     "position": [
+      2.8,
+      0,
+      -4.0
+     ]
+    },
+    {
+     "type": "concrete_module",
+     "position": [
+      2.8,
+      0,
+      -5.8
+     ]
+    },
+    {
+     "type": "storage_vault_cover",
+     "position": [
+      2.0,
+      0,
+      -8.8
+     ]
+    },
+    {
+     "type": "storage_vault_cover",
+     "position": [
+      -2.0,
+      0,
+      -8.8
+     ]
+    },
+    {
+     "type": "waste_drum_yellow",
+     "position": [
+      -3.31,
+      0,
+      -2.11
+     ]
+    },
+    {
+     "type": "waste_drum_yellow",
+     "position": [
+      -3.31,
+      0,
+      -1.49
+     ]
+    },
+    {
+     "type": "waste_drum_yellow",
+     "position": [
+      -2.69,
+      0,
+      -2.11
+     ]
+    },
+    {
+     "type": "waste_drum_yellow",
+     "position": [
+      -2.69,
+      0,
+      -1.49
+     ]
+    },
+    {
+     "type": "waste_drum",
+     "position": [
+      -2.6,
+      0,
+      -8.6
+     ]
+    },
+    {
+     "type": "waste_drum",
+     "position": [
+      -3.1,
+      0,
+      -8.2
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      2.39,
+      0.0,
+      -1.81
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      2.39,
+      0.0,
+      -1.39
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      2.39,
+      0.05,
+      -1.81
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      2.39,
+      0.05,
+      -1.39
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      2.39,
+      0.1,
+      -1.81
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      2.39,
+      0.1,
+      -1.39
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      2.39,
+      0.15,
+      -1.81
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      2.39,
+      0.15,
+      -1.39
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      2.39,
+      0.2,
+      -1.81
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      2.39,
+      0.2,
+      -1.39
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      3.01,
+      0.0,
+      -1.81
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      3.01,
+      0.0,
+      -1.39
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      3.01,
+      0.05,
+      -1.81
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      3.01,
+      0.05,
+      -1.39
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      3.01,
+      0.1,
+      -1.81
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      3.01,
+      0.1,
+      -1.39
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      3.01,
+      0.15,
+      -1.81
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      3.01,
+      0.15,
+      -1.39
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      3.01,
+      0.2,
+      -1.81
+     ]
+    },
+    {
+     "type": "polyethylene_slab",
+     "position": [
+      3.01,
+      0.2,
+      -1.39
+     ]
+    },
+    {
+     "type": "water_barrel",
+     "position": [
+      3.2,
+      0,
+      -2.6
+     ]
+    },
+    {
+     "type": "water_barrel",
+     "position": [
+      3.2,
+      0,
+      -3.2
+     ]
+    },
+    {
+     "type": "neutron_survey_meter",
+     "position": [
+      -2.5,
+      0.9,
+      -0.9
+     ],
+     "rotation": [
+      0,
+      15,
+      0
+     ]
+    },
+    {
+     "type": "tongs",
+     "position": [
+      -1.7,
+      0,
+      -3.6
+     ],
+     "rotation": [
+      0,
+      15,
+      0
+     ]
+    },
+    {
+     "type": "lead_container",
+     "position": [
+      1.8,
+      0,
+      -3.4
+     ]
+    },
+    {
+     "type": "concrete_block",
+     "position": [
+      -0.82,
+      0.0,
+      -9.4
+     ]
+    },
+    {
+     "type": "concrete_block",
+     "position": [
+      -0.82,
+      0.4,
+      -9.4
+     ]
+    },
+    {
+     "type": "concrete_block",
+     "position": [
+      0.0,
+      0.0,
+      -9.4
+     ]
+    },
+    {
+     "type": "concrete_block",
+     "position": [
+      0.0,
+      0.4,
+      -9.4
+     ]
+    },
+    {
+     "type": "concrete_block",
+     "position": [
+      0.82,
+      0.0,
+      -9.4
+     ]
+    },
+    {
+     "type": "concrete_block",
+     "position": [
+      0.82,
+      0.4,
+      -9.4
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      -1.9,
+      1.1,
+      -2.8
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      1.9,
+      1.1,
+      -2.8
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      2.8,
+      1.85,
+      -4.0
+     ]
+    }
+   ]
+  },
+  "scenario_7": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "crate",
+     "position": [
+      2.4,
+      0,
+      -0.8
+     ],
+     "rotation": [
+      0,
+      10,
+      0
+     ]
+    },
+    {
+     "type": "crate",
+     "position": [
+      2.4,
+      0.45,
+      -0.8
+     ],
+     "rotation": [
+      0,
+      -5,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      2.3,
+      0.9,
+      -0.9
+     ],
+     "rotation": [
+      0,
+      20,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      2.5,
+      0.9,
+      -0.68
+     ],
+     "rotation": [
+      0,
+      -15,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      2.65,
+      0.9,
+      -0.85
+     ],
+     "rotation": [
+      0,
+      10,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      2.4,
+      0,
+      -0.1
+     ]
+    },
+    {
+     "type": "barrier_fence",
+     "position": [
+      -3.0,
+      0,
+      -2.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "barrier_fence",
+     "position": [
+      -3.0,
+      0,
+      -3.9
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "barrier_fence",
+     "position": [
+      -3.0,
+      0,
+      -5.8
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "barrier_fence",
+     "position": [
+      -3.0,
+      0,
+      -7.7
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "barrier_fence",
+     "position": [
+      -3.0,
+      0,
+      -9.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "barrier_fence",
+     "position": [
+      3.0,
+      0,
+      -3.2
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "barrier_fence",
+     "position": [
+      3.0,
+      0,
+      -5.1
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "barrier_fence",
+     "position": [
+      3.0,
+      0,
+      -7.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "barrier_fence",
+     "position": [
+      3.0,
+      0,
+      -8.9
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "soil_mound",
+     "position": [
+      -3.2,
+      0,
+      -4.0
+     ],
+     "scale": 1.4
+    },
+    {
+     "type": "soil_mound",
+     "position": [
+      -3.2,
+      0,
+      -6.2
+     ],
+     "scale": 1.8
+    },
+    {
+     "type": "soil_mound",
+     "position": [
+      3.3,
+      0,
+      -6.0
+     ],
+     "scale": 1.5
+    },
+    {
+     "type": "soil_mound",
+     "position": [
+      3.3,
+      0,
+      -8.4
+     ],
+     "scale": 1.2
+    },
+    {
+     "type": "gravel_pile",
+     "position": [
+      -1.8,
+      0,
+      -9.6
+     ],
+     "scale": 1.3
+    },
+    {
+     "type": "gravel_pile",
+     "position": [
+      1.8,
+      0,
+      -9.8
+     ],
+     "scale": 1.1
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      -2.65,
+      0.0,
+      -1.8
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      -2.65,
+      0.15,
+      -1.8
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      -2.65,
+      0.3,
+      -1.8
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      -2.65,
+      0.45,
+      -1.8
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      -2.65,
+      0.6,
+      -1.8
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      -2.15,
+      0.0,
+      -1.8
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      -2.15,
+      0.15,
+      -1.8
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      -2.15,
+      0.3,
+      -1.8
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      -2.15,
+      0.45,
+      -1.8
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      -2.15,
+      0.6,
+      -1.8
+     ]
+    },
+    {
+     "type": "rebar_bundle",
+     "position": [
+      -1.5,
+      0,
+      -2.9
+     ]
+    },
+    {
+     "type": "rebar_bundle",
+     "position": [
+      -1.7,
+      0,
+      -3.2
+     ]
+    },
+    {
+     "type": "rebar_bundle",
+     "position": [
+      -1.3,
+      0,
+      -3.1
+     ]
+    },
+    {
+     "type": "radon_monitor",
+     "position": [
+      1.1,
+      0,
+      -2.0
+     ],
+     "rotation": [
+      0,
+      10,
+      0
+     ]
+    },
+    {
+     "type": "vent_fan",
+     "position": [
+      1.8,
+      0,
+      -3.0
+     ],
+     "rotation": [
+      0,
+      -30,
+      0
+     ]
+    },
+    {
+     "type": "vent_fan",
+     "position": [
+      -1.2,
+      0,
+      -3.4
+     ],
+     "rotation": [
+      0,
+      40,
+      0
+     ]
+    },
+    {
+     "type": "hose_coil",
+     "position": [
+      1.6,
+      0,
+      -3.9
+     ]
+    },
+    {
+     "type": "submersible_pump",
+     "position": [
+      2.2,
+      0,
+      -5.6
+     ]
+    },
+    {
+     "type": "marker_stake",
+     "position": [
+      -1.2,
+      0,
+      -5.0
+     ]
+    },
+    {
+     "type": "marker_stake",
+     "position": [
+      1.2,
+      0,
+      -5.0
+     ]
+    },
+    {
+     "type": "marker_stake",
+     "position": [
+      -1.2,
+      0,
+      -8.0
+     ]
+    },
+    {
+     "type": "marker_stake",
+     "position": [
+      1.2,
+      0,
+      -8.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -1.1,
+      0,
+      -5.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.55,
+      0,
+      -5.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.0,
+      0,
+      -5.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.55,
+      0,
+      -5.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      1.1,
+      0,
+      -5.0
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      -0.8,
+      0,
+      -1.2
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      0.0,
+      0,
+      -1.2
+     ]
+    },
+    {
+     "type": "safety_cone",
+     "position": [
+      0.8,
+      0,
+      -1.2
+     ]
+    }
+   ]
+  },
+  "scenario_8": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "workbench",
+     "position": [
+      -2.5,
+      0,
+      -0.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      -2.55,
+      0.9,
+      -1.05
+     ],
+     "rotation": [
+      0,
+      6.6,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      -2.48,
+      0.9,
+      -0.65
+     ],
+     "rotation": [
+      0,
+      -7.3,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      -2.52,
+      0.9,
+      -0.25
+     ],
+     "rotation": [
+      0,
+      10.3,
+      0
+     ]
+    },
+    {
+     "type": "folder",
+     "position": [
+      -2.38,
+      0.9,
+      -0.08
+     ],
+     "rotation": [
+      0,
+      -12.9,
+      0
+     ]
+    },
+    {
+     "type": "first_aid_box",
+     "position": [
+      -2.5,
+      0.9,
+      0.02
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      2.7,
+      0,
+      -0.2
+     ]
+    },
+    {
+     "type": "xray_scanner",
+     "position": [
+      2.4,
+      0,
+      -4.2
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "conveyor_table",
+     "position": [
+      2.4,
+      0,
+      -2.5
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "conveyor_table",
+     "position": [
+      2.4,
+      0,
+      -5.9
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "gate_post",
+     "position": [
+      -2.0,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "gate_post",
+     "position": [
+      -0.9,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "gate_beam",
+     "position": [
+      -1.45,
+      2.1,
+      -3.0
+     ]
+    },
+    {
+     "type": "monitor",
+     "position": [
+      -2.6,
+      0.9,
+      -1.2
+     ],
+     "rotation": [
+      0,
+      70,
+      0
+     ]
+    },
+    {
+     "type": "suitcase_red",
+     "position": [
+      1.246,
+      0,
+      -6.573
+     ],
+     "rotation": [
+      0,
+      44.8,
+      0
+     ]
+    },
+    {
+     "type": "suitcase_dark",
+     "position": [
+      1.568,
+      0,
+      -6.533
+     ],
+     "rotation": [
+      0,
+      79.5,
+      0
+     ]
+    },
+    {
+     "type": "suitcase_red",
+     "position": [
+      1.698,
+      0,
+      -6.743
+     ],
+     "rotation": [
+      0,
+      103.7,
+      0
+     ]
+    },
+    {
+     "type": "suitcase_dark",
+     "position": [
+      1.379,
+      0,
+      -6.198
+     ],
+     "rotation": [
+      0,
+      118.7,
+      0
+     ]
+    },
+    {
+     "type": "suitcase_red",
+     "position": [
+      1.629,
+      0,
+      -6.6
+     ],
+     "rotation": [
+      0,
+      10.7,
+      0
+     ]
+    },
+    {
+     "type": "bench",
+     "position": [
+      3.1,
+      0,
+      -7.2
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "bench",
+     "position": [
+      3.1,
+      0,
+      -9.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "bench",
+     "position": [
+      -3.1,
+      0,
+      -7.2
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "bench",
+     "position": [
+      -3.1,
+      0,
+      -9.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "info_board",
+     "position": [
+      3.3,
+      0,
+      -1.2
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "info_board",
+     "position": [
+      -3.3,
+      0,
+      -5.5
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.4,
+      0,
+      -1.5
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.4,
+      0,
+      -2.5
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.4,
+      0,
+      -3.5
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.4,
+      0,
+      -4.5
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.4,
+      0,
+      -1.5
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.4,
+      0,
+      -2.5
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.4,
+      0,
+      -3.5
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.4,
+      0,
+      -4.5
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      1.6,
+      0.8,
+      -4.2
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      1.6,
+      0,
+      -4.2
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      2.4,
+      1.2,
+      -4.2
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      3.0,
+      0,
+      -10.0
+     ]
+    }
+   ]
+  },
+  "scenario_9": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "workbench",
+     "position": [
+      -2.5,
+      0,
+      -0.8
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      -2.55,
+      0.9,
+      -1.25
+     ],
+     "rotation": [
+      0,
+      25.8,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      -2.48,
+      0.9,
+      -0.85
+     ],
+     "rotation": [
+      0,
+      16.7,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      -2.52,
+      0.9,
+      -0.45
+     ],
+     "rotation": [
+      0,
+      -24.4,
+      0
+     ]
+    },
+    {
+     "type": "folder",
+     "position": [
+      -2.38,
+      0.9,
+      -0.28
+     ],
+     "rotation": [
+      0,
+      -12.3,
+      0
+     ]
+    },
+    {
+     "type": "first_aid_box",
+     "position": [
+      -2.5,
+      0.9,
+      -0.18
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      2.7,
+      0,
+      -0.4
+     ]
+    },
+    {
+     "type": "pallet",
+     "position": [
+      -2.6,
+      0,
+      -3.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.14,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.14,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.32,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.32,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.5,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.5,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.14,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.14,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.32,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.32,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.5,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.5,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "pallet",
+     "position": [
+      -2.6,
+      0,
+      -5.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.14,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.14,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.32,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.32,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.5,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.5,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.14,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.14,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.32,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.32,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.5,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.5,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "pallet",
+     "position": [
+      2.6,
+      0,
+      -3.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.14,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.14,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.32,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.32,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.5,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.5,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.14,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.14,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.32,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.32,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.5,
+      -3.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.5,
+      -2.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "pallet",
+     "position": [
+      2.6,
+      0,
+      -5.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.14,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.14,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.32,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.32,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.5,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.5,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.14,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.14,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.32,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.32,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.5,
+      -5.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.5,
+      -4.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "pallet",
+     "position": [
+      -2.6,
+      0,
+      -7.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.14,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.14,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.32,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.32,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.5,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.76,
+      0.5,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.14,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.14,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.32,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.32,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.5,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      -2.44,
+      0.5,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "pallet",
+     "position": [
+      2.6,
+      0,
+      -7.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.14,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.14,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.32,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.32,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.5,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.44,
+      0.5,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.14,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.14,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.32,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.32,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.5,
+      -7.21
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tile_box",
+     "position": [
+      2.76,
+      0.5,
+      -6.79
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "gravel_pile",
+     "position": [
+      -1.4,
+      0,
+      -9.6
+     ],
+     "scale": 1.2
+    },
+    {
+     "type": "gravel_pile",
+     "position": [
+      1.4,
+      0,
+      -9.6
+     ],
+     "scale": 1.2
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      2.75,
+      0.0,
+      -9.0
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      2.75,
+      0.15,
+      -9.0
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      2.75,
+      0.3,
+      -9.0
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      2.75,
+      0.45,
+      -9.0
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      3.25,
+      0.0,
+      -9.0
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      3.25,
+      0.15,
+      -9.0
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      3.25,
+      0.3,
+      -9.0
+     ]
+    },
+    {
+     "type": "cement_bag",
+     "position": [
+      3.25,
+      0.45,
+      -9.0
+     ]
+    },
+    {
+     "type": "workbench",
+     "position": [
+      3.0,
+      0,
+      -0.8
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "lead_castle",
+     "position": [
+      3.0,
+      0.9,
+      -1.2
+     ]
+    },
+    {
+     "type": "lab_scales",
+     "position": [
+      3.0,
+      0.9,
+      -0.5
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      3.0,
+      0.9,
+      0.0
+     ],
+     "rotation": [
+      0,
+      -70,
+      0
+     ]
+    },
+    {
+     "type": "sample_jar",
+     "position": [
+      3.0,
+      0.9,
+      -0.3
+     ]
+    },
+    {
+     "type": "sample_jar",
+     "position": [
+      3.12,
+      0.9,
+      -0.3
+     ]
+    },
+    {
+     "type": "sample_jar",
+     "position": [
+      3.0,
+      0.9,
+      -0.42
+     ]
+    },
+    {
+     "type": "sample_jar",
+     "position": [
+      3.12,
+      0.9,
+      -0.42
+     ]
+    },
+    {
+     "type": "glazed_tile",
+     "position": [
+      2.776,
+      0.9,
+      0.252
+     ],
+     "rotation": [
+      0,
+      50.8,
+      0
+     ]
+    },
+    {
+     "type": "glazed_tile",
+     "position": [
+      2.745,
+      0.9,
+      0.433
+     ],
+     "rotation": [
+      0,
+      49.0,
+      0
+     ]
+    },
+    {
+     "type": "glazed_tile",
+     "position": [
+      2.701,
+      0.9,
+      0.216
+     ],
+     "rotation": [
+      0,
+      48.0,
+      0
+     ]
+    },
+    {
+     "type": "glazed_tile",
+     "position": [
+      2.877,
+      0.9,
+      0.315
+     ],
+     "rotation": [
+      0,
+      32.3,
+      0
+     ]
+    },
+    {
+     "type": "glazed_tile",
+     "position": [
+      2.861,
+      0.9,
+      0.257
+     ],
+     "rotation": [
+      0,
+      40.3,
+      0
+     ]
+    },
+    {
+     "type": "marinelli_beaker",
+     "position": [
+      3.1,
+      0.9,
+      0.55
+     ]
+    },
+    {
+     "type": "shelf_unit",
+     "position": [
+      -3.2,
+      0,
+      -1.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "shelf_unit",
+     "position": [
+      -3.2,
+      0,
+      -0.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      -1.2,
+      0,
+      -2.0
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      -1.2,
+      0.78,
+      -1.98
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      1.2,
+      0,
+      -2.0
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      1.2,
+      0.78,
+      -1.98
+     ]
+    }
+   ]
+  },
+  "scenario_10": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "workbench",
+     "position": [
+      -2.5,
+      0,
+      0.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      -2.55,
+      0.9,
+      -0.45
+     ],
+     "rotation": [
+      0,
+      -12.5,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      -2.48,
+      0.9,
+      -0.05
+     ],
+     "rotation": [
+      0,
+      11.6,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      -2.52,
+      0.9,
+      0.35
+     ],
+     "rotation": [
+      0,
+      -8.5,
+      0
+     ]
+    },
+    {
+     "type": "folder",
+     "position": [
+      -2.38,
+      0.9,
+      0.52
+     ],
+     "rotation": [
+      0,
+      -7.4,
+      0
+     ]
+    },
+    {
+     "type": "first_aid_box",
+     "position": [
+      -2.5,
+      0.9,
+      0.62
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      2.7,
+      0,
+      0.4
+     ]
+    },
+    {
+     "type": "workbench",
+     "position": [
+      2.5,
+      0,
+      -2.5
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "radiometer_lab",
+     "position": [
+      2.5,
+      0.9,
+      -2.9
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "lead_castle",
+     "position": [
+      2.5,
+      0.9,
+      -2.0
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "marinelli_beaker",
+     "position": [
+      2.4,
+      0.9,
+      -1.5
+     ]
+    },
+    {
+     "type": "marinelli_beaker",
+     "position": [
+      2.65,
+      0.9,
+      -1.5
+     ]
+    },
+    {
+     "type": "lab_scales",
+     "position": [
+      2.5,
+      0.9,
+      -3.5
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "workbench",
+     "position": [
+      2.5,
+      0,
+      -5.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fish_tray",
+     "position": [
+      2.5,
+      0.9,
+      -5.1
+     ]
+    },
+    {
+     "type": "fish_tray",
+     "position": [
+      2.5,
+      0.95,
+      -5.1
+     ]
+    },
+    {
+     "type": "fish_tray",
+     "position": [
+      2.5,
+      0.9,
+      -5.9
+     ]
+    },
+    {
+     "type": "mushroom_basket",
+     "position": [
+      2.5,
+      0.9,
+      -6.4
+     ]
+    },
+    {
+     "type": "mushroom_basket",
+     "position": [
+      -2.4,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "mushroom_basket",
+     "position": [
+      -2.9,
+      0,
+      -3.4
+     ]
+    },
+    {
+     "type": "mushroom_basket",
+     "position": [
+      -2.4,
+      0,
+      -3.8
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.0,
+      -6.2
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.0,
+      -5.8
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.2,
+      -6.2
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.2,
+      -5.8
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.4,
+      -6.2
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.4,
+      -5.8
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.6,
+      -6.2
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.6,
+      -5.8
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.0,
+      -7.4
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.0,
+      -7.0
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.2,
+      -7.4
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.2,
+      -7.0
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.4,
+      -7.4
+     ]
+    },
+    {
+     "type": "berry_crate",
+     "position": [
+      -2.7,
+      0.4,
+      -7.0
+     ]
+    },
+    {
+     "type": "fridge",
+     "position": [
+      -3.1,
+      0,
+      -8.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fridge",
+     "position": [
+      -3.1,
+      0,
+      -9.5
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fume_hood",
+     "position": [
+      2.9,
+      0,
+      -8.2
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "sample_bag",
+     "position": [
+      2.5,
+      0.9,
+      -4.4
+     ],
+     "rotation": [
+      0,
+      10,
+      0
+     ]
+    },
+    {
+     "type": "sample_bag",
+     "position": [
+      2.6,
+      0.9,
+      -4.2
+     ],
+     "rotation": [
+      0,
+      -15,
+      0
+     ]
+    },
+    {
+     "type": "ppe_locker",
+     "position": [
+      -3.2,
+      0,
+      -1.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "ppe_locker",
+     "position": [
+      -3.2,
+      0,
+      -0.4
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    }
+   ]
+  },
+  "scenario_11": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "workbench",
+     "position": [
+      -2.5,
+      0,
+      -0.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      -2.55,
+      0.9,
+      -1.05
+     ],
+     "rotation": [
+      0,
+      2.7,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      -2.48,
+      0.9,
+      -0.65
+     ],
+     "rotation": [
+      0,
+      7.5,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      -2.52,
+      0.9,
+      -0.25
+     ],
+     "rotation": [
+      0,
+      -12.1,
+      0
+     ]
+    },
+    {
+     "type": "folder",
+     "position": [
+      -2.38,
+      0.9,
+      -0.08
+     ],
+     "rotation": [
+      0,
+      4.5,
+      0
+     ]
+    },
+    {
+     "type": "first_aid_box",
+     "position": [
+      -2.5,
+      0.9,
+      0.02
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      2.7,
+      0,
+      -0.2
+     ]
+    },
+    {
+     "type": "workbench",
+     "position": [
+      2.4,
+      0,
+      -3.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "workbench",
+     "position": [
+      2.4,
+      0,
+      -5.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "desk_lamp",
+     "position": [
+      2.4,
+      0.9,
+      -2.6
+     ]
+    },
+    {
+     "type": "desk_lamp",
+     "position": [
+      2.4,
+      0.9,
+      -5.4
+     ]
+    },
+    {
+     "type": "aviation_clock",
+     "position": [
+      2.3,
+      0.9,
+      -2.9
+     ],
+     "rotation": [
+      0,
+      255.3,
+      0
+     ]
+    },
+    {
+     "type": "aviation_clock",
+     "position": [
+      2.5,
+      0.9,
+      -2.9
+     ],
+     "rotation": [
+      0,
+      267.1,
+      0
+     ]
+    },
+    {
+     "type": "aviation_clock",
+     "position": [
+      2.3,
+      0.9,
+      -3.18
+     ],
+     "rotation": [
+      0,
+      106.1,
+      0
+     ]
+    },
+    {
+     "type": "aviation_clock",
+     "position": [
+      2.5,
+      0.9,
+      -3.18
+     ],
+     "rotation": [
+      0,
+      189.9,
+      0
+     ]
+    },
+    {
+     "type": "compass_old",
+     "position": [
+      2.3,
+      0.9,
+      -4.7
+     ],
+     "rotation": [
+      0,
+      183.6,
+      0
+     ]
+    },
+    {
+     "type": "compass_old",
+     "position": [
+      2.5,
+      0.9,
+      -4.7
+     ],
+     "rotation": [
+      0,
+      183.3,
+      0
+     ]
+    },
+    {
+     "type": "compass_old",
+     "position": [
+      2.3,
+      0.9,
+      -4.95
+     ],
+     "rotation": [
+      0,
+      320.6,
+      0
+     ]
+    },
+    {
+     "type": "compass_old",
+     "position": [
+      2.5,
+      0.9,
+      -4.95
+     ],
+     "rotation": [
+      0,
+      161.0,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      2.5,
+      0.9,
+      -3.9
+     ],
+     "rotation": [
+      0,
+      -80,
+      0
+     ]
+    },
+    {
+     "type": "zip_bag",
+     "position": [
+      2.6,
+      0.9,
+      -3.2
+     ],
+     "rotation": [
+      0,
+      10,
+      0
+     ]
+    },
+    {
+     "type": "zip_bag",
+     "position": [
+      2.6,
+      0.9,
+      -4.4
+     ],
+     "rotation": [
+      0,
+      -12,
+      0
+     ]
+    },
+    {
+     "type": "lead_container",
+     "position": [
+      2.5,
+      0.9,
+      -6.0
+     ]
+    },
+    {
+     "type": "display_case",
+     "position": [
+      -3.0,
+      0,
+      -3.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "display_case",
+     "position": [
+      -3.0,
+      0,
+      -4.2
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "aviation_clock",
+     "position": [
+      -3.0,
+      1.0,
+      -3.0
+     ]
+    },
+    {
+     "type": "compass_old",
+     "position": [
+      -3.0,
+      1.0,
+      -4.2
+     ]
+    },
+    {
+     "type": "drawer_cabinet",
+     "position": [
+      -3.1,
+      0,
+      -6.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "antique_radio",
+     "position": [
+      -3.1,
+      0.9,
+      -6.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fume_hood",
+     "position": [
+      -3.0,
+      0,
+      -8.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "tongs",
+     "position": [
+      -1.9,
+      0,
+      -2.4
+     ],
+     "rotation": [
+      0,
+      20,
+      0
+     ]
+    },
+    {
+     "type": "books",
+     "position": [
+      -3.1,
+      0.9,
+      -6.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "books",
+     "position": [
+      -3.1,
+      0.95,
+      -6.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "books",
+     "position": [
+      -3.1,
+      1.0,
+      -6.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "books",
+     "position": [
+      -3.1,
+      1.05,
+      -6.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "lead_container",
+     "position": [
+      1.9,
+      0,
+      -8.6
+     ]
+    },
+    {
+     "type": "ppe_locker",
+     "position": [
+      3.2,
+      0,
+      -9.0
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    }
+   ]
+  },
+  "scenario_12": {
+   "origin": [
+    0,
+    0,
+    0
+   ],
+   "spreadXZ": 1.0,
+   "props": [
+    {
+     "type": "workbench",
+     "position": [
+      2.5,
+      0,
+      -0.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "dosimeter_dks",
+     "position": [
+      2.45,
+      0.9,
+      -1.05
+     ],
+     "rotation": [
+      0,
+      -22.9,
+      0
+     ]
+    },
+    {
+     "type": "survey_meter_dp5",
+     "position": [
+      2.52,
+      0.9,
+      -0.65
+     ],
+     "rotation": [
+      0,
+      12.7,
+      0
+     ]
+    },
+    {
+     "type": "permit_clipboard",
+     "position": [
+      2.48,
+      0.9,
+      -0.25
+     ],
+     "rotation": [
+      0,
+      -8.9,
+      0
+     ]
+    },
+    {
+     "type": "folder",
+     "position": [
+      2.62,
+      0.9,
+      -0.08
+     ],
+     "rotation": [
+      0,
+      11.3,
+      0
+     ]
+    },
+    {
+     "type": "first_aid_box",
+     "position": [
+      2.5,
+      0.9,
+      0.02
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "fire_extinguisher",
+     "position": [
+      -2.7,
+      0,
+      -0.2
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      -1.9,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      -1.9,
+      0.78,
+      -2.98
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      1.9,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "radiation_sign",
+     "position": [
+      1.9,
+      0.78,
+      -2.98
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -1.5,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.9,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      -0.3,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.3,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      0.9,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "stanchion",
+     "position": [
+      1.5,
+      0,
+      -3.0
+     ]
+    },
+    {
+     "type": "hot_cell_window",
+     "position": [
+      -3.2,
+      0,
+      -4.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "hot_cell_window",
+     "position": [
+      -3.2,
+      0,
+      -6.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "glovebox",
+     "position": [
+      -2.2,
+      0,
+      -4.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "glovebox",
+     "position": [
+      -2.2,
+      0,
+      -5.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "glovebox",
+     "position": [
+      -2.2,
+      0,
+      -7.2
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "sample_rack",
+     "position": [
+      -2.2,
+      0.9,
+      -4.0
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "sample_rack",
+     "position": [
+      -2.2,
+      0.9,
+      -5.6
+     ],
+     "rotation": [
+      0,
+      90,
+      0
+     ]
+    },
+    {
+     "type": "neutron_survey_meter",
+     "position": [
+      -2.2,
+      0.9,
+      -7.2
+     ],
+     "rotation": [
+      0,
+      60,
+      0
+     ]
+    },
+    {
+     "type": "control_panel",
+     "position": [
+      3.1,
+      0,
+      -3.4
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "control_panel",
+     "position": [
+      3.1,
+      0,
+      -4.4
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "pipe_vertical",
+     "position": [
+      2.5,
+      0,
+      -5.4
+     ]
+    },
+    {
+     "type": "pipe_vertical",
+     "position": [
+      2.5,
+      0,
+      -6.2
+     ]
+    },
+    {
+     "type": "pipe_vertical",
+     "position": [
+      2.5,
+      0,
+      -7.0
+     ]
+    },
+    {
+     "type": "pipe_vertical",
+     "position": [
+      2.5,
+      0,
+      -7.8
+     ]
+    },
+    {
+     "type": "pipe_vertical",
+     "position": [
+      2.5,
+      0,
+      -8.6
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      -1.2,
+      0,
+      -3.2
+     ]
+    },
+    {
+     "type": "criticality_alarm",
+     "position": [
+      -1.2,
+      1.1,
+      -3.2
+     ]
+    },
+    {
+     "type": "sign_pole",
+     "position": [
+      1.2,
+      0,
+      -3.2
+     ]
+    },
+    {
+     "type": "criticality_alarm",
+     "position": [
+      1.2,
+      1.1,
+      -3.2
+     ]
+    },
+    {
+     "type": "floor_drain",
+     "position": [
+      -0.6,
+      0,
+      -6.0
+     ]
+    },
+    {
+     "type": "floor_drain",
+     "position": [
+      0.8,
+      0,
+      -7.6
+     ]
+    },
+    {
+     "type": "lead_container",
+     "position": [
+      1.8,
+      0,
+      -8.4
+     ]
+    },
+    {
+     "type": "tongs",
+     "position": [
+      -1.4,
+      0,
+      -8.8
+     ],
+     "rotation": [
+      0,
+      35,
+      0
+     ]
+    },
+    {
+     "type": "waste_drum_yellow",
+     "position": [
+      3.1,
+      0,
+      -9.2
+     ]
+    },
+    {
+     "type": "shelf_unit",
+     "position": [
+      3.2,
+      0,
+      -10.2
+     ],
+     "rotation": [
+      0,
+      -90,
+      0
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      -1.9,
+      1.1,
+      -3.0
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      1.9,
+      1.1,
+      -3.0
+     ]
+    },
+    {
+     "type": "emergency_light",
+     "position": [
+      3.1,
+      1.4,
+      -3.9
+     ]
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,481 @@
+/**
+ * ALARA-Planner Pro — Модуль аналитики разбора полетов (After Action Review / AARAnalytics.tsx)
+ *
+ * Обеспечивает:
+ * 1. Запись пространственно-временной 3D-траектории спасателя с привязкой к МЭД H(r), накопленной дозе и ЧСС.
+ * 2. Автоматическую фиксацию нарушений регламента ОСПОРБ-99/2010 и НРБ-99/2009.
+ * 3. Расчет интегрального балла ALARA (0–100) по четырем критериям: Время, Расстояние, Экранирование, СИЗ.
+ * 4. Визуализацию тепловой карты маршрута (Trajectory Dose Heatmap) и экспорт протокола в JSON/CSV.
+ */
+
+import React, { useMemo } from 'react';
+import { PPEChecklistResult, ProtectionCoefficientsResult } from './PPECheckModule';
+import { PhysiologicalTelemetry } from './PhysiologicalStress';
+
+export interface AARTrajectorySample {
+  timestampSec: number;
+  position: [number, number, number];
+  doseRateMsvPerHour: number;
+  cumulativeDoseMsv: number;
+  heartRateBpm: number;
+  shieldAttenuationFactor: number;
+  ppeProtectionFactor: number;
+}
+
+export interface AARProtocolViolation {
+  id: string;
+  timestampSec: number;
+  severity: 'WARNING' | 'CRITICAL_VIOLATION';
+  code: string;
+  descriptionRu: string;
+  penaltyPoints: number;
+}
+
+export interface AARScoreBreakdown {
+  totalScore: number; // 0 - 100
+  timeEfficiencyScore: number; // 0 - 25
+  distanceOptimizationScore: number; // 0 - 25
+  shieldingUsageScore: number; // 0 - 25
+  ppeComplianceScore: number; // 0 - 25
+  gradeRu: 'ОТЛИЧНО (Допуск 1-й категории)' | 'ХОРОШО (Допуск подтвержден)' | 'УДОВЛЕТВОРИТЕЛЬНО (Переэкзаменовка)' | 'НЕУДОВЛЕТВОРИТЕЛЬНО (Отстранение от работ)';
+  passedCertification: boolean;
+}
+
+export interface AARSummaryReport {
+  scenarioId: number;
+  scenarioTitle: string;
+  missionDurationSec: number;
+  targetDurationSec: number;
+  doseResetCount: number;
+  finalAccumulatedDoseMsv: number;
+  doseLimitMsv: number;
+  peakDoseRateMsvPerHour: number;
+  averageDoseRateMsvPerHour: number;
+  peakHeartRateBpm: number;
+  minOxygenReservePercent: number;
+  ppeChecklistPassedAtEntry: boolean;
+  trajectorySamples: AARTrajectorySample[];
+  violations: AARProtocolViolation[];
+  scoreBreakdown: AARScoreBreakdown;
+  generatedAtIso: string;
+}
+
+/**
+ * Вычисляет интегральный рейтинг прохождения сценария по принципам ALARA
+ */
+export function evaluateAARSummary(params: {
+  scenarioId: number;
+  scenarioTitle: string;
+  missionDurationSec: number;
+  targetDurationSec: number;
+  doseResetCount?: number;
+  finalAccumulatedDoseMsv: number;
+  doseLimitMsv: number;
+  ppeChecklist: PPEChecklistResult;
+  ppeProtection: ProtectionCoefficientsResult;
+  physiology: PhysiologicalTelemetry;
+  trajectorySamples: AARTrajectorySample[];
+  violations: AARProtocolViolation[];
+}): AARSummaryReport {
+  const {
+    scenarioId,
+    scenarioTitle,
+    missionDurationSec,
+    targetDurationSec,
+    doseResetCount = 0,
+    finalAccumulatedDoseMsv,
+    doseLimitMsv,
+    ppeChecklist,
+    physiology,
+    trajectorySamples,
+    violations
+  } = params;
+
+  let peakDoseRate = 0;
+  let sumDoseRate = 0;
+  let peakBpm = physiology.heartRateBpm;
+  let sumShieldFactor = 0;
+
+  for (const sample of trajectorySamples) {
+    if (sample.doseRateMsvPerHour > peakDoseRate) {
+      peakDoseRate = sample.doseRateMsvPerHour;
+    }
+    if (sample.heartRateBpm > peakBpm) {
+      peakBpm = sample.heartRateBpm;
+    }
+    sumDoseRate += sample.doseRateMsvPerHour;
+    sumShieldFactor += sample.shieldAttenuationFactor;
+  }
+
+  const count = Math.max(1, trajectorySamples.length);
+  const avgDoseRate = sumDoseRate / count;
+  const avgShieldFactor = sumShieldFactor / count;
+
+  // 1. Оценка защиты временем (0 - 25 баллов)
+  const timeRatio = missionDurationSec / Math.max(30, targetDurationSec);
+  const timeEfficiencyScore = Number(
+    Math.max(0, Math.min(25, timeRatio <= 1.0 ? 25 : 25 * Math.exp(-(timeRatio - 1.0) * 1.2))).toFixed(1)
+  );
+
+  // 2. Оценка защиты расстоянием и соблюдения лимита дозы (0 - 25 баллов)
+  const doseRatio = finalAccumulatedDoseMsv / Math.max(0.01, doseLimitMsv);
+  const distanceOptimizationScore = Number(
+    Math.max(0, Math.min(25, doseRatio <= 1.0 ? 25 * (1.0 - doseRatio * 0.45) : 0)).toFixed(1)
+  );
+
+  // 3. Оценка применения защитных экранов (0 - 25 баллов)
+  const shieldingUsageScore = Number(
+    Math.max(5, Math.min(25, 12 + Math.log10(Math.max(1.0, avgShieldFactor)) * 13.0)).toFixed(1)
+  );
+
+  // 4. Оценка соблюдения регламента СИЗ (0 - 25 баллов)
+  let ppeComplianceScore = ppeChecklist.isReadyForDirtyZone ? 25 : 5;
+  for (const v of violations) {
+    ppeComplianceScore = Math.max(0, ppeComplianceScore - v.penaltyPoints * 0.5);
+  }
+  ppeComplianceScore = Number(ppeComplianceScore.toFixed(1));
+
+  const doseResetPenalty = doseResetCount * 25;
+  const penaltySum = violations.reduce((acc, v) => acc + v.penaltyPoints, 0);
+  const rawTotal =
+    timeEfficiencyScore + distanceOptimizationScore + shieldingUsageScore + ppeComplianceScore - penaltySum * 0.35 - doseResetPenalty;
+  const totalScore = Number(Math.max(0, Math.min(100, rawTotal)).toFixed(1));
+
+  let gradeRu: AARScoreBreakdown['gradeRu'] = 'НЕУДОВЛЕТВОРИТЕЛЬНО (Отстранение от работ)';
+  if (totalScore >= 85 && finalAccumulatedDoseMsv <= doseLimitMsv && ppeChecklist.isReadyForDirtyZone && doseResetCount === 0) {
+    gradeRu = 'ОТЛИЧНО (Допуск 1-й категории)';
+  } else if (totalScore >= 70 && finalAccumulatedDoseMsv <= doseLimitMsv && doseResetCount === 0) {
+    gradeRu = 'ХОРОШО (Допуск подтвержден)';
+  } else if (totalScore >= 50) {
+    gradeRu = 'УДОВЛЕТВОРИТЕЛЬНО (Переэкзаменовка)';
+  }
+
+  return {
+    scenarioId,
+    scenarioTitle,
+    missionDurationSec: Number(missionDurationSec.toFixed(1)),
+    targetDurationSec: Number(targetDurationSec.toFixed(1)),
+    doseResetCount: Number(doseResetCount),
+    finalAccumulatedDoseMsv: Number(finalAccumulatedDoseMsv.toFixed(4)),
+    doseLimitMsv,
+    peakDoseRateMsvPerHour: Number(peakDoseRate.toFixed(3)),
+    averageDoseRateMsvPerHour: Number(avgDoseRate.toFixed(3)),
+    peakHeartRateBpm: Number(peakBpm.toFixed(0)),
+    minOxygenReservePercent: Number(physiology.remainingOxygenPercent.toFixed(1)),
+    ppeChecklistPassedAtEntry: ppeChecklist.isReadyForDirtyZone,
+    trajectorySamples,
+    violations,
+    scoreBreakdown: {
+      totalScore,
+      timeEfficiencyScore,
+      distanceOptimizationScore,
+      shieldingUsageScore,
+      ppeComplianceScore,
+      gradeRu,
+      passedCertification: totalScore >= 70 && finalAccumulatedDoseMsv <= doseLimitMsv && doseResetCount === 0
+    },
+    generatedAtIso: new Date().toISOString()
+  };
+}
+
+/**
+ * Экспорт отчета AAR в формат CSV для архива аттестационной комиссии
+ */
+export function exportAARReportToCSV(report: AARSummaryReport): string {
+  const header = [
+    'Time_s',
+    'Pos_X_m',
+    'Pos_Y_m',
+    'Pos_Z_m',
+    'DoseRate_mSv_h',
+    'CumulativeDose_mSv',
+    'HeartRate_BPM',
+    'ShieldAttenuation',
+    'PPE_Factor'
+  ].join(',');
+
+  const rows = report.trajectorySamples.map(s =>
+    [
+      s.timestampSec.toFixed(1),
+      s.position[0].toFixed(2),
+      s.position[1].toFixed(2),
+      s.position[2].toFixed(2),
+      s.doseRateMsvPerHour.toFixed(4),
+      s.cumulativeDoseMsv.toFixed(5),
+      s.heartRateBpm.toFixed(0),
+      s.shieldAttenuationFactor.toFixed(2),
+      s.ppeProtectionFactor.toFixed(2)
+    ].join(',')
+  );
+
+  return [header, ...rows].join('\n');
+}
+
+export interface AARAnalyticsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  report: AARSummaryReport;
+}
+
+/**
+ * Интерактивная панель послеполетного разбора (After Action Review) с тепловой картой маршрута
+ */
+export const AARAnalytics: React.FC<AARAnalyticsModalProps> = ({ isOpen, onClose, report }) => {
+  const heatmapPoints = useMemo(() => {
+    if (report.trajectorySamples.length === 0) return [];
+    const maxRate = Math.max(0.01, report.peakDoseRateMsvPerHour);
+    return report.trajectorySamples.map(sample => {
+      // Нормализация координат X, Z из диапазона [-12..12] в [10..290] для 2D SVG карты
+      const svgX = Math.max(12, Math.min(288, 150 + sample.position[0] * 11));
+      const svgY = Math.max(12, Math.min(188, 100 + sample.position[2] * 8));
+      const ratio = Math.min(1.0, sample.doseRateMsvPerHour / maxRate);
+      const color =
+        ratio > 0.66 ? '#ef4444' : ratio > 0.25 ? '#f59e0b' : '#10b981';
+      return {
+        svgX,
+        svgY,
+        color,
+        doseRate: sample.doseRateMsvPerHour,
+        timeSec: sample.timestampSec
+      };
+    });
+  }, [report]);
+
+  if (!isOpen) return null;
+
+  const handleDownloadJson = () => {
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AAR_Scenario_${report.scenarioId}_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadCsv = () => {
+    const csv = exportAARReportToCSV(report);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AAR_Trajectory_S${report.scenarioId}_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 pointer-events-auto">
+      <div className="w-full max-w-4xl bg-slate-900 border border-cyan-500/40 rounded-lg shadow-2xl overflow-hidden text-slate-100 font-sans">
+        {/* Шапка AAR */}
+        <div className="flex items-center justify-between px-5 py-3.5 bg-slate-950 border-b border-slate-800">
+          <div>
+            <div className="text-[11px] font-mono uppercase tracking-widest text-cyan-400">
+              ПРОТОКОЛ РАЗБОРА ДЕЙСТВИЙ (AFTER ACTION REVIEW — ГОСТ / ОСПОРБ-99)
+            </div>
+            <h2 className="text-lg font-bold text-white mt-0.5">{report.scenarioTitle}</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadCsv}
+              className="px-3 py-1.5 text-xs font-mono bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded transition"
+            >
+              ЭКСПОРТ CSV
+            </button>
+            <button
+              onClick={handleDownloadJson}
+              className="px-3 py-1.5 text-xs font-mono bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded transition"
+            >
+              ЭКСПОРТ JSON
+            </button>
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition"
+            >
+              ЗАКРЫТЬ [ESC]
+            </button>
+          </div>
+        </div>
+
+        <div className="p-5 grid grid-cols-1 md:grid-cols-12 gap-4 max-h-[80vh] overflow-y-auto">
+          {/* Левая колонка: Итоговый рейтинг и 4 критерия ALARA */}
+          <div className="md:col-span-7 space-y-4">
+            <div className="p-4 rounded bg-slate-950/90 border border-slate-800 flex items-center justify-between">
+              <div>
+                <div className="text-xs text-slate-400">ИТОГОВАЯ АТТЕСТАЦИЯ КУРСАНТА</div>
+                <div
+                  className={`text-sm font-bold mt-1 ${
+                    report.scoreBreakdown.passedCertification ? 'text-emerald-400' : 'text-rose-400'
+                  }`}
+                >
+                  {report.scoreBreakdown.gradeRu}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-3xl font-mono font-bold text-cyan-400">
+                  {report.scoreBreakdown.totalScore}
+                  <span className="text-sm text-slate-500">/100</span>
+                </div>
+                <div className="text-[10px] font-mono text-slate-400">ИНДЕКС ALARA</div>
+              </div>
+            </div>
+
+            {/* Детализация баллов */}
+            <div className="grid grid-cols-2 gap-2.5 text-xs font-mono">
+              <div className="p-3 rounded bg-slate-950/70 border border-slate-800">
+                <div className="text-slate-400">1. ЗАЩИТА ВРЕМЕНЕМ</div>
+                <div className="text-base font-bold text-white mt-1">
+                  {report.scoreBreakdown.timeEfficiencyScore} / 25
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Экспозиция: <span className="text-cyan-300 font-bold">{report.missionDurationSec} с</span> / норма {report.targetDurationSec} с ({Math.round((report.missionDurationSec / Math.max(1, report.targetDurationSec)) * 100)}%)
+                </div>
+              </div>
+              <div className="p-3 rounded bg-slate-950/70 border border-slate-800">
+                <div className="text-slate-400">2. ЗАЩИТА РАССТОЯНИЕМ</div>
+                <div className="text-base font-bold text-white mt-1">
+                  {report.scoreBreakdown.distanceOptimizationScore} / 25
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Доза: {report.finalAccumulatedDoseMsv.toFixed(3)} / {report.doseLimitMsv.toFixed(2)} мЗв
+                </div>
+                {report.doseResetCount > 0 && (
+                  <div className="text-[10px] text-rose-400 font-bold mt-0.5">
+                    Сбросов по переоблучению: {report.doseResetCount}
+                  </div>
+                )}
+              </div>
+              <div className="p-3 rounded bg-slate-950/70 border border-slate-800">
+                <div className="text-slate-400">3. ЭКРАНИРОВАНИЕ B(μx)</div>
+                <div className="text-base font-bold text-white mt-1">
+                  {report.scoreBreakdown.shieldingUsageScore} / 25
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Пик МЭД: {report.peakDoseRateMsvPerHour.toFixed(2)} мЗв/ч
+                </div>
+              </div>
+              <div className="p-3 rounded bg-slate-950/70 border border-slate-800">
+                <div className="text-slate-400">4. РЕГЛАМЕНТ СИЗ И ТБ</div>
+                <div className="text-base font-bold text-white mt-1">
+                  {report.scoreBreakdown.ppeComplianceScore} / 25
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Допуск СИЗ: {report.ppeChecklistPassedAtEntry ? 'ПРОЙДЕН' : 'НАРУШЕН'}
+                </div>
+              </div>
+            </div>
+
+            {/* Баннер аварийных сбросов по переоблучению */}
+            {report.doseResetCount > 0 && (
+              <div className="p-3 rounded bg-rose-950/60 border border-rose-500/50 text-rose-200 text-xs font-mono flex items-start gap-2.5">
+                <span className="text-base">⚠️</span>
+                <div>
+                  <div className="font-bold text-rose-300 uppercase">
+                    Аварийный сброс по переоблучению (Dose Limit Fail-Safe)
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-rose-200 leading-relaxed">
+                    Зафиксировано <strong>{report.doseResetCount}</strong> сброс(ов) по превышению контрольного предела дозы (НРБ-99/2009). Студент обязан заново отработать принципы ALARA: защиту расстоянием (D ∝ 1/r²), временем (D ∝ t) и экранированием!
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Журнал нарушений регламента */}
+            <div className="p-3.5 rounded bg-slate-950/80 border border-slate-800">
+              <div className="text-xs font-mono uppercase text-slate-400 mb-2">
+                Журнал контроля регламента безопасности ({report.violations.length})
+              </div>
+              {report.violations.length === 0 ? (
+                <div className="text-xs text-emerald-400 font-mono">
+                  Нарушений регламента ОСПОРБ-99/2010 за время выполнения операции не зафиксировано.
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  {report.violations.map(v => (
+                    <div
+                      key={v.id}
+                      className="text-xs p-2 rounded bg-rose-950/40 border border-rose-500/30 flex items-start justify-between gap-2"
+                    >
+                      <div>
+                        <span className="font-mono text-rose-300 font-semibold">[{v.code}]</span>{' '}
+                        <span className="text-slate-200">{v.descriptionRu}</span>
+                      </div>
+                      <span className="font-mono text-rose-400 shrink-0">-{v.penaltyPoints} б.</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Правая колонка: 2D Тепловая карта маршрута и биометрия */}
+          <div className="md:col-span-5 flex flex-col justify-between space-y-4">
+            <div className="p-3.5 rounded bg-slate-950/90 border border-slate-800">
+              <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2">
+                <span>ТЕПЛОВАЯ КАРТА ТРАЕКТОРИИ H(r)</span>
+                <span>{report.trajectorySamples.length} точек</span>
+              </div>
+              <svg
+                viewBox="0 0 300 200"
+                className="w-full h-44 bg-slate-900 rounded border border-slate-800"
+              >
+                {/* Координатная сетка */}
+                <line x1="150" y1="0" x2="150" y2="200" stroke="#1e293b" strokeWidth="1" />
+                <line x1="0" y1="100" x2="300" y2="100" stroke="#1e293b" strokeWidth="1" />
+                <circle
+                  cx="150"
+                  cy="65"
+                  r="22"
+                  fill="rgba(239,68,68,0.12)"
+                  stroke="rgba(239,68,68,0.4)"
+                  strokeDasharray="3 3"
+                />
+                {heatmapPoints.length > 1 && (
+                  <polyline
+                    fill="none"
+                    stroke="#38bdf8"
+                    strokeWidth="1.5"
+                    strokeOpacity="0.6"
+                    points={heatmapPoints.map(p => `${p.svgX},${p.svgY}`).join(' ')}
+                  />
+                )}
+                {heatmapPoints.map((pt, idx) => (
+                  <circle
+                    key={idx}
+                    cx={pt.svgX}
+                    cy={pt.svgY}
+                    r={idx === heatmapPoints.length - 1 ? 4.5 : 2.8}
+                    fill={pt.color}
+                  />
+                ))}
+              </svg>
+              <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mt-2">
+                <span className="text-emerald-400">● НОРМА (&lt;25% пика)</span>
+                <span className="text-amber-400">● ПОВЫШЕННЫЙ ФОН</span>
+                <span className="text-rose-400">● ОЧАГ ИИИ</span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded bg-slate-950/90 border border-slate-800 space-y-2 text-xs font-mono">
+              <div className="text-slate-400 uppercase">Биометрический итог смены</div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Пиковая ЧСС в скафандре:</span>
+                <span className="text-amber-300 font-bold">{report.peakHeartRateBpm} уд/мин</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Остаток дыхательной смеси АСВ-2:</span>
+                <span className="text-cyan-300 font-bold">{report.minOxygenReservePercent}%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Средняя МЭД по маршруту:</span>
+                <span className="text-slate-200">{report.averageDoseRateMsvPerHour.toFixed(3)} мЗв/ч</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AARAnalytics;
