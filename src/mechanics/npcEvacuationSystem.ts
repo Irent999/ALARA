@@ -82,6 +82,7 @@ export class NpcEvacuationSystem {
   private readonly upAxis = new THREE.Vector3(0, 1, 0);
 
   private readonly markerScale: number;
+  private readonly npcScale: number;
   private animClockSec = 0;
 
   constructor(params: {
@@ -94,9 +95,11 @@ export class NpcEvacuationSystem {
     exits: ReadonlyArray<NamedWorldMarker>;
     assemblyPos: THREE.Vector3;
     markerScale?: number;
+    npcScale?: number;
   }) {
     this.rootGroup.name = 'npp_npc_evacuation_system';
     this.markerScale = Math.max(0.35, Math.min(2.0, params.markerScale ?? 0.78));
+    this.npcScale = Math.max(0.5, Math.min(1.5, params.npcScale ?? 1.0));
     this.entrancePos.copy(params.entrancePos);
     this.assemblyPos.copy(params.assemblyPos);
     params.exits.forEach(e => this.exitPositions.push(e.pos.clone()));
@@ -385,20 +388,28 @@ export class NpcEvacuationSystem {
       const personMeshes: THREE.Group[] = [];
       for (let p = 0; p < cfg.count; p++) {
         const person = this.createStylizedWorkerMesh(
-          idx === 0 ? 0x2563eb : 0x0d9488,
-          p === 0 ? 0xf8fafc : 0xf59e0b
+          cfg.suitColorHex,
+          p === 0 ? 0xf8fafc : cfg.helmetColorHex
         );
-        person.position.set((p - (cfg.count - 1) * 0.5) * 0.72, 0, (p % 2) * 0.25);
+        person.scale.setScalar(this.npcScale);
+        person.position.set(
+          (p - (cfg.count - 1) * 0.5) * 0.85 * this.npcScale,
+          0,
+          (p % 2) * 0.25 * this.npcScale
+        );
         groupRoot.add(person);
         personMeshes.push(person);
       }
 
-      const statusBeaconMat = new THREE.MeshBasicMaterial({ color: STATE_BEACON_COLORS.IDLE });
+      const initialState: NpcEvacState = cfg.initialState;
+      const statusBeaconMat = new THREE.MeshBasicMaterial({
+        color: STATE_BEACON_COLORS[initialState]
+      });
       const statusBeaconMesh = new THREE.Mesh(
         new THREE.OctahedronGeometry(0.17, 0),
         statusBeaconMat
       );
-      statusBeaconMesh.position.set(0, 2.1, 0);
+      statusBeaconMesh.position.set(0, 2.1 * this.npcScale, 0);
       groupRoot.add(statusBeaconMesh);
 
       // Если в .glb или инспекторе есть WAYPOINT_G1_* / WAYPOINT_G2_* — используем их, иначе fallback
@@ -421,7 +432,7 @@ export class NpcEvacuationSystem {
         waypoints,
         exitPos,
         waypointIndex: 0,
-        state: 'IDLE',
+        state: initialState,
         statusBeaconMesh,
         statusBeaconMat,
         personMeshes
@@ -447,7 +458,7 @@ export class NpcEvacuationSystem {
     blockedByFireNameRu?: string;
   } {
     let best: NpcGroupRuntime | null = null;
-    let bestD = 6.5;
+    let bestD = 7.0;
     for (const grp of this.npcGroups) {
       if (grp.state === 'SAFE' || grp.state === 'EVACUATING') continue;
       const d = playerPos.distanceTo(grp.currentPos);
@@ -458,7 +469,9 @@ export class NpcEvacuationSystem {
     }
     if (!best) return { found: false };
 
-    const blockingFire = fireMgr.getFireById(best.config.blockedByFireId);
+    const blockingFire = best.config.blockedByFireId
+      ? fireMgr.getFireById(best.config.blockedByFireId)
+      : undefined;
     if (blockingFire && blockingFire.intensity > 0) {
       this.setGroupState(best, 'PANIC');
       return {
@@ -583,7 +596,9 @@ export class NpcEvacuationSystem {
       const fireNearby = Boolean(
         nearestFire && nearestFire.worldPos.distanceTo(grp.currentPos) <= grp.config.firePanicRadiusM
       );
-      const blockingFire = fireMgr.getFireById(grp.config.blockedByFireId);
+      const blockingFire = grp.config.blockedByFireId
+        ? fireMgr.getFireById(grp.config.blockedByFireId)
+        : undefined;
       const isRouteBlocked = Boolean(blockingFire && blockingFire.intensity > 0);
       const playerClose = playerPos.distanceTo(grp.currentPos) <= grp.config.detectionRadiusM;
 
@@ -637,11 +652,11 @@ export class NpcEvacuationSystem {
             grp.waypointIndex += 1;
           } else {
             this.setGroupState(grp, 'SAFE');
-            const offset = i === 0 ? -1.4 : 1.4;
+            const angle = (i - (this.npcGroups.length - 1) * 0.5) * 0.55;
             grp.currentPos.set(
-              this.assemblyPos.x + offset,
+              this.assemblyPos.x + Math.sin(angle) * 2.6,
               this.assemblyPos.y,
-              this.assemblyPos.z + 0.6
+              this.assemblyPos.z + Math.cos(angle) * 1.8
             );
             grp.rootGroup.position.copy(grp.currentPos);
             rescuedCount += grp.config.count;

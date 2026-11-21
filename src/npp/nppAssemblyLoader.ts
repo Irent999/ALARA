@@ -278,17 +278,34 @@ export class NppAssemblyLoader {
         (tf.orientationMode === 'auto_z_up' && isFlatVerticalPanel);
 
       if (shouldRotate) {
-        appliedRotationDeg = tf.rotationDeg;
+        appliedRotationDeg = [
+          tf.rotationDeg[0],
+          tf.rotationDeg[1] + tf.yawDeg,
+          tf.rotationDeg[2]
+        ];
         worldRoot.rotation.set(
           THREE.MathUtils.degToRad(tf.rotationDeg[0]),
           THREE.MathUtils.degToRad(tf.rotationDeg[1]),
           THREE.MathUtils.degToRad(tf.rotationDeg[2]),
           'XYZ'
         );
+        if (Math.abs(tf.yawDeg) > 0.01) {
+          worldRoot.rotateOnWorldAxis(
+            new THREE.Vector3(0, 1, 0),
+            THREE.MathUtils.degToRad(tf.yawDeg)
+          );
+        }
         worldRoot.updateMatrixWorld(true);
         console.info(
-          `[ALARA GLB] Применён поворот ориентации (${tf.orientationMode}): [${tf.rotationDeg.join('°, ')}°]`
+          `[ALARA GLB] Применён поворот ориентации (${tf.orientationMode}): X=${tf.rotationDeg[0]}°, Yaw=${tf.yawDeg}°`
         );
+      } else if (Math.abs(tf.yawDeg) > 0.01) {
+        appliedRotationDeg = [0, tf.yawDeg, 0];
+        worldRoot.rotateOnWorldAxis(
+          new THREE.Vector3(0, 1, 0),
+          THREE.MathUtils.degToRad(tf.yawDeg)
+        );
+        worldRoot.updateMatrixWorld(true);
       }
 
       // 2.2. Единое масштабирование к целевому горизонтальному размеру комплекса (targetFootprintMeters)

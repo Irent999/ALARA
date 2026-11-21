@@ -243,6 +243,20 @@ export const Scenario4Hud: React.FC<Scenario4HudProps> = ({
                 {snapshot.inspectionReport.totalNodes} · Мешей:{' '}
                 {snapshot.inspectionReport.totalMeshes}
               </div>
+              {snapshot.inspectionReport.buildingVolumes.length > 0 && (
+                <div className="pt-1 border-t border-slate-800 text-slate-300 space-y-0.5">
+                  <div className="text-emerald-300 font-bold">
+                    Корпуса и объёмы ({snapshot.inspectionReport.buildingVolumes.length}):
+                  </div>
+                  <div className="text-[10px] text-slate-400 space-y-0.5">
+                    {snapshot.inspectionReport.buildingVolumes.map((b, idx) => (
+                      <div key={idx} className="truncate">
+                        • {b.name}: {b.size.join('×')} м · пол Y={b.interiorFloorY} м · центр [{b.center.join(', ')}]
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {snapshot.inspectionReport.namedNodeCoords.length > 0 && (
                 <div className="pt-1 border-t border-slate-800 text-slate-300 space-y-0.5">
                   <div className="text-sky-300 font-bold">

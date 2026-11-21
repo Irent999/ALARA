@@ -10,7 +10,12 @@
  */
 
 import * as THREE from 'three';
-import { NPP_NODE_CONFIG, SCENARIO_4_TRANSFORM, type WallColliderBox } from '../../npp/nppNodeConfig';
+import {
+  NPP_NODE_CONFIG,
+  SCENARIO_4_CONFIG,
+  SCENARIO_4_TRANSFORM,
+  type WallColliderBox
+} from '../../npp/nppNodeConfig';
 import { NppAssemblyLoader } from '../../npp/nppAssemblyLoader';
 import type { NppInspectionReport } from '../../npp/nppSceneInspector';
 import type { RadiationSourceInstance } from '../../scene/scenarios';
@@ -279,7 +284,7 @@ export class Scenario4Controller {
       m.fireZones,
       this.primaryPostPos,
       this.sparePostPos,
-      SCENARIO_4_TRANSFORM.effectScale
+      SCENARIO_4_CONFIG.FIRE_SCALE
     );
     this.rootGroup.add(this.fireMgr.rootGroup);
 
@@ -292,34 +297,29 @@ export class Scenario4Controller {
       entrancePos: this.entrancePos,
       exits: m.exits,
       assemblyPos: this.assemblyPos,
-      markerScale: SCENARIO_4_TRANSFORM.markerScale
+      markerScale: SCENARIO_4_CONFIG.MARKER_SCALE,
+      npcScale: SCENARIO_4_CONFIG.NPC_SCALE
     });
     this.rootGroup.add(this.evacMgr.rootGroup);
 
-    // Синхронизируем маркеры ИИИ (Cs-137, Co-60) строго с реальными позициями очагов на нормализованной .glb-модели
+    // Синхронизируем маркеры ИИИ (Cs-137, Co-60) строго с реальными позициями очагов внутри корпусов .glb-модели
+    const fireIsotopes: ReadonlyArray<{ isotopeId: string; activityMBq: number }> = [
+      { isotopeId: 'Cs-137', activityMBq: 450 },
+      { isotopeId: 'Co-60', activityMBq: 320 },
+      { isotopeId: 'Cs-137', activityMBq: 280 }
+    ];
     const syncedSources: RadiationSourceInstance[] = [];
-    const fire0 = this.fireMgr.fires[0];
-    if (fire0) {
+    this.fireMgr.fires.forEach((fire, idx) => {
+      const spec = fireIsotopes[idx] ?? { isotopeId: 'Cs-137', activityMBq: 250 };
       syncedSources.push({
-        id: 'src_s4_zone1',
-        position: new THREE.Vector3(fire0.worldPos.x, fire0.worldPos.y + 0.45, fire0.worldPos.z),
-        isotopeId: 'Cs-137',
-        activityMBq: 450,
-        mesh: fire0.rootGroup,
-        ringFloorY: fire0.worldPos.y + 0.03
+        id: `src_s4_zone${idx + 1}`,
+        position: new THREE.Vector3(fire.worldPos.x, fire.worldPos.y + 0.45, fire.worldPos.z),
+        isotopeId: spec.isotopeId,
+        activityMBq: spec.activityMBq,
+        mesh: fire.rootGroup,
+        ringFloorY: fire.worldPos.y + 0.03
       });
-    }
-    const fire1 = this.fireMgr.fires[1];
-    if (fire1) {
-      syncedSources.push({
-        id: 'src_s4_zone2',
-        position: new THREE.Vector3(fire1.worldPos.x, fire1.worldPos.y + 0.45, fire1.worldPos.z),
-        isotopeId: 'Co-60',
-        activityMBq: 320,
-        mesh: fire1.rootGroup,
-        ringFloorY: fire1.worldPos.y + 0.03
-      });
-    }
+    });
     this.onRadiationSourcesReady?.(syncedSources);
 
     this.elapsedSec = 0;
@@ -342,13 +342,13 @@ export class Scenario4Controller {
     const floorY = Number.isFinite(this.deckSurfaceY) ? this.deckSurfaceY : 0;
     const minEyeY = floorY + 0.9;
     if (!isVR && pos.y < minEyeY) {
-      pos.y = floorY + SCENARIO_4_TRANSFORM.spawn.eyeHeightMeters;
+      pos.y = floorY + SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT;
     }
     if (isVR && pos.y < floorY) {
       pos.y = floorY;
     }
 
-    const pad = 22;
+    const pad = 25;
     const minBoundX = Math.min(-25, this.modelBounds.min.x - pad);
     const maxBoundX = Math.max(25, this.modelBounds.max.x + pad);
     const minBoundZ = Math.min(-25, this.modelBounds.min.z - pad);
@@ -715,7 +715,7 @@ export class Scenario4Controller {
         if (nextFire) {
           this.evacMgr.setTargetHighlight(nextFire.worldPos, 0xf97316);
           this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [nextFire.worldPos]);
-          if (playerPos.distanceTo(nextFire.worldPos) <= 5.5) {
+          if (playerPos.distanceTo(nextFire.worldPos) <= 6.5) {
             prompt = `Удерживайте ЛКМ / [E] / Курок — Тушение: ${nextFire.config.nameRu} (${Math.round(nextFire.intensity * 100)}%)`;
           }
         }
@@ -725,7 +725,7 @@ export class Scenario4Controller {
       if (pendingNpc) {
         this.evacMgr.setTargetHighlight(pendingNpc.currentPos, 0x22c55e);
         this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [pendingNpc.currentPos]);
-        if (playerPos.distanceTo(pendingNpc.currentPos) <= 6.5) {
+        if (playerPos.distanceTo(pendingNpc.currentPos) <= 7.0) {
           prompt = `[E] / ЛКМ / Курок — Начать эвакуацию: ${pendingNpc.config.nameRu}`;
         }
       } else {

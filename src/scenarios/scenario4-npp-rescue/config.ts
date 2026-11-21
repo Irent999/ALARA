@@ -4,6 +4,7 @@
 
 export {
   NPP_NODE_CONFIG,
+  SCENARIO_4_CONFIG,
   SCENARIO_4_TRANSFORM,
   type Scenario4TransformConfig,
   type Scenario4OrientationMode,

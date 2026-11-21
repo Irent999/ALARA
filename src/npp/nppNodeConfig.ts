@@ -1,6 +1,10 @@
 /**
- * ALARA — Единая конфигурация трансформации, узлов/префиксов 3D-модели комплекса АЭС (/assembly.glb)
- * и относительных координат Сценария №4.
+ * ALARA — Единый централизованный конфиг Сценария №4 (/assembly.glb)
+ * Содержит в одном месте:
+ * - масштаб, поворот и смещение сборки АЭС (ASSEMBLY_SCALE, ASSEMBLY_TARGET_FOOTPRINT_M, ASSEMBLY_ROTATION_DEG, ASSEMBLY_YAW_DEG, ASSEMBLY_OFFSET)
+ * - рост/масштаб игрока и скорость передвижения (PLAYER_EYE_HEIGHT, PLAYER_SCALE)
+ * - масштаб NPC и очагов возгорания (NPC_SCALE, FIRE_SCALE, MARKER_SCALE)
+ * - параметры внутренних зон очагов пожара и 4 групп персонала (10 человек внутри зданий)
  *
  * Масштаб сцены: 1 единица Three.js = 1 метр (1:1 м).
  */
@@ -16,75 +20,17 @@ export interface WallColliderBox {
 
 export type Scenario4OrientationMode = 'auto_z_up' | 'always' | 'none';
 
-/**
- * Единый конфиг трансформации модели /assembly.glb, масштаба эффектов/маркеров и спавна камеры в Сценарии №4.
- * Измените параметры здесь, чтобы мгновенно подстроить масштаб, ориентацию или точку старта без правок логики.
- */
-export interface Scenario4TransformConfig {
-  /** Поворот модели [rx, ry, rz] в градусах ([-90, 0, 0] переводит CAD/Blender Z-up в Three.js Y-up) */
-  readonly rotationDeg: readonly [number, number, number];
-  /** Режим применения rotationDeg: 'auto_z_up' (если модель плоская по X/Y и вытянута вверх по Z), 'always' или 'none' */
-  readonly orientationMode: Scenario4OrientationMode;
-  /** Целевой горизонтальный размер (max по X/Z) комплекса АЭС в метрах после нормализации */
-  readonly targetFootprintMeters: number;
-  /** Дополнительный ручной множитель масштаба поверх targetFootprintMeters */
-  readonly scaleMultiplier: number;
-  /** Центрировать модель по горизонтали в (0, 0) */
-  readonly centerXZ: boolean;
-  /** Ставить нижнюю границу Box3 (min.y) ровно на Y = 0 */
-  readonly alignBottomToZeroY: boolean;
-  /** Дополнительное смещение всей модели [dx, dy, dz] в метрах */
-  readonly positionOffset: readonly [number, number, number];
-  /** Масштаб визуальных эффектов огня, дыма и площадок очагов (1.0 = стандарт, < 1.0 = компактнее) */
-  readonly effectScale: number;
-  /** Масштаб табличек ВХОД / ВЫХОД / ПУНКТ СБОРА и направляющих маркеров */
-  readonly markerScale: number;
-  /** Параметры стартовой позиции камеры/игрока и обзорного фокуса [K] */
-  readonly spawn: {
-    /** Отступ в метрах перед южной (передней) границей Box3 модели */
-    readonly forwardMarginMeters: number;
-    /** Боковое смещение по ширине модели (-0.5..+0.5) */
-    readonly lateralNormX: number;
-    /** Высота глаз оператора над уровнем площадки модели (м) */
-    readonly eyeHeightMeters: number;
-    /** Относительная высота точки взгляда (0..1 от высоты Box3) */
-    readonly lookAtHeightRatio: number;
-    /** Коэффициент дистанции обзорной камеры [K] от диагонали модели */
-    readonly overviewDistanceFactor: number;
-    /** Коэффициент высоты обзорной камеры [K] от диагонали модели */
-    readonly overviewElevationFactor: number;
-  };
-}
-
-export const SCENARIO_4_TRANSFORM: Scenario4TransformConfig = {
-  // Положительный поворот +90° по оси X ставит CAD-модель /assembly.glb основанием вниз (плита на y=0, градирни и блоки вверх)
-  rotationDeg: [90, 0, 0],
-  orientationMode: 'auto_z_up',
-  // Габарит промышленной площадки комплекса АЭС ~72×72 м (масштаб 1:1 к росту человека 1.75 м и высоте энергоблоков)
-  targetFootprintMeters: 72,
-  scaleMultiplier: 1.0,
-  centerXZ: true,
-  alignBottomToZeroY: true,
-  positionOffset: [0, 0, 0],
-  effectScale: 0.9,
-  markerScale: 0.88,
-  spawn: {
-    forwardMarginMeters: 2.2,
-    lateralNormX: 0.0,
-    eyeHeightMeters: 1.65,
-    lookAtHeightRatio: 0.22,
-    overviewDistanceFactor: 0.85,
-    overviewElevationFactor: 0.45
-  }
-};
-
 export interface FireZoneSpec {
   readonly id: string;
   readonly markerName: string;
   readonly nameRu: string;
-  /** Нормализованные координаты [-0.5..+0.5] относительно центра/размера Box3 модели (используются, если нет узла в .glb) */
+  /** Индекс обнаруженного корпуса АЭС в графе сцены (0 = Западный/Главный блок, 1 = Восточный блок, 2 = Центральный корпус) */
+  readonly preferredBuildingIndex: number;
+  /** Локальное смещение [dx, dz] в долях [-0.30..+0.30] внутри Box3 обнаруженного здания */
+  readonly buildingOffsetXZ: readonly [number, number];
+  /** Резервные нормализованные координаты [-0.5..+0.5] относительно всего Box3 площадки */
   readonly relPos: readonly [number, number, number];
-  /** Резервные мировые координаты в метрах (при 72×72 м) */
+  /** Резервные мировые координаты в метрах */
   readonly defaultPos: readonly [number, number, number];
   readonly initialIntensity: number; // 0..1
   readonly smokeDensity: number; // 0..1
@@ -98,7 +44,15 @@ export interface NpcGroupSpec {
   readonly waypointPrefix: string;
   readonly nameRu: string;
   readonly count: number;
-  /** Нормализованные координаты [-0.5..+0.5] относительно Box3 модели */
+  /** Индекс корпуса, внутри которого находится группа NPC */
+  readonly preferredBuildingIndex: number;
+  /** Локальное смещение [dx, dz] внутри Box3 обнаруженного здания (вдали от стен и пламени) */
+  readonly buildingOffsetXZ: readonly [number, number];
+  /** Начальное состояние группы до контакта со спасателем */
+  readonly initialState: 'IDLE' | 'PANIC' | 'WAITING_FOR_GUIDE';
+  readonly suitColorHex: number;
+  readonly helmetColorHex: number;
+  /** Резервные нормализованные координаты [-0.5..+0.5] относительно всего Box3 площадки */
   readonly relPos: readonly [number, number, number];
   readonly relWaypoints: ReadonlyArray<readonly [number, number, number]>;
   readonly relExitPoint: readonly [number, number, number];
@@ -135,6 +89,257 @@ export interface NppNodePrefixesConfig {
   readonly colliderKeywords: ReadonlyArray<string>;
 }
 
+/**
+ * Главная панель настройки Сценария №4 (меняйте коэффициенты здесь для быстрой подгонки на глаз).
+ */
+export const SCENARIO_4_CONFIG = {
+  // --- 1. Трансформация и масштаб 3D-сборки /assembly.glb ---
+  /** Целевой горизонтальный габарит комплекса АЭС в метрах (реальный архитектурный масштаб: корпуса 25–35 м в высоту) */
+  ASSEMBLY_TARGET_FOOTPRINT_M: 165,
+  /** Ручной множитель поверх ASSEMBLY_TARGET_FOOTPRINT_M (удобно быстро масштабировать всю сборку) */
+  ASSEMBLY_SCALE: 1.0,
+  /** Поворот [rx, ry, rz] в градусах (+90° по X ставит CAD-модель основанием вниз на y = 0) */
+  ASSEMBLY_ROTATION_DEG: [90, 0, 0] as readonly [number, number, number],
+  /** Дополнительный поворот вокруг вертикальной оси Y (180° разворачивает энергоблоки фасадом к точке старта) */
+  ASSEMBLY_YAW_DEG: 180,
+  /** Режим автоповорота Z-up -> Y-up */
+  ASSEMBLY_ORIENTATION_MODE: 'auto_z_up' as Scenario4OrientationMode,
+  /** Смещение всей сборки АЭС [dx, dy, dz] в метрах */
+  ASSEMBLY_OFFSET: [0, 0, 0] as readonly [number, number, number],
+
+  // --- 2. Масштаб и высота игрока / XR-рига / NPC / эффектов ---
+  /** Рост глаз игрока над уровнем пола в метрах (нормальный рост человека ~1.70–1.75 м) */
+  PLAYER_EYE_HEIGHT: 1.7,
+  /** Масштаб 3D-аватара игрока (1.0 = натуральный человеческий рост) */
+  PLAYER_SCALE: 1.0,
+  /** Скорость перемещения в Desktop-режиме (м/с, Shift ускоряет в 1.65 раза) */
+  PLAYER_MOVE_SPEED_DESKTOP: 5.2,
+  /** Скорость перемещения в VR-режиме HTC Vive (м/с) */
+  PLAYER_MOVE_SPEED_VR: 2.8,
+  /** Масштаб NPC (1.0 = ~1.72 м рост взрослого человека) */
+  NPC_SCALE: 1.0,
+  /** Масштаб очагов пожара и дыма */
+  FIRE_SCALE: 0.95,
+  /** Масштаб табличек ВХОД / ВЫХОД / ПУНКТ СБОРА */
+  MARKER_SCALE: 0.85,
+
+  // --- 3. Параметры стартовой позиции игрока и обзорной камеры [K] ---
+  SPAWN: {
+    forwardMarginMeters: 4.5,
+    lateralNormX: 0.0,
+    lookAtHeightRatio: 0.22,
+    overviewDistanceFactor: 0.82,
+    overviewElevationFactor: 0.44
+  },
+
+  // --- 4. Внутренние очаги возгорания (внутри зданий АЭС) ---
+  FIRE_ZONES: [
+    {
+      id: 'fire_1',
+      markerName: 'FIRE_ZONE_1',
+      nameRu: 'Очаг №1: Кабельный отсек внутри корпуса №1 (Запад)',
+      preferredBuildingIndex: 0,
+      buildingOffsetXZ: [-0.14, 0.06],
+      relPos: [-0.18, 0, 0.14],
+      defaultPos: [-29.7, 0, 23.1],
+      initialIntensity: 1.0,
+      smokeDensity: 0.7,
+      heatRadiusM: 3.6,
+      radiusM: 1.15
+    },
+    {
+      id: 'fire_2',
+      markerName: 'FIRE_ZONE_2',
+      nameRu: 'Очаг №2: Маслосистема внутри машзала №2 (Восток)',
+      preferredBuildingIndex: 1,
+      buildingOffsetXZ: [0.12, -0.05],
+      relPos: [0.18, 0, 0.12],
+      defaultPos: [29.7, 0, 19.8],
+      initialIntensity: 1.0,
+      smokeDensity: 0.78,
+      heatRadiusM: 3.8,
+      radiusM: 1.2
+    },
+    {
+      id: 'fire_3',
+      markerName: 'FIRE_ZONE_3',
+      nameRu: 'Очаг №3: Щит управления внутри центрального корпуса',
+      preferredBuildingIndex: 2,
+      buildingOffsetXZ: [0.0, 0.08],
+      relPos: [-0.26, 0, -0.02],
+      defaultPos: [-42.9, 0, -3.3],
+      initialIntensity: 0.88,
+      smokeDensity: 0.64,
+      heatRadiusM: 3.3,
+      radiusM: 1.05
+    }
+  ] as ReadonlyArray<FireZoneSpec>,
+
+  // --- 5. Группы персонала внутри зданий (всего 10 человек: 3 + 3 + 2 + 2) ---
+  NPC_GROUPS: [
+    {
+      id: 'npc_group_1',
+      markerName: 'NPC_GROUP_1',
+      waypointPrefix: 'WAYPOINT_G1_',
+      nameRu: 'Оперативная смена БЩУ (Корпус №1, 3 чел.)',
+      count: 3,
+      preferredBuildingIndex: 0,
+      buildingOffsetXZ: [0.16, -0.14],
+      initialState: 'PANIC',
+      suitColorHex: 0x2563eb,
+      helmetColorHex: 0xf8fafc,
+      relPos: [-0.14, 0, 0.05],
+      relWaypoints: [
+        [-0.12, 0, 0.22],
+        [-0.04, 0, 0.36],
+        [0.02, 0, 0.44]
+      ],
+      relExitPoint: [0.0, 0, 0.46],
+      defaultPos: [-23.1, 0, 8.2],
+      evacWaypoints: [
+        [-19.8, 0, 36.3],
+        [-6.6, 0, 59.4],
+        [3.3, 0, 72.6]
+      ],
+      exitPoint: [0, 0, 75.9],
+      blockedByFireId: 'fire_1',
+      detectionRadiusM: 7.0,
+      firePanicRadiusM: 28.0
+    },
+    {
+      id: 'npc_group_2',
+      markerName: 'NPC_GROUP_2',
+      waypointPrefix: 'WAYPOINT_G2_',
+      nameRu: 'Персонал машзала (Корпус №2, 3 чел.)',
+      count: 3,
+      preferredBuildingIndex: 1,
+      buildingOffsetXZ: [-0.14, -0.16],
+      initialState: 'PANIC',
+      suitColorHex: 0x0d9488,
+      helmetColorHex: 0xf59e0b,
+      relPos: [0.22, 0, 0.02],
+      relWaypoints: [
+        [0.16, 0, 0.2],
+        [0.08, 0, 0.35],
+        [0.02, 0, 0.44]
+      ],
+      relExitPoint: [0.0, 0, 0.46],
+      defaultPos: [36.3, 0, 3.3],
+      evacWaypoints: [
+        [26.4, 0, 33.0],
+        [13.2, 0, 57.7],
+        [3.3, 0, 72.6]
+      ],
+      exitPoint: [0, 0, 75.9],
+      blockedByFireId: 'fire_2',
+      detectionRadiusM: 7.0,
+      firePanicRadiusM: 28.0
+    },
+    {
+      id: 'npc_group_3',
+      markerName: 'NPC_GROUP_3',
+      waypointPrefix: 'WAYPOINT_G3_',
+      nameRu: 'Инженеры КИПиА (Вспомогательный корпус, 2 чел.)',
+      count: 2,
+      preferredBuildingIndex: 2,
+      buildingOffsetXZ: [-0.14, -0.14],
+      initialState: 'PANIC',
+      suitColorHex: 0xd97706,
+      helmetColorHex: 0xfef08a,
+      relPos: [-0.30, 0, -0.10],
+      relWaypoints: [
+        [-0.22, 0, 0.14],
+        [-0.08, 0, 0.34],
+        [0.02, 0, 0.44]
+      ],
+      relExitPoint: [0.0, 0, 0.46],
+      defaultPos: [-49.5, 0, -16.5],
+      evacWaypoints: [
+        [-36.3, 0, 23.1],
+        [-13.2, 0, 56.1],
+        [3.3, 0, 72.6]
+      ],
+      exitPoint: [0, 0, 75.9],
+      blockedByFireId: 'fire_3',
+      detectionRadiusM: 7.0,
+      firePanicRadiusM: 28.0
+    },
+    {
+      id: 'npc_group_4',
+      markerName: 'NPC_GROUP_4',
+      waypointPrefix: 'WAYPOINT_G4_',
+      nameRu: 'Дежурные электрики КРУ (Секция А, 2 чел.)',
+      count: 2,
+      preferredBuildingIndex: 0,
+      buildingOffsetXZ: [0.18, 0.18],
+      initialState: 'WAITING_FOR_GUIDE',
+      suitColorHex: 0x4f46e5,
+      helmetColorHex: 0x38bdf8,
+      relPos: [-0.08, 0, 0.22],
+      relWaypoints: [
+        [-0.04, 0, 0.34],
+        [0.0, 0, 0.43]
+      ],
+      relExitPoint: [0.0, 0, 0.46],
+      defaultPos: [-13.2, 0, 36.3],
+      evacWaypoints: [
+        [-6.6, 0, 56.1],
+        [0, 0, 70.9]
+      ],
+      exitPoint: [0, 0, 75.9],
+      blockedByFireId: '',
+      detectionRadiusM: 7.5,
+      firePanicRadiusM: 12.0
+    }
+  ] as ReadonlyArray<NpcGroupSpec>
+} as const;
+
+export interface Scenario4TransformConfig {
+  readonly rotationDeg: readonly [number, number, number];
+  readonly yawDeg: number;
+  readonly orientationMode: Scenario4OrientationMode;
+  readonly targetFootprintMeters: number;
+  readonly scaleMultiplier: number;
+  readonly centerXZ: boolean;
+  readonly alignBottomToZeroY: boolean;
+  readonly positionOffset: readonly [number, number, number];
+  readonly effectScale: number;
+  readonly markerScale: number;
+  readonly npcScale: number;
+  readonly playerScale: number;
+  readonly spawn: {
+    readonly forwardMarginMeters: number;
+    readonly lateralNormX: number;
+    readonly eyeHeightMeters: number;
+    readonly lookAtHeightRatio: number;
+    readonly overviewDistanceFactor: number;
+    readonly overviewElevationFactor: number;
+  };
+}
+
+export const SCENARIO_4_TRANSFORM: Scenario4TransformConfig = {
+  rotationDeg: SCENARIO_4_CONFIG.ASSEMBLY_ROTATION_DEG,
+  yawDeg: SCENARIO_4_CONFIG.ASSEMBLY_YAW_DEG,
+  orientationMode: SCENARIO_4_CONFIG.ASSEMBLY_ORIENTATION_MODE,
+  targetFootprintMeters: SCENARIO_4_CONFIG.ASSEMBLY_TARGET_FOOTPRINT_M,
+  scaleMultiplier: SCENARIO_4_CONFIG.ASSEMBLY_SCALE,
+  centerXZ: true,
+  alignBottomToZeroY: true,
+  positionOffset: SCENARIO_4_CONFIG.ASSEMBLY_OFFSET,
+  effectScale: SCENARIO_4_CONFIG.FIRE_SCALE,
+  markerScale: SCENARIO_4_CONFIG.MARKER_SCALE,
+  npcScale: SCENARIO_4_CONFIG.NPC_SCALE,
+  playerScale: SCENARIO_4_CONFIG.PLAYER_SCALE,
+  spawn: {
+    forwardMarginMeters: SCENARIO_4_CONFIG.SPAWN.forwardMarginMeters,
+    lateralNormX: SCENARIO_4_CONFIG.SPAWN.lateralNormX,
+    eyeHeightMeters: SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT,
+    lookAtHeightRatio: SCENARIO_4_CONFIG.SPAWN.lookAtHeightRatio,
+    overviewDistanceFactor: SCENARIO_4_CONFIG.SPAWN.overviewDistanceFactor,
+    overviewElevationFactor: SCENARIO_4_CONFIG.SPAWN.overviewElevationFactor
+  }
+};
+
 export interface NppAssemblyConfig {
   readonly glbUrl: string;
   readonly dracoDecoderPath: string;
@@ -164,9 +369,6 @@ export interface NppAssemblyConfig {
 const rawBaseUrl = import.meta.env?.BASE_URL ?? '/';
 const BASE_URL = rawBaseUrl.endsWith('/') ? rawBaseUrl : `${rawBaseUrl}/`;
 
-/**
- * Централизованная конфигурация поиска Empty-маркеров и привязки игровых зон к Box3 модели /assembly.glb.
- */
 export const NPP_NODE_CONFIG: NppAssemblyConfig = {
   glbUrl: `${BASE_URL}assembly.glb`,
   dracoDecoderPath: `${BASE_URL}draco/gltf/`,
@@ -187,147 +389,62 @@ export const NPP_NODE_CONFIG: NppAssemblyConfig = {
     colliderKeywords: ['WALL', 'COLLIDER', 'BARRIER']
   },
 
-  // Относительные якоря внутри границ [-0.5..0.5] нормализованного Box3 (настил модели)
-  defaultEntranceRelPos: [0.0, 0, 0.36],
-  defaultAssemblyRelPos: [0.18, 0, 0.45],
-  defaultPrimaryExtinguisherRelOffset: [-2.2, 0, -2.6],
-  defaultSpareExtinguisherRelPos: [0.02, 0, 0.22],
+  defaultEntranceRelPos: [0.0, 0, 0.34],
+  defaultAssemblyRelPos: [0.14, 0, 0.46],
+  defaultPrimaryExtinguisherRelOffset: [-2.4, 0, -3.2],
+  defaultSpareExtinguisherRelPos: [0.04, 0, 0.22],
 
-  defaultSpawnPos: [0, 0, 38.2],
-  defaultEntrancePos: [0, 0, 25.9],
-  defaultAssemblyPos: [13.0, 0, 32.4],
-  defaultPrimaryExtinguisherPos: [-2.2, 0, 35.6],
-  defaultSpareExtinguisherPos: [1.4, 0, 15.8],
+  defaultSpawnPos: [0, 0, 87.0],
+  defaultEntrancePos: [0, 0, 56.1],
+  defaultAssemblyPos: [23.1, 0, 75.9],
+  defaultPrimaryExtinguisherPos: [-2.4, 0, 83.8],
+  defaultSpareExtinguisherPos: [6.6, 0, 36.3],
 
   defaultExits: [
     {
       id: 'EXIT_MAIN',
-      nameRu: 'Главный выход с площадки (Юг)',
-      relPos: [0.0, 0, 0.45],
-      pos: [0, 0, 32.4]
+      nameRu: 'Главный выход из корпуса (Юг)',
+      relPos: [0.0, 0, 0.43],
+      pos: [0, 0, 71.0]
     },
     {
       id: 'EXIT_EAST',
       nameRu: 'Восточный эваковыход',
-      relPos: [0.38, 0, 0.20],
-      pos: [27.4, 0, 14.4]
+      relPos: [0.36, 0, 0.24],
+      pos: [59.4, 0, 39.6]
     }
   ],
 
-  fireZones: [
-    {
-      id: 'fire_1',
-      markerName: 'FIRE_ZONE_1',
-      nameRu: 'Очаг №1: Кабельный ввод энергоблока №1 (Запад)',
-      relPos: [-0.26, 0, 0.20],
-      defaultPos: [-18.7, 0, 14.4],
-      initialIntensity: 1.0,
-      smokeDensity: 0.68,
-      heatRadiusM: 3.4,
-      radiusM: 1.05
-    },
-    {
-      id: 'fire_2',
-      markerName: 'FIRE_ZONE_2',
-      nameRu: 'Очаг №2: Масляный узел энергоблока №2 (Восток)',
-      relPos: [0.24, 0, 0.16],
-      defaultPos: [17.3, 0, 11.5],
-      initialIntensity: 1.0,
-      smokeDensity: 0.78,
-      heatRadiusM: 3.6,
-      radiusM: 1.12
-    },
-    {
-      id: 'fire_3',
-      markerName: 'FIRE_ZONE_3',
-      nameRu: 'Очаг №3: Распредщит межблочного проезда',
-      relPos: [0.02, 0, -0.05],
-      defaultPos: [1.4, 0, -3.6],
-      initialIntensity: 0.85,
-      smokeDensity: 0.62,
-      heatRadiusM: 3.2,
-      radiusM: 0.98
-    }
-  ],
-
-  npcGroups: [
-    {
-      id: 'npc_group_1',
-      markerName: 'NPC_GROUP_1',
-      waypointPrefix: 'WAYPOINT_G1_',
-      nameRu: 'Дежурная смена энергоблока №1 (2 чел.)',
-      count: 2,
-      relPos: [-0.33, 0, 0.04],
-      relWaypoints: [
-        [-0.22, 0, 0.20],
-        [-0.08, 0, 0.34],
-        [0.0, 0, 0.43]
-      ],
-      relExitPoint: [0.0, 0, 0.45],
-      defaultPos: [-23.8, 0, 2.9],
-      evacWaypoints: [
-        [-15.8, 0, 14.4],
-        [-5.8, 0, 24.5],
-        [0.0, 0, 31.0]
-      ],
-      exitPoint: [0, 0, 32.4],
-      blockedByFireId: 'fire_1',
-      detectionRadiusM: 6.5,
-      firePanicRadiusM: 18.0
-    },
-    {
-      id: 'npc_group_2',
-      markerName: 'NPC_GROUP_2',
-      waypointPrefix: 'WAYPOINT_G2_',
-      nameRu: 'Персонал машзала энергоблока №2 (2 чел.)',
-      count: 2,
-      relPos: [0.32, 0, -0.02],
-      relWaypoints: [
-        [0.24, 0, 0.16],
-        [0.14, 0, 0.32],
-        [0.04, 0, 0.43]
-      ],
-      relExitPoint: [0.0, 0, 0.45],
-      defaultPos: [23.0, 0, -1.4],
-      evacWaypoints: [
-        [17.3, 0, 11.5],
-        [10.1, 0, 23.0],
-        [2.9, 0, 31.0]
-      ],
-      exitPoint: [0, 0, 32.4],
-      blockedByFireId: 'fire_2',
-      detectionRadiusM: 6.5,
-      firePanicRadiusM: 18.0
-    }
-  ],
+  fireZones: SCENARIO_4_CONFIG.FIRE_ZONES,
+  npcGroups: SCENARIO_4_CONFIG.NPC_GROUPS,
 
   triggerZones: [
     {
       id: 'TRIGGER_ENTRY_REACTOR',
       markerName: 'TRIGGER_ENTRY',
       kind: 'entry',
-      nameRu: 'Контур входа на площадку энергоблоков',
-      relPos: [0.0, 0, 0.36],
-      defaultPos: [0, 0, 25.9],
-      radiusM: 4.0
+      nameRu: 'Входной шлюз в корпус энергоблоков',
+      relPos: [0.0, 0, 0.34],
+      defaultPos: [0, 0, 56.1],
+      radiusM: 4.5
     },
     {
       id: 'TRIGGER_EVAC_CORRIDOR',
       markerName: 'TRIGGER_EVAC',
       kind: 'evac',
       nameRu: 'Восточный коридор эвакуации',
-      relPos: [0.38, 0, 0.20],
-      defaultPos: [27.4, 0, 14.4],
-      radiusM: 4.2
+      relPos: [0.36, 0, 0.24],
+      defaultPos: [59.4, 0, 39.6],
+      radiusM: 4.5
     },
     {
       id: 'TRIGGER_ASSEMBLY_SAFE',
       markerName: 'TRIGGER_ASSEMBLY',
       kind: 'assembly',
       nameRu: 'Безопасный пункт сбора МЧС',
-      relPos: [0.18, 0, 0.45],
-      defaultPos: [13.0, 0, 32.4],
-      radiusM: 4.8
+      relPos: [0.14, 0, 0.46],
+      defaultPos: [23.1, 0, 75.9],
+      radiusM: 5.5
     }
   ],
 

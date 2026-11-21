@@ -101,7 +101,7 @@ import {
 } from './utils/pdfDoseReportExporter';
 import { Scenario4Controller } from './scenarios/scenario4-npp-rescue/Scenario4Controller';
 import { Scenario4Hud } from './scenarios/scenario4-npp-rescue/Scenario4Hud';
-import { SCENARIO_4_TRANSFORM, type Scenario4HudSnapshot } from './scenarios/scenario4-npp-rescue/config';
+import { SCENARIO_4_CONFIG, type Scenario4HudSnapshot } from './scenarios/scenario4-npp-rescue/config';
 
 const DEFAULT_PROTECTION_ANALYSIS: ComprehensiveProtectionAnalysis = {
   unshieldedBaseDoseRateMicroSv: 0.1,
@@ -388,6 +388,7 @@ export default function App() {
   const selectedPpeIdRef = useRef<PPELoadoutId>(selectedPpeId);
   const selectedRemoteToolIdRef = useRef<RemoteToolId>(selectedRemoteToolId);
   const permitLimitMsvRef = useRef<number>(permitLimitMsv);
+  const isCrouchedRef = useRef<boolean>(isCrouched);
   const isExtendedArmRef = useRef<boolean>(isExtendedArm);
   const selectedInstrumentIdRef = useRef<InstrumentId>(selectedInstrumentId);
   const characterPpeStateRef = useRef<CharacterPPEState>(characterPpeState);
@@ -437,6 +438,7 @@ export default function App() {
   selectedPpeIdRef.current = selectedPpeId;
   selectedRemoteToolIdRef.current = selectedRemoteToolId;
   permitLimitMsvRef.current = permitLimitMsv;
+  isCrouchedRef.current = isCrouched;
   isExtendedArmRef.current = isExtendedArm;
   selectedInstrumentIdRef.current = selectedInstrumentId;
   characterPpeStateRef.current = characterPpeState;
@@ -1048,8 +1050,9 @@ export default function App() {
           cameraRef.current.rotation.set(0, 0, 0);
         }
         if (playerGroupRef.current) {
+          const eyeH = activeScenarioIdRef.current === 4 ? SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT : 1.65;
           playerGroupRef.current.position.y =
-            xrManagerRef.current?.activeReferenceSpaceType === 'local-floor' ? 0.0 : 1.65;
+            xrManagerRef.current?.activeReferenceSpaceType === 'local-floor' ? 0.0 : eyeH;
         }
         playerAvatarRigRef.current?.setFirstPersonMode(true);
         // Активируем видимость VR UI в шлеме
@@ -1114,7 +1117,9 @@ export default function App() {
         }
         // Восстанавливаем высоту камеры игрока и параметры рендера для Desktop
         if (playerGroupRef.current) {
-          playerGroupRef.current.position.y = 1.65;
+          const groundY = activeScenarioIdRef.current === 4 ? scenario4GroundYRef.current : 0;
+          const eyeH = activeScenarioIdRef.current === 4 ? SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT : 1.65;
+          playerGroupRef.current.position.y = groundY + eyeH;
         }
         resetDesktopLookRef.current();
         if (cameraRef.current && rendererRef.current && !rendererRef.current.xr.isPresenting) {
@@ -1530,7 +1535,11 @@ export default function App() {
       isMovingRef.current = isMovingNow;
 
       if (playerGroupRef.current && !isVR && !isMovementFrozen && !modalOpenRef.current) {
-        const moveSpeed = 3.2 * dt;
+        const isScen4 = activeScenarioIdRef.current === 4;
+        const baseSpeed = isScen4 ? SCENARIO_4_CONFIG.PLAYER_MOVE_SPEED_DESKTOP : 3.2;
+        const sprintMult =
+          isScen4 && (keysRef.current['ShiftLeft'] || keysRef.current['ShiftRight']) ? 1.65 : 1.0;
+        const moveSpeed = baseSpeed * sprintMult * dt;
         const hadMoveKey = Boolean(
           keysRef.current['KeyW'] ||
             keysRef.current['KeyS'] ||
@@ -1546,21 +1555,24 @@ export default function App() {
         if (keysRef.current['KeyD']) playerGroupRef.current.translateX(moveSpeed);
 
         // Фиксация высоты взгляда в desktop (либо обзорная высота после [K], либо рост оператора над уровнем площадки)
-        const groundY = activeScenarioIdRef.current === 4 ? scenario4GroundYRef.current : 0;
+        const groundY = isScen4 ? scenario4GroundYRef.current : 0;
+        const standEyeH = isScen4 ? SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT : 1.65;
         const targetY =
           desktopOverviewYRef.current !== null
             ? desktopOverviewYRef.current
-            : groundY + (isCrouched ? 0.95 : SCENARIO_4_TRANSFORM.spawn.eyeHeightMeters);
+            : groundY + (isCrouchedRef.current ? 0.95 : standEyeH);
         playerGroupRef.current.position.y += (targetY - playerGroupRef.current.position.y) * Math.min(1.0, dt * 10);
         scenario4ControllerRef.current?.clampPlayerPosition(playerGroupRef.current.position, false);
       }
 
       // 1.5. Следование 3D-манекена за ориентацией взгляда оператора и привязка ног к полу (groundY)
       if (playerAvatarRigRef.current && cameraRef.current) {
-        const avatarGroundY = activeScenarioIdRef.current === 4 ? scenario4GroundYRef.current : 0;
+        const isScen4 = activeScenarioIdRef.current === 4;
+        const avatarGroundY = isScen4 ? scenario4GroundYRef.current : 0;
+        const fallbackEyeH = isScen4 ? SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT : 1.65;
         playerAvatarRigRef.current.rootGroup.position.y = isVR
           ? 0
-          : avatarGroundY - (playerGroupRef.current?.position.y ?? SCENARIO_4_TRANSFORM.spawn.eyeHeightMeters);
+          : avatarGroundY - (playerGroupRef.current?.position.y ?? fallbackEyeH);
         playerAvatarRigRef.current.updatePose(cameraRef.current);
       }
 
@@ -2750,6 +2762,12 @@ export default function App() {
       vrUiSystemRef.current?.closeModals();
       if (xrManagerRef.current) {
         xrManagerRef.current.isMovementFrozen = false;
+        xrManagerRef.current.moveSpeed = scen.id === 4 ? SCENARIO_4_CONFIG.PLAYER_MOVE_SPEED_VR : 1.8;
+      }
+      if (playerAvatarRigRef.current) {
+        playerAvatarRigRef.current.rootGroup.scale.setScalar(
+          scen.id === 4 ? SCENARIO_4_CONFIG.PLAYER_SCALE : 1.0
+        );
       }
 
       // Позиция и ориентация игрока / камеры (с проверкой на NaN и сбросом углов обзора)
@@ -2957,10 +2975,10 @@ export default function App() {
                   xrManagerRef.current?.isInVR || rendererRef.current?.xr.isPresenting
                 );
                 const vrY =
-                  xrManagerRef.current?.activeReferenceSpaceType === 'local-floor' ? 0.0 : 1.65;
+                  xrManagerRef.current?.activeReferenceSpaceType === 'local-floor' ? 0.0 : SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT;
                 const spawnEyeY = isVrNow
                   ? spawn.y + vrY
-                  : spawn.y + SCENARIO_4_TRANSFORM.spawn.eyeHeightMeters;
+                  : spawn.y + SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT;
                 playerGroupRef.current.position.set(spawn.x, spawnEyeY, spawn.z);
                 if (!isVrNow) {
                   const eyeOrigin = new THREE.Vector3(spawn.x, spawnEyeY, spawn.z);

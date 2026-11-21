@@ -562,7 +562,7 @@ export class ExtinguisherSystem {
   }
 
   /**
-   * Распыление CO₂ по лучу/конусу прицеливания с контролем дальности (0.4..5.4 м)
+   * Распыление CO₂ по лучу/конусу прицеливания с контролем дальности (0.35..6.5 м)
    * и снижением интенсивности задетых очагов возгорания.
    */
   public applySpray(
@@ -635,7 +635,7 @@ export class ExtinguisherSystem {
       this.scratchVecA.y += 0.65;
       this.scratchDir.subVectors(this.scratchVecA, aimOrigin);
       const dist = this.scratchDir.length();
-      if (dist > 5.5 || dist < 0.35) continue;
+      if (dist > 6.5 || dist < 0.35) continue;
       this.scratchDir.divideScalar(dist);
 
       const dot = this.scratchDir.dot(aimDir);
