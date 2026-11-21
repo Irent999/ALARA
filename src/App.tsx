@@ -1200,6 +1200,11 @@ export default function App() {
           selectMchsToolRef.current(nextSlot.id);
         }
       },
+      onLeftThumbstickPress: () => {
+        if (activeScenarioIdRef.current === 4 && !modalOpenRef.current) {
+          scenario4ControllerRef.current?.onBoardOrExitVehicle();
+        }
+      },
       onRightTriggerWorldHold: (raycaster, _controller, isHeld, justPressed, justReleased) => {
         vrRightHoldRef.current.active = isHeld;
         vrRightHoldRef.current.raycaster = raycaster;
@@ -1454,6 +1459,23 @@ export default function App() {
         scenario4ControllerRef.current?.focusCameraOnModel();
         return;
       }
+      if (
+        e.code === 'Enter' &&
+        !e.repeat &&
+        !modalOpenRef.current &&
+        !isXrPresentingNow() &&
+        activeScenarioIdRef.current === 4
+      ) {
+        e.preventDefault();
+        scenario4ControllerRef.current?.onBoardOrExitVehicle();
+        return;
+      }
+      if (e.code === 'KeyB' && !e.repeat && !modalOpenRef.current && activeScenarioIdRef.current === 4) {
+        if (scenario4ControllerRef.current?.isPlayerSeatedInVehicle()) {
+          scenario4ControllerRef.current.cycleNextVehicleAutopilot();
+        }
+        return;
+      }
       if (e.code === 'KeyV' && !e.repeat) {
         voiceLoggerRef.current?.startPushToTalk();
       }
@@ -1505,6 +1527,9 @@ export default function App() {
     const loopRayProbe = new THREE.Raycaster();
     const loopRayOperator = new THREE.Raycaster();
     const loopCamDir = new THREE.Vector3();
+    const s4SeatPosScratch = new THREE.Vector3();
+    let prevS4VehicleSeated = false;
+    let prevS4VehicleYaw = 0;
     const loopSourceInputs: Array<{
       activityMBq: number;
       isotopeId: string;
@@ -1522,19 +1547,23 @@ export default function App() {
 
       const isVR = (xrManagerRef.current?.isInVR ?? false) || renderer.xr.isPresenting;
       const isMovementFrozen = rulesEngineRef.current?.isMovementFrozen ?? false;
+      const isSeatedInS4Vehicle = Boolean(
+        activeScenarioIdRef.current === 4 && scenario4ControllerRef.current?.isPlayerSeatedInVehicle()
+      );
 
-      // 1. Перемещение игрока WASD (только в Desktop-режиме, замораживается при провале сценария Game Over)
+      // 1. Перемещение игрока WASD (только в Desktop-режиме и вне кабины АЦ-40)
       const isDesktopMoving = Boolean(
         !isVR &&
+        !isSeatedInS4Vehicle &&
         (keysRef.current['KeyW'] || keysRef.current['KeyS'] ||
         keysRef.current['KeyA'] || keysRef.current['KeyD'] ||
         keysRef.current['ArrowUp'] || keysRef.current['ArrowDown'] ||
         keysRef.current['ArrowLeft'] || keysRef.current['ArrowRight'])
       );
-      const isMovingNow = isDesktopMoving || (isVR && Boolean(xrManagerRef.current?.isMoving));
+      const isMovingNow = isDesktopMoving || (isVR && !isSeatedInS4Vehicle && Boolean(xrManagerRef.current?.isMoving));
       isMovingRef.current = isMovingNow;
 
-      if (playerGroupRef.current && !isVR && !isMovementFrozen && !modalOpenRef.current) {
+      if (playerGroupRef.current && !isVR && !isMovementFrozen && !modalOpenRef.current && !isSeatedInS4Vehicle) {
         const isScen4 = activeScenarioIdRef.current === 4;
         const baseSpeed = isScen4 ? SCENARIO_4_CONFIG.PLAYER_MOVE_SPEED_DESKTOP : 3.2;
         const sprintMult =
@@ -1579,9 +1608,9 @@ export default function App() {
       // 2. Обновление WebXR (Smooth Locomotion, Turning, Перчатки Hazmat, Рейкастинг в VR UI, Gaze fallback)
       if (xrManagerRef.current && isVR && cameraRef.current) {
         try {
-          xrManagerRef.current.isMovementFrozen = isMovementFrozen;
+          xrManagerRef.current.isMovementFrozen = isMovementFrozen || isSeatedInS4Vehicle;
           xrManagerRef.current.update(dt, cameraRef.current);
-          if (playerGroupRef.current) {
+          if (playerGroupRef.current && !isSeatedInS4Vehicle) {
             scenario4ControllerRef.current?.clampPlayerPosition(playerGroupRef.current.position, true);
           }
         } catch (xrErr) {
@@ -1726,7 +1755,7 @@ export default function App() {
         );
       }
 
-      // 3.3. Сценарий №4: Аварийно-спасательная операция на комплексе АЭС (/assembly.glb + HTC Vive)
+      // 3.3. Сценарий №4: Аварийно-спасательная операция на комплексе АЭС (/assembly.glb + HTC Vive + АЦ-40)
       if (scenario4ControllerRef.current && cameraRef.current) {
         const s4Ctrl = scenario4ControllerRef.current;
         const isMuted = audioEngine.getMuted();
@@ -1736,6 +1765,23 @@ export default function App() {
           !modalOpenRef.current &&
           (isKeyHold || (s4Ctrl.isExtinguisherArmed() && lmbHoldActiveRef.current));
         const isVrSpray = isVR && vrRightHoldRef.current.active;
+
+        let driveThrottle = 0;
+        let driveSteer = 0;
+        if (isSeatedInS4Vehicle) {
+          if (!isVR && !modalOpenRef.current) {
+            driveThrottle =
+              (keysRef.current['KeyW'] || keysRef.current['ArrowUp'] ? 1 : 0) -
+              (keysRef.current['KeyS'] || keysRef.current['ArrowDown'] ? 1 : 0);
+            driveSteer =
+              (keysRef.current['KeyA'] || keysRef.current['ArrowLeft'] ? 1 : 0) -
+              (keysRef.current['KeyD'] || keysRef.current['ArrowRight'] ? 1 : 0);
+          } else if (isVR && xrManagerRef.current) {
+            const leftVr = xrManagerRef.current.getControllerInput('left');
+            driveThrottle = -leftVr.moveY;
+            driveSteer = -leftVr.moveX;
+          }
+        }
 
         const s4Snap = s4Ctrl.stepWithInput({
           dt,
@@ -1748,19 +1794,100 @@ export default function App() {
           isSprayingInput: isDesktopSpray || isVrSpray,
           isMuted,
           cumulativeDoseMsv: cumulativeDoseRef.current,
-          isMovementFrozen
+          isMovementFrozen,
+          vehicleDriveInput: isSeatedInS4Vehicle
+            ? { throttle: driveThrottle, steer: driveSteer }
+            : undefined
         });
+
+        // Синхронизация кабины водителя АЦ-40 с группой игрока (Desktop + VR)
+        const seatInfo = s4Ctrl.getVehicleSeatWorldTransform(s4SeatPosScratch);
+        if (seatInfo.seated && playerGroupRef.current) {
+          desktopOverviewYRef.current = null;
+          if (!prevS4VehicleSeated) {
+            prevS4VehicleYaw = seatInfo.yaw;
+            if (!isVR) {
+              playerRotY = seatInfo.yaw + Math.PI;
+              cameraPitch = -0.04;
+              playerGroupRef.current.rotation.set(0, playerRotY, 0);
+              cameraRef.current.rotation.set(cameraPitch, 0, 0);
+              handRigRef.current?.setDesktopCameraPitch(cameraPitch);
+              leftHandRigDesktopRef.current?.setDesktopCameraPitch(cameraPitch);
+            } else {
+              playerGroupRef.current.rotation.set(0, seatInfo.yaw + Math.PI, 0);
+            }
+          } else {
+            let dYaw = seatInfo.yaw - prevS4VehicleYaw;
+            while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+            while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+            prevS4VehicleYaw = seatInfo.yaw;
+            if (!isVR) {
+              playerRotY += dYaw;
+              playerGroupRef.current.rotation.y = playerRotY;
+            } else {
+              playerGroupRef.current.rotation.y += dYaw;
+            }
+          }
+
+          if (isVR) {
+            const vrSeatY =
+              xrManagerRef.current?.activeReferenceSpaceType === 'local-floor'
+                ? s4SeatPosScratch.y - SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT
+                : s4SeatPosScratch.y;
+            playerGroupRef.current.position.set(s4SeatPosScratch.x, vrSeatY, s4SeatPosScratch.z);
+          } else {
+            playerGroupRef.current.position.copy(s4SeatPosScratch);
+          }
+        } else if (prevS4VehicleSeated && !seatInfo.seated && playerGroupRef.current) {
+          if (isVR && xrManagerRef.current?.activeReferenceSpaceType === 'local-floor') {
+            playerGroupRef.current.position.y = scenario4GroundYRef.current;
+          }
+        }
+        prevS4VehicleSeated = seatInfo.seated;
 
         if (s4Snap.stepNumber !== lastScen4StepNumRef.current) {
           lastScen4StepNumRef.current = s4Snap.stepNumber;
           setScenarioStep(s4Snap.stepNumber - 1);
         }
 
-        const s4Key = `${s4Snap.isLoadingGlb ? 1 : 0}:${Math.round(s4Snap.loadProgressPct)}:${s4Snap.loadErrorRu ?? ''}:${s4Snap.stepId}:${s4Snap.firesExtinguished}:${s4Snap.rescuedCount}:${s4Snap.extinguisherStatus}:${s4Snap.extinguisherLifecycleState}:${s4Snap.extinguisherChargePct}:${s4Snap.isSpraying ? 1 : 0}:${Math.round(s4Snap.thermalHeatLoad01 * 20)}:${s4Snap.targetPromptRu ?? ''}:${s4Snap.warningBannerRu ?? ''}:${s4Snap.safetyErrorCount}:${s4Snap.debrief ? 1 : 0}:${s4Snap.activeInputLabelRu}`;
+        const s4Key = [
+          s4Snap.isLoadingGlb ? 1 : 0,
+          Math.round(s4Snap.loadProgressPct),
+          s4Snap.loadErrorRu ?? '',
+          s4Snap.stepId,
+          s4Snap.firesExtinguished,
+          s4Snap.rescuedCount,
+          s4Snap.extinguisherStatus,
+          s4Snap.extinguisherLifecycleState,
+          s4Snap.extinguisherChargePct,
+          s4Snap.isSpraying ? 1 : 0,
+          Math.round(s4Snap.thermalHeatLoad01 * 20),
+          Math.round(s4Snap.smokeExposure01 * 10),
+          s4Snap.installedEquipmentCount,
+          s4Snap.vehicle.isSeated ? 1 : 0,
+          s4Snap.vehicle.nearDoor ? 1 : 0,
+          s4Snap.vehicle.nearHoseReel ? 1 : 0,
+          s4Snap.vehicle.isHoseAttached ? 1 : 0,
+          s4Snap.vehicle.speedKmh,
+          s4Snap.vehicle.autopilotTargetName ?? '',
+          Math.round(s4Snap.vehicle.hoseLengthM),
+          s4Snap.vehicle.hoseOverstretched ? 1 : 0,
+          s4Snap.emergencyOps.radReconDone ? 1 : 0,
+          Math.round(s4Snap.emergencyOps.radReconProgress01 * 10),
+          s4Snap.emergencyOps.loopIsolated ? 1 : 0,
+          s4Snap.emergencyOps.casualtyStabilized ? 1 : 0,
+          s4Snap.targetPromptRu ?? '',
+          s4Snap.warningBannerRu ?? '',
+          s4Snap.safetyErrorCount,
+          s4Snap.debrief ? 1 : 0,
+          s4Snap.activeInputLabelRu
+        ].join(':');
         if (s4Key !== lastScen4SnapKeyRef.current) {
           lastScen4SnapKeyRef.current = s4Key;
           setScenario4Snapshot(s4Snap);
         }
+      } else {
+        prevS4VehicleSeated = false;
       }
 
       if (flashlightMeshRef.current && isFlashlightOnRef.current) {
@@ -4838,6 +4965,15 @@ export default function App() {
             onFocusModel={() => scenario4ControllerRef.current?.focusCameraOnModel()}
             onSelectCustomGlbFile={file => {
               void scenario4ControllerRef.current?.loadCustomGlbFile(file);
+            }}
+            onBoardOrExitVehicle={() => {
+              scenario4ControllerRef.current?.onBoardOrExitVehicle();
+            }}
+            onStartAutopilot={buildingIdx => {
+              scenario4ControllerRef.current?.startVehicleAutopilot(buildingIdx);
+            }}
+            onCancelAutopilot={() => {
+              scenario4ControllerRef.current?.cancelVehicleAutopilot();
             }}
           />
         )}

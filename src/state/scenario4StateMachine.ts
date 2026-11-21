@@ -15,6 +15,8 @@ import type {
   ExtinguisherLifecycleState,
   ExtinguisherStatus
 } from '../mechanics/extinguisherSystem';
+import type { MchsVehicleSnapshot } from '../mechanics/mchsVehicleSystem';
+import type { EmergencyOpsSnapshot } from '../mechanics/emergencyOpsSystem';
 
 export type Scenario4PhaseId =
   | 'LOADING_ASSET'
@@ -44,31 +46,34 @@ export const SCENARIO4_PHASES: Readonly<Record<Scenario4PhaseId, Scenario4PhaseM
     id: 'LOADING_ASSET',
     stepNumber: 1,
     titleRu: 'Инициализация 3D-комплекса АЭС',
-    instructionRu: 'Загрузка /assembly.glb, привязка триггеров, очагов и маршрутов эвакуации.'
+    instructionRu: 'Загрузка /assembly.glb, расстановка оборудования, техники МЧС и очагов.'
   },
   BRIEFING_ENTRY: {
     id: 'BRIEFING_ENTRY',
     stepNumber: 2,
-    titleRu: 'Подготовка ОУ-5 и вход в корпус',
-    instructionRu: 'Возьмите ОУ-5 на стойке [E], сорвите чеку [E/R] и войдите в аварийный корпус.'
+    titleRu: 'Подготовка средств тушения и вход в корпус',
+    instructionRu:
+      'Возьмите ОУ-5 [E] (чека [R]) или пожарный рукав у машины МЧС (посадка [Enter]) и войдите в корпус.'
   },
   FIRE_SUPPRESSION: {
     id: 'FIRE_SUPPRESSION',
     stepNumber: 3,
-    titleRu: 'Локализация и тушение очагов',
-    instructionRu: 'Обнаружьте и потушите очаги пожара (ЛКМ / [E] / курок), следите за зарядом ОУ-5.'
+    titleRu: 'Тушение очагов и локализация аварийного контура',
+    instructionRu:
+      'Потушите очаги (ОУ-5 или рукав МЧС), перекройте аварийную задвижку и стабилизируйте пострадавшего.'
   },
   EVACUATION_ESCORT: {
     id: 'EVACUATION_ESCORT',
     stepNumber: 4,
     titleRu: 'Эвакуация персонала и выход',
-    instructionRu: 'Выведите группы персонала по маршрутам на безопасный выход и выйдите на Пункт сбора.'
+    instructionRu:
+      'Завершите аварийные операции, выведите 4 группы персонала (10 чел.) [E] и выйдите на Пункт сбора.'
   },
   COMPLETED: {
     id: 'COMPLETED',
     stepNumber: 5,
     titleRu: 'Операция завершена (Протокол МЧС)',
-    instructionRu: 'Все очаги потушены, персонал спасён. Изучите итоговый разбор ALARA.'
+    instructionRu: 'Все очаги потушены, угрозы локализованы, персонал спасён. Изучите разбор ALARA.'
   },
   FAILED: {
     id: 'FAILED',
@@ -88,6 +93,10 @@ export interface Scenario4DebriefSummary {
   readonly totalFires: number;
   readonly remainingExtinguisherPct: number;
   readonly cylindersUsed: number;
+  readonly radReconDone: boolean;
+  readonly loopIsolated: boolean;
+  readonly casualtyStabilized: boolean;
+  readonly usedHoseOrVehicle: boolean;
   readonly cumulativeDoseMsv: number;
   readonly peakHeatLoadPct: number;
   readonly safetyErrors: ReadonlyArray<string>;
@@ -122,6 +131,9 @@ export interface Scenario4HudSnapshot {
   readonly maxDurationSec: number;
   readonly cumulativeDoseMsv: number;
   readonly doseLimitMsv: number;
+  readonly installedEquipmentCount: number;
+  readonly vehicle: MchsVehicleSnapshot;
+  readonly emergencyOps: EmergencyOpsSnapshot;
   readonly activeInputLabelRu: string;
   readonly targetPromptRu: string | null;
   readonly warningBannerRu: string | null;
@@ -181,9 +193,10 @@ export class Scenario4StateMachine {
 
   public evaluateProgression(params: {
     assetReady: boolean;
-    isExtinguisherArmed: boolean;
+    isSuppressionReady: boolean;
     isInsideBuilding: boolean;
     allFiresExtinguished: boolean;
+    allEmergencyOpsDone: boolean;
     allNpcsSafe: boolean;
     inAssemblyZone: boolean;
     elapsedSec: number;
@@ -220,7 +233,7 @@ export class Scenario4StateMachine {
     }
 
     if (this.phase === 'BRIEFING_ENTRY') {
-      if (params.isExtinguisherArmed && params.isInsideBuilding) {
+      if (params.isSuppressionReady && params.isInsideBuilding) {
         this.phase = 'FIRE_SUPPRESSION';
       }
     } else if (this.phase === 'FIRE_SUPPRESSION') {
@@ -228,7 +241,12 @@ export class Scenario4StateMachine {
         this.phase = 'EVACUATION_ESCORT';
       }
     } else if (this.phase === 'EVACUATION_ESCORT') {
-      if (params.allFiresExtinguished && params.allNpcsSafe && params.inAssemblyZone) {
+      if (
+        params.allFiresExtinguished &&
+        params.allEmergencyOpsDone &&
+        params.allNpcsSafe &&
+        params.inAssemblyZone
+      ) {
         this.phase = 'COMPLETED';
       }
     }
@@ -245,6 +263,10 @@ export class Scenario4StateMachine {
     totalFires: number;
     remainingExtinguisherPct: number;
     cylindersUsed: number;
+    radReconDone: boolean;
+    loopIsolated: boolean;
+    casualtyStabilized: boolean;
+    usedHoseOrVehicle: boolean;
     cumulativeDoseMsv: number;
     peakHeatLoadPct: number;
   }): Scenario4DebriefSummary {
@@ -273,6 +295,10 @@ export class Scenario4StateMachine {
       totalFires: params.totalFires,
       remainingExtinguisherPct: params.remainingExtinguisherPct,
       cylindersUsed: params.cylindersUsed,
+      radReconDone: params.radReconDone,
+      loopIsolated: params.loopIsolated,
+      casualtyStabilized: params.casualtyStabilized,
+      usedHoseOrVehicle: params.usedHoseOrVehicle,
       cumulativeDoseMsv: params.cumulativeDoseMsv,
       peakHeatLoadPct: params.peakHeatLoadPct,
       safetyErrors: [...this.safetyErrors],

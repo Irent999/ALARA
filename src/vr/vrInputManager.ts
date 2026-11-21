@@ -184,6 +184,8 @@ export interface VRInputManagerCallbacks {
   onFlashlightToggled?: (isOn: boolean) => void;
   /** Правый стик вверх/вниз: циклическое переключение инструментов МЧС (1..5) */
   onCycleTool?: (dir: 1 | -1) => void;
+  /** Нажатие на левый стик / трекпад (HTC Vive): посадка/выход из техники МЧС (АЦ-40) */
+  onLeftThumbstickPress?: () => void;
   /** Правый триггер: удержание в 3D-мире (дезактивация, тушение, арматура, пуск) */
   onRightTriggerWorldHold?: (
     raycaster: THREE.Raycaster,
@@ -686,6 +688,13 @@ export class VRInputManager {
     if (left.buttonBOrY.justPressed) {
       const isNowOn = this.flashlight.toggle(left.gamepad);
       this.callbacks.onFlashlightToggled?.(isNowOn);
+    }
+
+    // 2.6. Нажатие на левый стик / трекпад (HTC Vive Touchpad Click):
+    // Посадка / выход из кабины автомобиля МЧС (работает даже при заморозке ходьбы)
+    if (left.thumbstickPress.justPressed) {
+      this.triggerHapticProfile('left', 'mode_toggle');
+      this.callbacks.onLeftThumbstickPress?.();
     }
   }
 

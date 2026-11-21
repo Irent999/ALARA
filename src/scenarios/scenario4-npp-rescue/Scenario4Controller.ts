@@ -5,7 +5,7 @@
  * Связывает модули:
  * - src/npp/        (NppAssemblyLoader + NppSceneInspector + NPP_NODE_CONFIG)
  * - src/state/      (Scenario4StateMachine + UnifiedScenarioState)
- * - src/mechanics/  (ExtinguisherSystem + NpcEvacuationSystem)
+ * - src/mechanics/  (ExtinguisherSystem + NpcEvacuationSystem + NppEquipmentBuilder + MchsVehicleSystem + EmergencyOpsSystem)
  * - src/xr/         (ViveInteractionAdapter для HTC Vive / WebXR / Desktop)
  */
 
@@ -13,7 +13,6 @@ import * as THREE from 'three';
 import {
   NPP_NODE_CONFIG,
   SCENARIO_4_CONFIG,
-  SCENARIO_4_TRANSFORM,
   type WallColliderBox
 } from '../../npp/nppNodeConfig';
 import { NppAssemblyLoader } from '../../npp/nppAssemblyLoader';
@@ -21,6 +20,15 @@ import type { NppInspectionReport } from '../../npp/nppSceneInspector';
 import type { RadiationSourceInstance } from '../../scene/scenarios';
 import { ExtinguisherSystem } from '../../mechanics/extinguisherSystem';
 import { NpcEvacuationSystem } from '../../mechanics/npcEvacuationSystem';
+import { NppEquipmentBuilder } from '../../mechanics/nppEquipmentBuilder';
+import {
+  MchsVehicleSystem,
+  type MchsVehicleSnapshot
+} from '../../mechanics/mchsVehicleSystem';
+import {
+  EmergencyOpsSystem,
+  type EmergencyOpsSnapshot
+} from '../../mechanics/emergencyOpsSystem';
 import {
   SCENARIO4_PHASE_ORDER,
   Scenario4DebriefSummary,
@@ -53,6 +61,30 @@ export interface Scenario4ControllerOptions {
   readonly onRadiationSourcesReady?: (sources: RadiationSourceInstance[]) => void;
 }
 
+const EMPTY_VEHICLE_SNAPSHOT: MchsVehicleSnapshot = {
+  isSeated: false,
+  nearDoor: false,
+  nearHoseReel: false,
+  isHoseAttached: false,
+  speedKmh: 0,
+  autopilotTargetName: null,
+  hoseLengthM: 0,
+  maxHoseLengthM: SCENARIO_4_CONFIG.HOSE.maxLengthM,
+  hoseOverstretched: false,
+  targets: []
+};
+
+const EMPTY_EMERGENCY_OPS_SNAPSHOT: EmergencyOpsSnapshot = {
+  radReconDone: false,
+  radReconProgress01: 0,
+  loopIsolated: false,
+  casualtyStabilized: false,
+  smokeMultiplier: 1.0,
+  completedOpsCount: 0,
+  totalOpsCount: 3,
+  nearestPendingPromptRu: null
+};
+
 export class Scenario4Controller {
   private readonly envGroup: THREE.Group;
   private readonly camera: THREE.Camera;
@@ -73,6 +105,10 @@ export class Scenario4Controller {
 
   private fireMgr: ExtinguisherSystem | null = null;
   private evacMgr: NpcEvacuationSystem | null = null;
+  private equipBuilder: NppEquipmentBuilder | null = null;
+  private vehicleSys: MchsVehicleSystem | null = null;
+  private emergencyOps: EmergencyOpsSystem | null = null;
+
   private inspectionReport: NppInspectionReport | null = null;
   private wallColliders: WallColliderBox[] = [];
   private readonly modelBounds = new THREE.Box3(
@@ -96,13 +132,17 @@ export class Scenario4Controller {
   private cumulativeDoseMsv = 0;
   private isInsideBuildingNow = false;
   private inAssemblyZoneNow = false;
-  private activeInputLabelRu = 'Desktop • [E]/ЛКМ: действие/распыл • [R]: чека • [G]: убрать ОУ-5 • [K]: фокус';
+  private usedHoseOrVehicle = false;
+  private activeInputLabelRu =
+    'Desktop • [E]/ЛКМ: действие/распыл • [R]: чека • [Enter]: машина МЧС • [K]: фокус';
   private targetPromptRu: string | null = null;
   private debrief: Scenario4DebriefSummary | null = null;
 
   private lastSprayWarnTime = -10;
   private lastPinWarnTime = -10;
   private lastExitWarnTime = -10;
+  private lastHoseWarnTime = -10;
+  private nextAutopilotIdx = 0;
 
   // Виньетка комфорта при телепорте в VR
   private vrComfortMesh: THREE.Mesh | null = null;
@@ -119,6 +159,7 @@ export class Scenario4Controller {
   private readonly sparePostPos = new THREE.Vector3();
 
   private readonly scratchVecA = new THREE.Vector3();
+  private readonly scratchVecB = new THREE.Vector3();
 
   constructor(options: Scenario4ControllerOptions) {
     this.envGroup = options.envGroup;
@@ -181,6 +222,9 @@ export class Scenario4Controller {
     if (this.isDisposed || this.isLoadingGlb || this.loadErrorRu || !this.inspectionReport) {
       return false;
     }
+    if (this.vehicleSys?.isSeated) {
+      this.onBoardOrExitVehicle();
+    }
     this.playerGroup.position.x = this.focusCameraPos.x;
     this.playerGroup.position.z = this.focusCameraPos.z;
     this.onCameraFocusRequested?.(this.focusCameraPos, this.focusCameraTarget);
@@ -229,7 +273,7 @@ export class Scenario4Controller {
       this.onToast(
         'success',
         'МОДЕЛЬ АЭС ЗАГРУЖЕНА (.GLB)',
-        `${result.resolvedUrl} • Узлов: ${result.report.totalNodes}, мешей: ${result.report.totalMeshes}, Box3: ${result.report.boundingBoxSize.join('×')} м.`
+        `${result.resolvedUrl} • Корпусов: ${result.report.buildingVolumes.length}, узлов: ${result.report.totalNodes}, Box3: ${result.report.boundingBoxSize.join('×')} м.`
       );
     } catch (err) {
       if (this.isDisposed) return;
@@ -238,7 +282,7 @@ export class Scenario4Controller {
       this.loadProgressPct = 0;
       this.loadStatusRu = 'Ошибка загрузки /assembly.glb';
       this.loadErrorRu = errMsg;
-      console.error('[ALARA Scenario4] Загрузка /assembly.glb завершилась ошибкой (процедурная заглушка отключена):', errMsg);
+      console.error('[ALARA Scenario4] Загрузка /assembly.glb завершилась ошибкой:', errMsg);
       this.onToast(
         'danger',
         'ОШИБКА ЗАГРУЗКИ /assembly.glb',
@@ -247,10 +291,7 @@ export class Scenario4Controller {
     }
   }
 
-  private mountLoadedWorld(
-    worldRoot: THREE.Group,
-    report: NppInspectionReport
-  ): void {
+  private mountLoadedWorld(worldRoot: THREE.Group, report: NppInspectionReport): void {
     this.loadErrorRu = null;
     this.inspectionReport = report;
     this.deckSurfaceY = report.deckSurfaceY;
@@ -259,7 +300,6 @@ export class Scenario4Controller {
     this.modelBounds.setFromObject(worldRoot);
 
     const m = report.markers;
-    this.wallColliders = [...m.wallColliders];
     this.spawnPos.copy(m.spawnPlayer);
     this.spawnLookTarget.copy(m.spawnLookTarget);
     this.focusCameraPos.copy(m.focusCameraPos);
@@ -279,6 +319,49 @@ export class Scenario4Controller {
     this.primaryPostPos.copy(primaryMarker.pos);
     this.sparePostPos.copy(spareMarker.pos);
 
+    // 1. Внутреннее техническое оборудование (турбоагрегаты, насосы, КРУ, площадки) без пересечения с очагами и NPC
+    const avoidPoints: THREE.Vector3[] = [
+      ...m.fireZones.map(f => f.pos),
+      ...m.npcSpawns.map(n => n.pos),
+      ...m.entrances.map(e => e.pos),
+      m.loopIsolationPoint.pos,
+      m.casualtyTriagePoint.pos,
+      this.sparePostPos
+    ];
+
+    if (SCENARIO_4_CONFIG.EQUIPMENT_LAYOUT.enabled) {
+      this.equipBuilder = new NppEquipmentBuilder({
+        buildings: report.mainBuildings.length > 0 ? report.mainBuildings : report.buildingVolumes,
+        avoidPoints,
+        minClearanceM: SCENARIO_4_CONFIG.EQUIPMENT_LAYOUT.minClearanceFromFireOrNpcM,
+        maxBuildings: SCENARIO_4_CONFIG.EQUIPMENT_LAYOUT.maxBuildingsToPopulate,
+        scale: SCENARIO_4_CONFIG.EQUIPMENT_LAYOUT.equipmentScale
+      });
+      this.rootGroup.add(this.equipBuilder.rootGroup);
+      this.wallColliders = [...m.wallColliders, ...this.equipBuilder.colliders];
+    } else {
+      this.wallColliders = [...m.wallColliders];
+    }
+
+    // 2. Пожарный автомобиль МЧС и вытягиваемый пожарный рукав
+    this.vehicleSys = new MchsVehicleSystem({
+      spawnPos: m.vehicleSpawn.pos,
+      lookTarget: this.entrancePos,
+      driveTargets: m.buildingDriveTargets,
+      buildingVolumes: report.buildingVolumes,
+      siteBounds: this.modelBounds
+    });
+    this.rootGroup.add(this.vehicleSys.rootGroup);
+
+    // 3. Дополнительные аварийные операции МЧС (разведка, перекрытие контура, пострадавший)
+    this.emergencyOps = new EmergencyOpsSystem({
+      radReconPos: m.radReconPoint.pos,
+      loopIsolationPos: m.loopIsolationPoint.pos,
+      casualtyTriagePos: m.casualtyTriagePoint.pos
+    });
+    this.rootGroup.add(this.emergencyOps.rootGroup);
+
+    // 4. Система пожаротушения (ОУ-5 + интеграция с пожарным рукавом МЧС)
     this.fireMgr = new ExtinguisherSystem(
       NPP_NODE_CONFIG.fireZones,
       m.fireZones,
@@ -288,6 +371,7 @@ export class Scenario4Controller {
     );
     this.rootGroup.add(this.fireMgr.rootGroup);
 
+    // 5. Система эвакуации персонала (4 группы / 10 чел. внутри зданий)
     this.evacMgr = new NpcEvacuationSystem({
       npcSpecs: NPP_NODE_CONFIG.npcGroups,
       discoveredNpcs: m.npcSpawns,
@@ -302,7 +386,7 @@ export class Scenario4Controller {
     });
     this.rootGroup.add(this.evacMgr.rootGroup);
 
-    // Синхронизируем маркеры ИИИ (Cs-137, Co-60) строго с реальными позициями очагов внутри корпусов .glb-модели
+    // 6. Синхронизация маркеров ИИИ (Cs-137, Co-60) с мировыми координатами очагов внутри .glb
     const fireIsotopes: ReadonlyArray<{ isotopeId: string; activityMBq: number }> = [
       { isotopeId: 'Cs-137', activityMBq: 450 },
       { isotopeId: 'Co-60', activityMBq: 320 },
@@ -326,6 +410,7 @@ export class Scenario4Controller {
     this.peakHeatLoad01 = 0;
     this.currentHeatLoad01 = 0;
     this.currentSmoke01 = 0;
+    this.usedHoseOrVehicle = false;
     this.debrief = null;
     this.isLoadingGlb = false;
     this.loadProgressPct = 100;
@@ -334,10 +419,95 @@ export class Scenario4Controller {
     this.onPlayerSpawnReady?.(this.spawnPos, this.spawnLookTarget, report.boundingBoxSize);
   }
 
+  public isPlayerSeatedInVehicle(): boolean {
+    return Boolean(this.vehicleSys?.isSeated);
+  }
+
+  public getVehicleSeatWorldTransform(outPos: THREE.Vector3): { seated: boolean; yaw: number } {
+    if (!this.vehicleSys || !this.vehicleSys.isSeated) {
+      return { seated: false, yaw: 0 };
+    }
+    const yaw = this.vehicleSys.getSeatWorldTransform(outPos);
+    return { seated: true, yaw };
+  }
+
+  public enforceHoseTether(playerPos: THREE.Vector3): boolean {
+    if (!this.vehicleSys) return false;
+    return this.vehicleSys.enforceHoseTether(playerPos);
+  }
+
+  public onBoardOrExitVehicle(): boolean {
+    if (this.isDisposed || this.isLoadingGlb || !this.vehicleSys || this.debrief) return false;
+    if (this.vehicleSys.isHoseAttached && !this.vehicleSys.isSeated) {
+      this.onToast(
+        'warning',
+        'УБЕРИТЕ ПОЖАРНЫЙ РУКАВ',
+        'Сначала отсоедините рукав у заднего насоса [E], затем садитесь в кабину АЦ-40.'
+      );
+      return false;
+    }
+
+    const res = this.vehicleSys.toggleBoardOrExit(this.playerGroup.position, this.scratchVecA);
+    if (res === 'BOARDED') {
+      this.usedHoseOrVehicle = true;
+      this.fireMgr?.stowExtinguisher();
+      this.notifyTeleportFade();
+      this.onToast(
+        'info',
+        'ПОСАДКА В АЦ-40 МЧС',
+        'Управление: [W/A/S/D] или левый стик Vive · Автопилот: [B] или кнопки HUD · Выход: [Enter].'
+      );
+      return true;
+    }
+    if (res === 'EXITED') {
+      this.playerGroup.position.x = this.scratchVecA.x;
+      this.playerGroup.position.z = this.scratchVecA.z;
+      this.clampPlayerPosition(this.playerGroup.position, false);
+      this.notifyTeleportFade();
+      this.onToast('info', 'ВЫХОД ИЗ КАБИНЫ АЦ-40', 'Подойдите к задней катушке [E] за рукавом или войдите в корпус.');
+      return true;
+    }
+    this.onToast(
+      'warning',
+      'ДАЛЕКО ОТ МАШИНЫ МЧС',
+      'Подойдите ближе к двери кабины красного пожарного автомобиля МЧС (< 4.5 м).'
+    );
+    return false;
+  }
+
+  public startVehicleAutopilot(buildingIndex: number): boolean {
+    if (this.isDisposed || this.isLoadingGlb || !this.vehicleSys || this.debrief) return false;
+    if (this.vehicleSys.isHoseAttached) {
+      this.vehicleSys.returnHose();
+      this.fireMgr?.setHoseEquipped(false);
+    }
+    const targetName = this.vehicleSys.startAutopilotToBuilding(buildingIndex);
+    if (!targetName) return false;
+    this.usedHoseOrVehicle = true;
+    this.fireMgr?.stowExtinguisher();
+    this.onToast('info', 'АВТОПИЛОТ МЧС ВКЛЮЧЕН', `Машина движется к точке: ${targetName}.`);
+    return true;
+  }
+
+  public cancelVehicleAutopilot(): void {
+    this.vehicleSys?.cancelAutopilot();
+  }
+
+  public cycleNextVehicleAutopilot(): boolean {
+    if (!this.vehicleSys || !this.inspectionReport) return false;
+    const count = this.inspectionReport.markers.buildingDriveTargets.length;
+    if (count === 0) return false;
+    const idx = this.nextAutopilotIdx % count;
+    this.nextAutopilotIdx = (this.nextAutopilotIdx + 1) % count;
+    return this.startVehicleAutopilot(idx);
+  }
+
   /**
-   * Защита от выхода за пределы комплекса АЭС и реальных коллайдеров .glb (WALL_* / COLLIDER_*)
+   * Защита от выхода за пределы комплекса АЭС и реальных коллайдеров .glb / оборудования
    */
   public clampPlayerPosition(pos: THREE.Vector3, isVR: boolean): void {
+    if (this.vehicleSys?.isSeated) return;
+
     const r = 0.42;
     const floorY = Number.isFinite(this.deckSurfaceY) ? this.deckSurfaceY : 0;
     const minEyeY = floorY + 0.9;
@@ -376,21 +546,31 @@ export class Scenario4Controller {
         else pos.z = exMaxZ;
       }
     }
+
+    this.vehicleSys?.enforceHoseTether(pos);
   }
 
   public isExtinguisherArmed(): boolean {
-    return this.fireMgr?.status === 'ARMED';
+    return Boolean(this.fireMgr?.status === 'ARMED' || this.vehicleSys?.isHoseAttached);
   }
 
   public isExtinguisherHeldOrArmed(): boolean {
-    return this.fireMgr?.status === 'HELD_LOCKED' || this.fireMgr?.status === 'ARMED';
+    return Boolean(
+      this.vehicleSys?.isHoseAttached ||
+        this.fireMgr?.status === 'HELD_LOCKED' ||
+        this.fireMgr?.status === 'ARMED'
+    );
   }
 
   public toggleStowExtinguisher(): 'STOWED' | 'EQUIPPED' | 'UNAVAILABLE' {
     if (!this.fireMgr || this.isLoadingGlb || this.debrief) return 'UNAVAILABLE';
     const next = this.fireMgr.toggleStow();
     if (next === 'STOWED') {
-      this.onToast('info', 'ОУ-5 УБРАН', 'Огнетушитель переведён в походное положение (клавиша [G] или курок — вернуть в руку).');
+      this.onToast(
+        'info',
+        'ОУ-5 УБРАН',
+        'Огнетушитель переведён в походное положение (клавиша [G] или курок — вернуть в руку).'
+      );
     } else if (next === 'EQUIPPED') {
       this.onToast('info', 'ОУ-5 В РУКЕ', 'Огнетушитель извлечён и готов к применению.');
     }
@@ -403,7 +583,9 @@ export class Scenario4Controller {
 
   /**
    * Короткое взаимодействие ([E] / ЛКМ / Курок HTC Vive):
-   * взятие ОУ-5 -> срыв чеки -> замена пустого баллона -> эвакуация ближайшей группы NPC.
+   * 1) Рукав МЧС у насосного отсека -> 2) Взятие/чека/замена ОУ-5 ->
+   * 3) Аварийные операции МЧС (разведка/задвижка/пострадавший) ->
+   * 4) Эвакуация NPC -> 5) Посадка/выход в кабину АЦ-40
    */
   public onTapInteract(
     playerPos: THREE.Vector3,
@@ -412,6 +594,29 @@ export class Scenario4Controller {
   ): boolean {
     if (this.isDisposed || this.isLoadingGlb || !this.fireMgr || !this.evacMgr || this.debrief) {
       return false;
+    }
+
+    if (this.vehicleSys?.isSeated) {
+      return this.onBoardOrExitVehicle();
+    }
+
+    if (this.vehicleSys) {
+      const hoseAction = this.vehicleSys.toggleHoseAtReel(playerPos);
+      if (hoseAction === 'ATTACHED') {
+        this.usedHoseOrVehicle = true;
+        this.fireMgr.setHoseEquipped(true);
+        this.onToast(
+          'success',
+          'ПОЖАРНЫЙ РУКАВ ПОДКЛЮЧЁН',
+          `Ствол ГМ-70 в руке (макс. длина ${SCENARIO_4_CONFIG.HOSE.maxLengthM} м). Направляйте на очаги!`
+        );
+        return true;
+      }
+      if (hoseAction === 'RETURNED') {
+        this.fireMgr.setHoseEquipped(false);
+        this.onToast('info', 'РУКАВ СМОТАН', 'Пожарный рукав возвращён на катушку АЦ-40.');
+        return true;
+      }
     }
 
     if (this.fireMgr.status === 'ON_POST') {
@@ -446,6 +651,14 @@ export class Scenario4Controller {
       return true;
     }
 
+    if (this.emergencyOps) {
+      const opRes = this.emergencyOps.tryInteract(playerPos);
+      if (opRes.handled && opRes.titleRu && opRes.messageRu) {
+        this.onToast('success', opRes.titleRu, opRes.messageRu);
+        return true;
+      }
+    }
+
     const npcCmd = this.evacMgr.tryCommandNearestGroup(playerPos, this.fireMgr);
     if (npcCmd.found) {
       if (npcCmd.startedEvac) {
@@ -460,6 +673,10 @@ export class Scenario4Controller {
         this.onToast('danger', 'ПУТЬ ПЕРЕКРЫТ ОГНЁМ', msg);
       }
       return true;
+    }
+
+    if (this.vehicleSys?.nearDoor) {
+      return this.onBoardOrExitVehicle();
     }
 
     return false;
@@ -479,12 +696,22 @@ export class Scenario4Controller {
     isMuted: boolean
   ): void {
     if (this.isDisposed || this.isLoadingGlb || !this.fireMgr || this.debrief) return;
+    if (this.vehicleSys?.isSeated) return;
+
+    if (this.vehicleSys?.isHoseAttached) {
+      const nozzlePos = this.vehicleSys.getNozzleTipWorldPos(this.scratchVecB);
+      const res = this.fireMgr.applyHoseSpray(nozzlePos, aimOrigin, aimDir, dt, isMuted);
+      if (res.extinguishedFireId) {
+        this.onToast('success', 'ОЧАГ ПОТУШЕН (РУКАВ МЧС)', `${res.targetFireNameRu} ликвидирован!`);
+      }
+      return;
+    }
 
     const now = this.elapsedSec;
     if (this.fireMgr.status === 'ON_POST') {
       if (now - this.lastSprayWarnTime > 2.5) {
         this.lastSprayWarnTime = now;
-        this.fsm.pushWarning('Подойдите к красной стойке у входа и возьмите ОУ-5 [E].', false);
+        this.fsm.pushWarning('Возьмите ОУ-5 на красной стойке [E] или рукав на машине МЧС.', false);
       }
       return;
     }
@@ -500,7 +727,7 @@ export class Scenario4Controller {
     if (this.fireMgr.status === 'EMPTY') {
       if (now - this.lastSprayWarnTime > 2.5) {
         this.lastSprayWarnTime = now;
-        this.fsm.pushWarning('ОУ-5 разряжен! Замените баллон на жёлтой запасной стойке.', false);
+        this.fsm.pushWarning('ОУ-5 разряжен! Замените на жёлтой стойке или возьмите рукав МЧС.', false);
       }
       return;
     }
@@ -515,9 +742,6 @@ export class Scenario4Controller {
     this.fireMgr?.stopSpray();
   }
 
-  /**
-   * Полный шаг обновления Сценария №4 через ViveInteractionAdapter
-   */
   public stepWithInput(params: {
     dt: number;
     viveInput: VivePollInputs;
@@ -525,11 +749,14 @@ export class Scenario4Controller {
     isMuted: boolean;
     cumulativeDoseMsv: number;
     isMovementFrozen?: boolean;
+    vehicleDriveInput?: { throttle: number; steer: number };
   }): Scenario4HudSnapshot {
     const sample = this.viveAdapter.sampleAim(params.viveInput);
-    this.activeInputLabelRu = sample.inputHintLabelRu;
+    this.activeInputLabelRu = this.vehicleSys?.isSeated
+      ? 'АЦ-40 МЧС • [WASD]/Л.Стик: движение • [B]: автопилот • [Enter]/Наж. стика: выйти'
+      : sample.inputHintLabelRu;
 
-    if (params.isSprayingInput && !params.isMovementFrozen) {
+    if (params.isSprayingInput && !params.isMovementFrozen && !this.vehicleSys?.isSeated) {
       this.onHoldSpray(sample.aimOrigin, sample.aimDirection, params.dt, params.isMuted);
     } else {
       this.onStopSpray();
@@ -543,7 +770,9 @@ export class Scenario4Controller {
       params.isMuted,
       params.cumulativeDoseMsv,
       sample.handAnchorQuat,
-      sample.hasVrHandQuat
+      sample.hasVrHandQuat,
+      params.vehicleDriveInput?.throttle ?? 0,
+      params.vehicleDriveInput?.steer ?? 0
     );
   }
 
@@ -555,7 +784,9 @@ export class Scenario4Controller {
     isMuted: boolean,
     cumulativeDoseMsv: number,
     handAnchorQuat?: THREE.Quaternion,
-    hasVrHandQuat = false
+    hasVrHandQuat = false,
+    vehicleThrottle = 0,
+    vehicleSteer = 0
   ): Scenario4HudSnapshot {
     this.elapsedSec += !this.isLoadingGlb && !this.debrief ? dt : 0;
     this.cumulativeDoseMsv = cumulativeDoseMsv;
@@ -572,10 +803,48 @@ export class Scenario4Controller {
       }
     }
 
-    if (this.isLoadingGlb || !this.fireMgr || !this.evacMgr) {
+    if (this.isLoadingGlb || !this.fireMgr || !this.evacMgr || !this.vehicleSys || !this.emergencyOps) {
       return this.buildHudSnapshot();
     }
 
+    // 1. Обновление автомобиля МЧС и пожарного рукава
+    const vehRes = this.vehicleSys.update({
+      dt,
+      playerPos,
+      handAnchorPos,
+      aimDir,
+      handAnchorQuat,
+      hasVrHandQuat,
+      manualThrottle: vehicleThrottle,
+      manualSteer: vehicleSteer,
+      extraColliders: this.wallColliders
+    });
+    if (vehRes.arrivedBuildingName) {
+      this.onToast(
+        'success',
+        'АЦ-40 ПРИБЫЛ К КОРПУСУ',
+        `Автопилот остановлен у цели: ${vehRes.arrivedBuildingName}. Нажмите [Enter] для выхода.`
+      );
+    }
+    if (this.vehicleSys.hoseOverstretched && this.elapsedSec - this.lastHoseWarnTime > 4.0) {
+      this.lastHoseWarnTime = this.elapsedSec;
+      this.fsm.pushWarning(
+        `Пожарный рукав натянут (${this.vehicleSys.hoseLengthM.toFixed(0)}/${SCENARIO_4_CONFIG.HOSE.maxLengthM} м)! Подгоните машину ближе к корпусу.`,
+        false
+      );
+    }
+
+    // 2. Аварийные операции (доразведка, перекрытие контура, стабилизация пострадавшего)
+    const opsRes = this.emergencyOps.update(dt, playerPos);
+    if (opsRes.justCompletedRadRecon) {
+      this.onToast(
+        'success',
+        'ДОРАЗВЕДКА ВЫПОЛНЕНА',
+        'Уровень радиации на входе зафиксирован ДП-5В. Разрешён вход в корпус.'
+      );
+    }
+
+    // 3. Очаги пожара и ОУ-5
     const fireState = this.fireMgr.update(
       dt,
       playerPos,
@@ -586,11 +855,12 @@ export class Scenario4Controller {
       hasVrHandQuat
     );
     this.currentHeatLoad01 = fireState.thermalHeatLoad01;
-    this.currentSmoke01 = fireState.smokeExposure01;
+    this.currentSmoke01 = fireState.smokeExposure01 * opsRes.smokeMultiplier;
     if (fireState.thermalHeatLoad01 > this.peakHeatLoad01) {
       this.peakHeatLoad01 = fireState.thermalHeatLoad01;
     }
 
+    // 4. Эвакуация NPC
     const evacState = this.evacMgr.update(dt, playerPos, this.fireMgr);
     if (evacState.justEvacuatedGroupNameRu) {
       this.onToast(
@@ -610,31 +880,39 @@ export class Scenario4Controller {
       playerPos.z <= this.modelBounds.max.z;
     const nearAnyFire = this.fireMgr.fires.some(f => playerPos.distanceTo(f.worldPos) <= 8.5);
     this.isInsideBuildingNow =
-      insideModelBox || nearAnyFire || playerPos.distanceTo(this.entrancePos) <= 4.0;
-    this.inAssemblyZoneNow = playerPos.distanceTo(this.assemblyPos) <= 4.8;
+      !this.vehicleSys.isSeated &&
+      (insideModelBox || nearAnyFire || playerPos.distanceTo(this.entrancePos) <= 4.0);
+    this.inAssemblyZoneNow =
+      !this.vehicleSys.isSeated && playerPos.distanceTo(this.assemblyPos) <= 5.2;
 
     const allFiresExt = fireState.extinguishedCount === this.fireMgr.getTotalFires();
+    const allEmergencyOpsDone =
+      this.emergencyOps.loopIsolated && this.emergencyOps.casualtyStabilized;
     const allNpcsSafe = evacState.rescuedCount === evacState.totalNpcCount;
 
     if (
       this.inAssemblyZoneNow &&
       this.fsm.getPhase() !== 'BRIEFING_ENTRY' &&
       this.fsm.getPhase() !== 'LOADING_ASSET' &&
-      (!allFiresExt || !allNpcsSafe) &&
+      (!allFiresExt || !allNpcsSafe || !allEmergencyOpsDone) &&
       this.elapsedSec - this.lastExitWarnTime > 5.0
     ) {
       this.lastExitWarnTime = this.elapsedSec;
       this.fsm.pushWarning(
-        'Операция не завершена: потушите все очаги и эвакуируйте весь персонал!',
+        'Операция не завершена: потушите очаги, перекройте контур, стабилизируйте пострадавшего и выведите персонал!',
         false
       );
     }
 
     const transitionedTo = this.fsm.evaluateProgression({
       assetReady: !this.isLoadingGlb,
-      isExtinguisherArmed: this.fireMgr.status === 'ARMED' || this.fireMgr.status === 'EMPTY',
+      isSuppressionReady:
+        this.fireMgr.status === 'ARMED' ||
+        this.fireMgr.status === 'EMPTY' ||
+        this.vehicleSys.isHoseAttached,
       isInsideBuilding: this.isInsideBuildingNow,
       allFiresExtinguished: allFiresExt,
+      allEmergencyOpsDone,
       allNpcsSafe,
       inAssemblyZone: this.inAssemblyZoneNow,
       elapsedSec: this.elapsedSec,
@@ -662,6 +940,10 @@ export class Scenario4Controller {
           totalFires: this.fireMgr.getTotalFires(),
           remainingExtinguisherPct: Math.round(this.fireMgr.charge01 * 100),
           cylindersUsed: this.fireMgr.cylindersUsed,
+          radReconDone: this.emergencyOps.radReconDone,
+          loopIsolated: this.emergencyOps.loopIsolated,
+          casualtyStabilized: this.emergencyOps.casualtyStabilized,
+          usedHoseOrVehicle: this.usedHoseOrVehicle,
           cumulativeDoseMsv: this.cumulativeDoseMsv,
           peakHeatLoadPct: Math.round(this.peakHeatLoad01 * 100)
         });
@@ -669,11 +951,15 @@ export class Scenario4Controller {
           transitionedTo === 'COMPLETED' ? 'success' : 'danger',
           transitionedTo === 'COMPLETED' ? 'ОПЕРАЦИЯ МЧС ЗАВЕРШЕНА' : 'ОПЕРАЦИЯ ПРЕРВАНА',
           transitionedTo === 'COMPLETED'
-            ? 'Все очаги ликвидированы, персонал выведен на пункт сбора.'
+            ? 'Все очаги ликвидированы, угрозы локализованы, персонал выведен на пункт сбора.'
             : this.fsm.getFailureReason() ?? 'Нарушение нормативов.'
         );
       } else {
-        this.onToast('info', `ФАЗА ${meta.stepNumber}/${SCENARIO4_PHASE_ORDER.length}: ${meta.titleRu}`, meta.instructionRu);
+        this.onToast(
+          'info',
+          `ФАЗА ${meta.stepNumber}/${SCENARIO4_PHASE_ORDER.length}: ${meta.titleRu}`,
+          meta.instructionRu
+        );
       }
     }
 
@@ -682,32 +968,58 @@ export class Scenario4Controller {
   }
 
   private updatePromptsAndHighlighting(playerPos: THREE.Vector3): void {
-    if (!this.fireMgr || !this.evacMgr) return;
+    if (!this.fireMgr || !this.evacMgr || !this.vehicleSys || !this.emergencyOps) return;
     const phase = this.fsm.getPhase();
     let prompt: string | null = null;
 
+    if (this.vehicleSys.isSeated) {
+      this.evacMgr.setTargetHighlight(null);
+      this.evacMgr.updateGuidePath(null);
+      prompt = this.vehicleSys.autopilotTargetIndex !== null
+        ? 'Автопилот АЦ-40 ведёт машину к корпусу • [Enter] — выйти из кабины'
+        : 'За рулём АЦ-40 МЧС • [WASD]/Стик — ехать • [B] — автопилот • [Enter] — выйти';
+      this.targetPromptRu = prompt;
+      return;
+    }
+
+    const nearbyOp = this.emergencyOps.getNearestPendingPrompt(playerPos);
+
+    if (this.vehicleSys.nearHoseReel) {
+      prompt = this.vehicleSys.isHoseAttached
+        ? '[E] / Курок — Смотать и вернуть пожарный рукав на АЦ-40'
+        : '[E] / Курок — Взять пожарный рукав МЧС (58 м)';
+    } else if (nearbyOp) {
+      prompt = nearbyOp.promptRu;
+    } else if (this.vehicleSys.nearDoor) {
+      prompt = '[Enter] / [E] — Сесть за руль пожарной машины АЦ-40 МЧС';
+    }
+
     if (phase === 'BRIEFING_ENTRY') {
-      if (this.fireMgr.status === 'ON_POST') {
+      if (this.fireMgr.status === 'ON_POST' && !this.vehicleSys.isHoseAttached) {
         this.evacMgr.setTargetHighlight(this.fireMgr.getPrimaryPostPos(), 0xef4444);
         this.evacMgr.updateGuidePath(null);
-        if (playerPos.distanceTo(this.fireMgr.getPrimaryPostPos()) <= 3.5) {
+        if (!prompt && playerPos.distanceTo(this.fireMgr.getPrimaryPostPos()) <= 3.5) {
           prompt = '[E] / ЛКМ / Курок — Взять огнетушитель ОУ-5 со стойки';
         }
-      } else if (this.fireMgr.status === 'HELD_LOCKED') {
+      } else if (this.fireMgr.status === 'HELD_LOCKED' && !this.vehicleSys.isHoseAttached) {
         this.evacMgr.setTargetHighlight(null);
-        prompt = '[E] / [R] / Курок — Сорвать предохранительную чеку ОУ-5';
+        if (!prompt) prompt = '[E] / [R] / Курок — Сорвать предохранительную чеку ОУ-5';
       } else {
         this.evacMgr.setTargetHighlight(this.entrancePos, 0x38bdf8);
         this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [this.entrancePos]);
-        prompt = 'Войдите в корпус энергоблока через синий шлюз входа';
+        if (!prompt) prompt = 'Войдите в корпус энергоблока через синий шлюз входа';
       }
     } else if (phase === 'FIRE_SUPPRESSION') {
-      if (this.fireMgr.status === 'EMPTY' && this.fireMgr.isSpareAvailable()) {
+      if (
+        !this.vehicleSys.isHoseAttached &&
+        this.fireMgr.status === 'EMPTY' &&
+        this.fireMgr.isSpareAvailable()
+      ) {
         this.evacMgr.setTargetHighlight(this.fireMgr.getSparePostPos(), 0xf59e0b);
         this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [
           this.fireMgr.getSparePostPos()
         ]);
-        if (playerPos.distanceTo(this.fireMgr.getSparePostPos()) <= 3.5) {
+        if (!prompt && playerPos.distanceTo(this.fireMgr.getSparePostPos()) <= 3.5) {
           prompt = '[E] / Курок — Заменить баллон ОУ-5 на запасной (100%)';
         }
       } else {
@@ -715,32 +1027,46 @@ export class Scenario4Controller {
         if (nextFire) {
           this.evacMgr.setTargetHighlight(nextFire.worldPos, 0xf97316);
           this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [nextFire.worldPos]);
-          if (playerPos.distanceTo(nextFire.worldPos) <= 6.5) {
+          if (!prompt && playerPos.distanceTo(nextFire.worldPos) <= 8.5) {
             prompt = `Удерживайте ЛКМ / [E] / Курок — Тушение: ${nextFire.config.nameRu} (${Math.round(nextFire.intensity * 100)}%)`;
           }
         }
       }
     } else if (phase === 'EVACUATION_ESCORT') {
-      const pendingNpc = this.evacMgr.getNearestPendingNpcGroup(playerPos);
-      if (pendingNpc) {
-        this.evacMgr.setTargetHighlight(pendingNpc.currentPos, 0x22c55e);
-        this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [pendingNpc.currentPos]);
-        if (playerPos.distanceTo(pendingNpc.currentPos) <= 7.0) {
-          prompt = `[E] / ЛКМ / Курок — Начать эвакуацию: ${pendingNpc.config.nameRu}`;
-        }
+      if (!this.emergencyOps.loopIsolated) {
+        this.evacMgr.setTargetHighlight(this.emergencyOps.loopIsolationPos, 0xef4444);
+        this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [
+          this.emergencyOps.loopIsolationPos
+        ]);
+        if (!prompt) prompt = 'Перекройте красную задвижку аварийного контура внутри Корпуса №1 [E]';
+      } else if (!this.emergencyOps.casualtyStabilized) {
+        this.evacMgr.setTargetHighlight(this.emergencyOps.casualtyTriagePos, 0x38bdf8);
+        this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [
+          this.emergencyOps.casualtyTriagePos
+        ]);
+        if (!prompt) prompt = 'Стабилизируйте пострадавшего работника внутри Корпуса №2 [E]';
       } else {
-        const allSafe = this.evacMgr.npcGroups.every(g => g.state === 'SAFE');
-        if (allSafe) {
-          this.evacMgr.setTargetHighlight(this.assemblyPos, 0x10b981);
-          this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [
-            this.entrancePos,
-            this.assemblyPos
-          ]);
-          prompt = 'Выйдите на зелёный Пункт сбора МЧС снаружи здания';
+        const pendingNpc = this.evacMgr.getNearestPendingNpcGroup(playerPos);
+        if (pendingNpc) {
+          this.evacMgr.setTargetHighlight(pendingNpc.currentPos, 0x22c55e);
+          this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [pendingNpc.currentPos]);
+          if (!prompt && playerPos.distanceTo(pendingNpc.currentPos) <= 7.0) {
+            prompt = `[E] / ЛКМ / Курок — Начать эвакуацию: ${pendingNpc.config.nameRu}`;
+          }
         } else {
-          this.evacMgr.setTargetHighlight(this.assemblyPos, 0x38bdf8);
-          this.evacMgr.updateGuidePath(null);
-          prompt = 'Персонал движется по маршруту эвакуации к выходу...';
+          const allSafe = this.evacMgr.npcGroups.every(g => g.state === 'SAFE');
+          if (allSafe) {
+            this.evacMgr.setTargetHighlight(this.assemblyPos, 0x10b981);
+            this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [
+              this.entrancePos,
+              this.assemblyPos
+            ]);
+            if (!prompt) prompt = 'Выйдите на зелёный Пункт сбора МЧС снаружи здания';
+          } else {
+            this.evacMgr.setTargetHighlight(this.assemblyPos, 0x38bdf8);
+            this.evacMgr.updateGuidePath(null);
+            if (!prompt) prompt = 'Персонал движется по маршруту эвакуации к выходу...';
+          }
         }
       }
     } else {
@@ -755,9 +1081,6 @@ export class Scenario4Controller {
     return this.buildHudSnapshot();
   }
 
-  /**
-   * Адаптация Сценария №4 к единому контракту состояния 4 сценариев (UnifiedScenarioState)
-   */
   public getUnifiedState(): UnifiedScenarioState {
     const snap = this.buildHudSnapshot();
     let unifiedPhase: UnifiedLifecyclePhase = 'ACTIVE_OPERATION';
@@ -789,19 +1112,26 @@ export class Scenario4Controller {
       objectives: [
         {
           id: 'sc4_obj_entry',
-          labelRu: 'Подготовить ОУ-5 (взять и сорвать чеку) и войти в корпус',
+          labelRu: 'Взять ОУ-5 или пожарный рукав АЦ-40 и войти в корпус',
           isDone: curIdx > 1 || snap.stepId === 'COMPLETED',
           isCurrent: snap.stepId === 'BRIEFING_ENTRY'
         },
         {
           id: 'sc4_obj_fires',
-          labelRu: `Потушить все очаги возгорания (${snap.firesExtinguished}/${snap.totalFires})`,
+          labelRu: `Потушить очаги возгорания (${snap.firesExtinguished}/${snap.totalFires})`,
           isDone: snap.firesExtinguished >= snap.totalFires && snap.totalFires > 0,
           isCurrent: snap.stepId === 'FIRE_SUPPRESSION'
         },
         {
+          id: 'sc4_obj_ops',
+          labelRu: `Аварийные угрозы МЧС (${snap.emergencyOps.completedOpsCount}/${snap.emergencyOps.totalOpsCount})`,
+          isDone:
+            snap.emergencyOps.loopIsolated && snap.emergencyOps.casualtyStabilized,
+          isCurrent: snap.stepId === 'FIRE_SUPPRESSION' || snap.stepId === 'EVACUATION_ESCORT'
+        },
+        {
           id: 'sc4_obj_evac',
-          labelRu: `Эвакуировать персонал (${snap.rescuedCount}/${snap.totalNpcCount}) и выйти на Пункт сбора`,
+          labelRu: `Эвакуировать персонал (${snap.rescuedCount}/${snap.totalNpcCount}) на Пункт сбора`,
           isDone: snap.stepId === 'COMPLETED',
           isCurrent: snap.stepId === 'EVACUATION_ESCORT'
         }
@@ -850,6 +1180,13 @@ export class Scenario4Controller {
       maxDurationSec: this.maxDurationSec,
       cumulativeDoseMsv: this.cumulativeDoseMsv,
       doseLimitMsv: this.doseLimitMsv,
+      installedEquipmentCount: this.equipBuilder?.equipmentCount ?? 0,
+      vehicle: this.vehicleSys
+        ? this.vehicleSys.getSnapshot(this.playerGroup.position)
+        : EMPTY_VEHICLE_SNAPSHOT,
+      emergencyOps: this.emergencyOps
+        ? this.emergencyOps.getSnapshot(this.playerGroup.position)
+        : EMPTY_EMERGENCY_OPS_SNAPSHOT,
       activeInputLabelRu: this.activeInputLabelRu,
       targetPromptRu: this.targetPromptRu,
       warningBannerRu: this.fsm.getWarningBanner(),
@@ -866,6 +1203,18 @@ export class Scenario4Controller {
     if (this.evacMgr) {
       this.evacMgr.dispose();
       this.evacMgr = null;
+    }
+    if (this.equipBuilder) {
+      this.equipBuilder.dispose();
+      this.equipBuilder = null;
+    }
+    if (this.vehicleSys) {
+      this.vehicleSys.dispose();
+      this.vehicleSys = null;
+    }
+    if (this.emergencyOps) {
+      this.emergencyOps.dispose();
+      this.emergencyOps = null;
     }
     this.disposeObjectTree(this.modelContainer);
     while (this.modelContainer.children.length > 0) {

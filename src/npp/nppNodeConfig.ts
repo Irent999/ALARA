@@ -291,7 +291,62 @@ export const SCENARIO_4_CONFIG = {
       detectionRadiusM: 7.5,
       firePanicRadiusM: 12.0
     }
-  ] as ReadonlyArray<NpcGroupSpec>
+  ] as ReadonlyArray<NpcGroupSpec>,
+
+  // --- 6. Проверка зазоров внутри зданий (без застревания очагов и оборудования в стенах) ---
+  FIRE_CLEARANCE: {
+    minWallClearanceM: 2.0,
+    minHeadroomM: 2.6,
+    fireElevationOffsetM: 0.04,
+    searchRadiusStepM: 1.6,
+    maxSearchRings: 5
+  },
+
+  // --- 7. Внутреннее техническое оборудование АЭС в корпусах ---
+  EQUIPMENT_LAYOUT: {
+    enabled: true,
+    minClearanceFromFireOrNpcM: 3.4,
+    maxBuildingsToPopulate: 4,
+    equipmentScale: 1.0
+  },
+
+  // --- 8. Пожарно-спасательный автомобиль МЧС (АЦ-40) и движение между корпусами ---
+  VEHICLE: {
+    spawnOffsetFromPlayer: [6.2, 0, -2.5] as readonly [number, number, number],
+    maxSpeedMps: 11.5,
+    reverseSpeedMps: 5.0,
+    accelerationMps2: 7.5,
+    dragPerSec: 3.8,
+    turnRateRadPerSec: 1.55,
+    boardRadiusM: 4.5,
+    autopilotArrivalDistM: 3.2,
+    autopilotSpeedMps: 8.8,
+    seatLocalOffset: [-0.52, 1.52, 1.35] as readonly [number, number, number],
+    exitSideOffset: [-2.35, 0, 1.35] as readonly [number, number, number],
+    pumpLocalOffset: [0, 0.95, -2.85] as readonly [number, number, number],
+    collisionRadiusM: 2.1
+  },
+
+  // --- 9. Пожарный рукав (Hose) от машины МЧС к внутренним очагам ---
+  HOSE: {
+    maxLengthM: 58,
+    warningLengthRatio: 0.85,
+    sprayRangeM: 9.8,
+    suppressionRateMultiplier: 1.55,
+    pickupRadiusM: 4.2,
+    segmentCount: 36,
+    hoseRadiusM: 0.042,
+    anchorStepM: 3.4
+  },
+
+  // --- 10. Дополнительные аварийные операции МЧС (разведка, перекрытие контура, медпомощь) ---
+  EMERGENCY_OPS: {
+    radReconRadiusM: 4.6,
+    radReconDurationSec: 1.4,
+    loopIsolationRadiusM: 3.5,
+    smokeReductionFactor: 0.35,
+    casualtyTriageRadiusM: 3.5
+  }
 } as const;
 
 export interface Scenario4TransformConfig {

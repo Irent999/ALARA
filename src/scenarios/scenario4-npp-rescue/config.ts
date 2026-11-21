@@ -23,3 +23,6 @@ export type {
   ExtinguisherStatus
 } from '../../mechanics/extinguisherSystem';
 export type { NpcEvacState } from '../../mechanics/npcEvacuationSystem';
+export type { BuildingVolumeInfo } from '../../npp/nppSceneInspector';
+export type { VehicleAutopilotTarget } from '../../mechanics/mchsVehicleSystem';
+export type { EmergencyOpsSnapshot } from '../../mechanics/emergencyOpsSystem';

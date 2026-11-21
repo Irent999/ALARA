@@ -10,7 +10,7 @@
  */
 
 import * as THREE from 'three';
-import type { FireZoneSpec } from '../npp/nppNodeConfig';
+import { SCENARIO_4_CONFIG, type FireZoneSpec } from '../npp/nppNodeConfig';
 import type { NamedWorldMarker } from '../npp/nppSceneInspector';
 
 export type ExtinguisherStatus = 'ON_POST' | 'HELD_LOCKED' | 'ARMED' | 'EMPTY';
@@ -70,6 +70,7 @@ export class ExtinguisherSystem {
   public charge01 = 1.0; // 1.0 -> 0.0 (~18 с непрерывного распыла)
   public cylindersUsed = 1;
   public isSpraying = false;
+  public isHoseEquipped = false;
   private spareAvailable = true;
   private hasSprayedOnce = false;
   private idleReleaseTimerSec = 0;
@@ -480,6 +481,7 @@ export class ExtinguisherSystem {
   }
 
   public toggleStow(): 'STOWED' | 'EQUIPPED' | 'UNAVAILABLE' {
+    if (this.isHoseEquipped) return 'UNAVAILABLE';
     if (this.status === 'ON_POST' || this.status === 'EMPTY' || this.charge01 <= 0) {
       return 'UNAVAILABLE';
     }
@@ -489,6 +491,17 @@ export class ExtinguisherSystem {
     }
     this.stowExtinguisher();
     return 'STOWED';
+  }
+
+  public setHoseEquipped(equipped: boolean): void {
+    this.isHoseEquipped = equipped;
+    const mat = this.sprayPoints.material as THREE.PointsMaterial;
+    mat.color.setHex(equipped ? 0xbae6fd : 0xe0f2fe);
+    mat.size = equipped ? 0.28 : 0.24;
+    if (equipped) {
+      this.stopSpray();
+      this.resetHandheldTransformToParked();
+    }
   }
 
   private resetHandheldTransformToParked(): void {
@@ -611,15 +624,56 @@ export class ExtinguisherSystem {
 
     this.handheldNozzleTip.getWorldPosition(this.scratchNozzlePos);
 
-    for (let s = 0; s < 4; s++) {
+    return this.executeSuppressionRay(
+      this.scratchNozzlePos,
+      aimOrigin,
+      aimDir,
+      dt,
+      6.5,
+      0.42
+    );
+  }
+
+  /**
+   * Подача огнетушащей водяной/пенной струи от пожарного рукава МЧС (дальность ~9.8 м, повышенная мощность).
+   */
+  public applyHoseSpray(
+    nozzleTipPos: THREE.Vector3,
+    aimOrigin: THREE.Vector3,
+    aimDir: THREE.Vector3,
+    dt: number,
+    isMuted: boolean
+  ): SprayHitResult {
+    this.ensureAudioInitialized(isMuted);
+    this.isSpraying = true;
+    return this.executeSuppressionRay(
+      nozzleTipPos,
+      aimOrigin,
+      aimDir,
+      dt,
+      SCENARIO_4_CONFIG.HOSE.sprayRangeM,
+      0.42 * SCENARIO_4_CONFIG.HOSE.suppressionRateMultiplier
+    );
+  }
+
+  private executeSuppressionRay(
+    emitPos: THREE.Vector3,
+    aimOrigin: THREE.Vector3,
+    aimDir: THREE.Vector3,
+    dt: number,
+    maxRangeM: number,
+    suppressRate: number
+  ): SprayHitResult {
+    const speed = this.isHoseEquipped ? 11.2 : 7.8;
+    for (let s = 0; s < 5; s++) {
       const slot = Math.floor(Math.random() * SPRAY_PARTICLE_COUNT);
-      this.sprayPositions[slot * 3] = this.scratchNozzlePos.x;
-      this.sprayPositions[slot * 3 + 1] = this.scratchNozzlePos.y;
-      this.sprayPositions[slot * 3 + 2] = this.scratchNozzlePos.z;
-      this.sprayVelocities[slot * 3] = aimDir.x * 7.8 + (Math.random() - 0.5) * 1.4;
-      this.sprayVelocities[slot * 3 + 1] = aimDir.y * 7.8 + (Math.random() - 0.5) * 1.1;
-      this.sprayVelocities[slot * 3 + 2] = aimDir.z * 7.8 + (Math.random() - 0.5) * 1.4;
-      this.sprayLifetimes[slot] = 0.52;
+      this.sprayPositions[slot * 3] = emitPos.x;
+      this.sprayPositions[slot * 3 + 1] = emitPos.y;
+      this.sprayPositions[slot * 3 + 2] = emitPos.z;
+      this.sprayVelocities[slot * 3] = aimDir.x * speed + (Math.random() - 0.5) * 1.3;
+      this.sprayVelocities[slot * 3 + 1] = aimDir.y * speed + (Math.random() - 0.5) * 1.0;
+      this.sprayVelocities[slot * 3 + 2] = aimDir.z * speed + (Math.random() - 0.5) * 1.3;
+      this.sprayLifetimes[slot] = this.isHoseEquipped ? 0.62 : 0.52;
     }
 
     let hitAnyFire = false;
@@ -635,14 +689,14 @@ export class ExtinguisherSystem {
       this.scratchVecA.y += 0.65;
       this.scratchDir.subVectors(this.scratchVecA, aimOrigin);
       const dist = this.scratchDir.length();
-      if (dist > 6.5 || dist < 0.35) continue;
+      if (dist > maxRangeM || dist < 0.35) continue;
       this.scratchDir.divideScalar(dist);
 
       const dot = this.scratchDir.dot(aimDir);
-      if (dot > 0.86) {
+      if (dot > 0.85) {
         hitAnyFire = true;
         fire.status = 'SUPPRESSING';
-        fire.intensity = Math.max(0, fire.intensity - dt * 0.42);
+        fire.intensity = Math.max(0, fire.intensity - dt * suppressRate);
         targetFireNameRu = fire.config.nameRu;
         remainingIntensity01 = fire.intensity;
         if (fire.intensity <= 0.001) {
@@ -706,8 +760,9 @@ export class ExtinguisherSystem {
       this.idleReleaseTimerSec = 0;
     }
 
-    // Жёсткий гард рендера: при STOWED / IDLE_HOLSTERED / EMPTY баллон НИКОГДА не притягивается к камере
+    // Жёсткий гард рендера: при STOWED / IDLE_HOLSTERED / EMPTY / активном рукаве баллон НИКОГДА не притягивается к камере
     const isActivelyHeldInHand =
+      !this.isHoseEquipped &&
       (this.lifecycleState === 'EQUIPPED' || this.lifecycleState === 'SPRAYING') &&
       (this.status === 'HELD_LOCKED' || this.status === 'ARMED');
 

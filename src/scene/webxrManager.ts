@@ -53,6 +53,7 @@ export interface WebXRCallbacks {
   onCalibratePlayerSpace?: () => void;
   onToggleHudVisibility?: (visible: boolean) => void;
   onCycleTool?: (dir: 1 | -1) => void;
+  onLeftThumbstickPress?: () => void;
   onRightTriggerWorldHold?: (
     raycaster: THREE.Raycaster,
     controller: THREE.Group,
@@ -899,6 +900,9 @@ export class WebXRManager {
         },
         onCycleTool: (dir) => {
           this.callbacks.onCycleTool?.(dir);
+        },
+        onLeftThumbstickPress: () => {
+          this.callbacks.onLeftThumbstickPress?.();
         },
         onRightTriggerWorldHold: (raycaster, controller, isHeld, justPressed, justReleased) => {
           this.callbacks.onRightTriggerWorldHold?.(raycaster, controller, isHeld, justPressed, justReleased);
