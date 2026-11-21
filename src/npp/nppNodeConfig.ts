@@ -57,22 +57,24 @@ export interface Scenario4TransformConfig {
 }
 
 export const SCENARIO_4_TRANSFORM: Scenario4TransformConfig = {
-  rotationDeg: [-90, 0, 0],
+  // Положительный поворот +90° по оси X ставит CAD-модель /assembly.glb основанием вниз (плита на y=0, градирни и блоки вверх)
+  rotationDeg: [90, 0, 0],
   orientationMode: 'auto_z_up',
-  targetFootprintMeters: 38,
+  // Габарит промышленной площадки комплекса АЭС ~72×72 м (масштаб 1:1 к росту человека 1.75 м и высоте энергоблоков)
+  targetFootprintMeters: 72,
   scaleMultiplier: 1.0,
   centerXZ: true,
   alignBottomToZeroY: true,
   positionOffset: [0, 0, 0],
-  effectScale: 0.62,
-  markerScale: 0.78,
+  effectScale: 0.9,
+  markerScale: 0.88,
   spawn: {
-    forwardMarginMeters: 4.8,
+    forwardMarginMeters: 2.2,
     lateralNormX: 0.0,
     eyeHeightMeters: 1.65,
-    lookAtHeightRatio: 0.24,
-    overviewDistanceFactor: 0.78,
-    overviewElevationFactor: 0.44
+    lookAtHeightRatio: 0.22,
+    overviewDistanceFactor: 0.85,
+    overviewElevationFactor: 0.45
   }
 };
 
@@ -82,7 +84,7 @@ export interface FireZoneSpec {
   readonly nameRu: string;
   /** Нормализованные координаты [-0.5..+0.5] относительно центра/размера Box3 модели (используются, если нет узла в .glb) */
   readonly relPos: readonly [number, number, number];
-  /** Резервные мировые координаты в метрах (при 38×38 м) */
+  /** Резервные мировые координаты в метрах (при 72×72 м) */
   readonly defaultPos: readonly [number, number, number];
   readonly initialIntensity: number; // 0..1
   readonly smokeDensity: number; // 0..1
@@ -185,30 +187,30 @@ export const NPP_NODE_CONFIG: NppAssemblyConfig = {
     colliderKeywords: ['WALL', 'COLLIDER', 'BARRIER']
   },
 
-  // Относительные якоря на плоскости нормализованного Box3 (X, Z в [-0.5..0.5], Y=0 настил)
-  defaultEntranceRelPos: [0.0, 0, 0.44],
-  defaultAssemblyRelPos: [0.0, 0, 0.62],
-  defaultPrimaryExtinguisherRelOffset: [-2.0, 0, -2.1],
-  defaultSpareExtinguisherRelPos: [0.02, 0, 0.24],
+  // Относительные якоря внутри границ [-0.5..0.5] нормализованного Box3 (настил модели)
+  defaultEntranceRelPos: [0.0, 0, 0.36],
+  defaultAssemblyRelPos: [0.18, 0, 0.45],
+  defaultPrimaryExtinguisherRelOffset: [-2.2, 0, -2.6],
+  defaultSpareExtinguisherRelPos: [0.02, 0, 0.22],
 
-  defaultSpawnPos: [0, 0, 23.8],
-  defaultEntrancePos: [0, 0, 16.7],
-  defaultAssemblyPos: [0, 0, 23.6],
-  defaultPrimaryExtinguisherPos: [-2.0, 0, 21.7],
-  defaultSpareExtinguisherPos: [0.8, 0, 9.1],
+  defaultSpawnPos: [0, 0, 38.2],
+  defaultEntrancePos: [0, 0, 25.9],
+  defaultAssemblyPos: [13.0, 0, 32.4],
+  defaultPrimaryExtinguisherPos: [-2.2, 0, 35.6],
+  defaultSpareExtinguisherPos: [1.4, 0, 15.8],
 
   defaultExits: [
     {
       id: 'EXIT_MAIN',
       nameRu: 'Главный выход с площадки (Юг)',
-      relPos: [0.0, 0, 0.47],
-      pos: [0, 0, 17.8]
+      relPos: [0.0, 0, 0.45],
+      pos: [0, 0, 32.4]
     },
     {
       id: 'EXIT_EAST',
       nameRu: 'Восточный эваковыход',
-      relPos: [0.42, 0, 0.22],
-      pos: [16.0, 0, 8.4]
+      relPos: [0.38, 0, 0.20],
+      pos: [27.4, 0, 14.4]
     }
   ],
 
@@ -217,34 +219,34 @@ export const NPP_NODE_CONFIG: NppAssemblyConfig = {
       id: 'fire_1',
       markerName: 'FIRE_ZONE_1',
       nameRu: 'Очаг №1: Кабельный ввод энергоблока №1 (Запад)',
-      relPos: [-0.26, 0, 0.21],
-      defaultPos: [-9.9, 0, 8.0],
+      relPos: [-0.26, 0, 0.20],
+      defaultPos: [-18.7, 0, 14.4],
       initialIntensity: 1.0,
       smokeDensity: 0.68,
-      heatRadiusM: 3.1,
-      radiusM: 0.92
+      heatRadiusM: 3.4,
+      radiusM: 1.05
     },
     {
       id: 'fire_2',
       markerName: 'FIRE_ZONE_2',
       nameRu: 'Очаг №2: Масляный узел энергоблока №2 (Восток)',
       relPos: [0.24, 0, 0.16],
-      defaultPos: [9.1, 0, 6.1],
+      defaultPos: [17.3, 0, 11.5],
       initialIntensity: 1.0,
       smokeDensity: 0.78,
-      heatRadiusM: 3.3,
-      radiusM: 0.98
+      heatRadiusM: 3.6,
+      radiusM: 1.12
     },
     {
       id: 'fire_3',
       markerName: 'FIRE_ZONE_3',
       nameRu: 'Очаг №3: Распредщит межблочного проезда',
       relPos: [0.02, 0, -0.05],
-      defaultPos: [0.8, 0, -1.9],
+      defaultPos: [1.4, 0, -3.6],
       initialIntensity: 0.85,
       smokeDensity: 0.62,
-      heatRadiusM: 2.9,
-      radiusM: 0.88
+      heatRadiusM: 3.2,
+      radiusM: 0.98
     }
   ],
 
@@ -255,23 +257,23 @@ export const NPP_NODE_CONFIG: NppAssemblyConfig = {
       waypointPrefix: 'WAYPOINT_G1_',
       nameRu: 'Дежурная смена энергоблока №1 (2 чел.)',
       count: 2,
-      relPos: [-0.34, 0, 0.04],
+      relPos: [-0.33, 0, 0.04],
       relWaypoints: [
         [-0.22, 0, 0.20],
         [-0.08, 0, 0.34],
-        [0.0, 0, 0.45]
+        [0.0, 0, 0.43]
       ],
-      relExitPoint: [0.0, 0, 0.48],
-      defaultPos: [-12.9, 0, 1.5],
+      relExitPoint: [0.0, 0, 0.45],
+      defaultPos: [-23.8, 0, 2.9],
       evacWaypoints: [
-        [-8.4, 0, 7.6],
-        [-3.0, 0, 12.9],
-        [0.0, 0, 17.1]
+        [-15.8, 0, 14.4],
+        [-5.8, 0, 24.5],
+        [0.0, 0, 31.0]
       ],
-      exitPoint: [0, 0, 18.2],
+      exitPoint: [0, 0, 32.4],
       blockedByFireId: 'fire_1',
-      detectionRadiusM: 5.5,
-      firePanicRadiusM: 9.5
+      detectionRadiusM: 6.5,
+      firePanicRadiusM: 18.0
     },
     {
       id: 'npc_group_2',
@@ -279,23 +281,23 @@ export const NPP_NODE_CONFIG: NppAssemblyConfig = {
       waypointPrefix: 'WAYPOINT_G2_',
       nameRu: 'Персонал машзала энергоблока №2 (2 чел.)',
       count: 2,
-      relPos: [0.33, 0, -0.02],
+      relPos: [0.32, 0, -0.02],
       relWaypoints: [
         [0.24, 0, 0.16],
         [0.14, 0, 0.32],
-        [0.04, 0, 0.44]
+        [0.04, 0, 0.43]
       ],
-      relExitPoint: [0.0, 0, 0.48],
-      defaultPos: [12.5, 0, -0.8],
+      relExitPoint: [0.0, 0, 0.45],
+      defaultPos: [23.0, 0, -1.4],
       evacWaypoints: [
-        [9.1, 0, 6.1],
-        [5.3, 0, 12.2],
-        [1.5, 0, 16.7]
+        [17.3, 0, 11.5],
+        [10.1, 0, 23.0],
+        [2.9, 0, 31.0]
       ],
-      exitPoint: [0, 0, 18.2],
+      exitPoint: [0, 0, 32.4],
       blockedByFireId: 'fire_2',
-      detectionRadiusM: 5.5,
-      firePanicRadiusM: 9.5
+      detectionRadiusM: 6.5,
+      firePanicRadiusM: 18.0
     }
   ],
 
@@ -305,27 +307,27 @@ export const NPP_NODE_CONFIG: NppAssemblyConfig = {
       markerName: 'TRIGGER_ENTRY',
       kind: 'entry',
       nameRu: 'Контур входа на площадку энергоблоков',
-      relPos: [0.0, 0, 0.44],
-      defaultPos: [0, 0, 16.7],
-      radiusM: 3.4
+      relPos: [0.0, 0, 0.36],
+      defaultPos: [0, 0, 25.9],
+      radiusM: 4.0
     },
     {
       id: 'TRIGGER_EVAC_CORRIDOR',
       markerName: 'TRIGGER_EVAC',
       kind: 'evac',
       nameRu: 'Восточный коридор эвакуации',
-      relPos: [0.42, 0, 0.22],
-      defaultPos: [16.0, 0, 8.4],
-      radiusM: 3.5
+      relPos: [0.38, 0, 0.20],
+      defaultPos: [27.4, 0, 14.4],
+      radiusM: 4.2
     },
     {
       id: 'TRIGGER_ASSEMBLY_SAFE',
       markerName: 'TRIGGER_ASSEMBLY',
       kind: 'assembly',
       nameRu: 'Безопасный пункт сбора МЧС',
-      relPos: [0.0, 0, 0.62],
-      defaultPos: [0, 0, 23.6],
-      radiusM: 4.2
+      relPos: [0.18, 0, 0.45],
+      defaultPos: [13.0, 0, 32.4],
+      radiusM: 4.8
     }
   ],
 

@@ -610,8 +610,8 @@ export class Scenario4Controller {
       playerPos.z <= this.modelBounds.max.z;
     const nearAnyFire = this.fireMgr.fires.some(f => playerPos.distanceTo(f.worldPos) <= 8.5);
     this.isInsideBuildingNow =
-      insideModelBox || nearAnyFire || playerPos.distanceTo(this.entrancePos) <= 3.5;
-    this.inAssemblyZoneNow = playerPos.distanceTo(this.assemblyPos) <= 4.2;
+      insideModelBox || nearAnyFire || playerPos.distanceTo(this.entrancePos) <= 4.0;
+    this.inAssemblyZoneNow = playerPos.distanceTo(this.assemblyPos) <= 4.8;
 
     const allFiresExt = fireState.extinguishedCount === this.fireMgr.getTotalFires();
     const allNpcsSafe = evacState.rescuedCount === evacState.totalNpcCount;
@@ -725,7 +725,7 @@ export class Scenario4Controller {
       if (pendingNpc) {
         this.evacMgr.setTargetHighlight(pendingNpc.currentPos, 0x22c55e);
         this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [pendingNpc.currentPos]);
-        if (playerPos.distanceTo(pendingNpc.currentPos) <= 5.6) {
+        if (playerPos.distanceTo(pendingNpc.currentPos) <= 6.5) {
           prompt = `[E] / ЛКМ / Курок — Начать эвакуацию: ${pendingNpc.config.nameRu}`;
         }
       } else {

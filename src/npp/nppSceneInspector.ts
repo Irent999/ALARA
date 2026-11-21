@@ -105,7 +105,7 @@ function sampleGroundDeckY(root: THREE.Object3D, bounds: THREE.Box3, meshes: THR
   const raycaster = new THREE.Raycaster();
   const origin = new THREE.Vector3();
   const down = new THREE.Vector3(0, -1, 0);
-  const maxDeckDelta = Math.max(0.6, Math.min(2.4, size.y * 0.16));
+  const maxDeckDelta = Math.max(0.8, Math.min(3.0, size.y * 0.22));
 
   const samples: number[] = [];
   const offsets = [-0.42, -0.25, 0, 0.25, 0.42];
@@ -147,14 +147,15 @@ function sampleSurfaceYAt(
   }
 
   const sizeY = bounds.max.y - bounds.min.y;
-  const maxStepY = deckY + Math.max(0.5, Math.min(1.6, sizeY * 0.12));
+  const maxStepY = deckY + Math.max(0.6, Math.min(2.2, sizeY * 0.16));
 
   const raycaster = new THREE.Raycaster(
     new THREE.Vector3(x, bounds.max.y + 1.5, z),
     new THREE.Vector3(0, -1, 0)
   );
+  // Raycaster возвращает пересечения сверху вниз: берём первое (верхнее) попадание в пределах настила
   const hits = raycaster.intersectObjects(meshes, false);
-  for (let i = hits.length - 1; i >= 0; i--) {
+  for (let i = 0; i < hits.length; i++) {
     const hy = hits[i].point.y;
     if (hy >= bounds.min.y - 0.05 && hy <= maxStepY) {
       return hy;
@@ -369,11 +370,10 @@ export function inspectNppSceneGraph(
 
   if (extinguisherPoints.length === 0) {
     const off = config.defaultPrimaryExtinguisherRelOffset;
-    const primaryPost = new THREE.Vector3(
-      spawnPlayer.x + off[0],
-      deckSurfaceY + off[1],
-      spawnPlayer.z + off[2]
-    );
+    const primaryX = spawnPlayer.x + off[0];
+    const primaryZ = spawnPlayer.z + off[2];
+    const primarySurfaceY = sampleSurfaceYAt(primaryX, primaryZ, sceneBounds, allMeshes, deckSurfaceY);
+    const primaryPost = new THREE.Vector3(primaryX, primarySurfaceY + off[1], primaryZ);
     const sparePost = resolveRelAnchor(config.defaultSpareExtinguisherRelPos);
     missingExpectedNodes.push('EXTINGUISHER_POINT_* (размещены у старта и на проезде комплекса)');
     extinguisherPoints.push(

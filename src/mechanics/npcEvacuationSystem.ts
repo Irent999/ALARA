@@ -447,7 +447,7 @@ export class NpcEvacuationSystem {
     blockedByFireNameRu?: string;
   } {
     let best: NpcGroupRuntime | null = null;
-    let bestD = 5.6;
+    let bestD = 6.5;
     for (const grp of this.npcGroups) {
       if (grp.state === 'SAFE' || grp.state === 'EVACUATING') continue;
       const d = playerPos.distanceTo(grp.currentPos);

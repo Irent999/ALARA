@@ -1423,7 +1423,7 @@ export const SCENARIOS: ScenarioDefinition[] = [
     facilityRu: "Комплекс энергоблоков, градирен и вспомогательных корпусов АЭС (1:1 м)",
     dominantIsotopes: ["Cs-137", "Co-60"],
     recommendedPermitLimitMsv: 0.50,
-    initialPlayerPos: new THREE.Vector3(0, 1.65, 23.8),
+    initialPlayerPos: new THREE.Vector3(0, 1.65, 38.2),
     ambientColor: 0x334155,
     isLowLight: false,
     hasAirborneContamination: true,
