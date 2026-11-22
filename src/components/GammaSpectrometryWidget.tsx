@@ -8,15 +8,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   X,
-  Target,
-  Sparkles,
-  Search,
-  CheckCircle2,
-  HelpCircle,
-  BarChart2,
-  RefreshCw,
-  Zap,
-  Info
+  Search
 } from 'lucide-react';
 import {
   InstrumentId,
@@ -32,7 +24,7 @@ interface GammaSpectrometryWidgetProps {
   selectedInstrumentId: InstrumentId;
   activeIsotopeId: string;
   currentDoseRateMicroSv: number;
-  isBlindMode?: boolean; // Слепой режим (экзамен)
+  isBlindMode?: boolean;
   onIdentifyVerdict?: (isotopeId: string) => void;
 }
 
@@ -47,7 +39,6 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [acquisitionTimeSec, setAcquisitionTimeSec] = useState<number>(10);
-  const [isAccumulating, setIsAccumulating] = useState<boolean>(true);
   const [hoverEnergy, setHoverEnergy] = useState<number | null>(null);
   const [hoverCounts, setHoverCounts] = useState<number | null>(null);
   const [spectrumData, setSpectrumData] = useState<GammaSpectrumData | null>(null);
@@ -56,7 +47,6 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
 
   const instrument = GOST_INSTRUMENTS[selectedInstrumentId];
 
-  // Генерация и обновление спектра
   useEffect(() => {
     if (!isOpen) return;
     const spec = generateSyntheticSpectrum(
@@ -68,7 +58,6 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
     setSpectrumData(spec);
   }, [isOpen, activeIsotopeId, selectedInstrumentId, currentDoseRateMicroSv, acquisitionTimeSec]);
 
-  // Отрисовка спектра на HTML5 Canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !spectrumData) return;
@@ -80,8 +69,8 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
 
     ctx.clearRect(0, 0, w, h);
 
-    // Темный фон координатной сетки
-    ctx.fillStyle = '#090d16';
+    // Фон координатной сетки (#0B1117)
+    ctx.fillStyle = '#0B1117';
     ctx.fillRect(0, 0, w, h);
 
     const padLeft = 45;
@@ -93,10 +82,9 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
     const plotH = h - padTop - padBottom;
 
     // Сетка
-    ctx.strokeStyle = '#1e293b';
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
     ctx.lineWidth = 1;
 
-    // Горизонтальные линии
     for (let i = 0; i <= 5; i++) {
       const y = padTop + (plotH / 5) * i;
       ctx.beginPath();
@@ -105,7 +93,6 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
       ctx.stroke();
     }
 
-    // Вертикальные линии энергий (кэВ)
     const maxE = spectrumData.energyPerChannelKev * spectrumData.channels.length;
     for (let e = 0; e <= maxE; e += 250) {
       const x = padLeft + (e / maxE) * plotW;
@@ -114,18 +101,16 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
       ctx.lineTo(x, h - padBottom);
       ctx.stroke();
 
-      ctx.fillStyle = '#64748b';
-      ctx.font = '10px monospace';
+      ctx.fillStyle = '#64748B';
+      ctx.font = '10px "JetBrains Mono", monospace';
       ctx.textAlign = 'center';
       ctx.fillText(`${e}`, x, h - padBottom + 14);
     }
 
-    // Поиск максимума импульсов
     const maxCounts = Math.max(10, ...spectrumData.channels);
 
-    // Подписи осей
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '10px sans-serif';
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '10px "JetBrains Mono", monospace';
     ctx.textAlign = 'right';
     for (let i = 0; i <= 5; i++) {
       const val = Math.round((maxCounts / 5) * (5 - i));
@@ -133,12 +118,10 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
       ctx.fillText(`${val}`, padLeft - 6, y + 3);
     }
 
-    // Градиент спектра
     const grad = ctx.createLinearGradient(0, padTop, 0, h - padBottom);
-    grad.addColorStop(0, instrument.hasSpectrometryMode ? 'rgba(56, 189, 248, 0.65)' : 'rgba(234, 179, 8, 0.45)');
-    grad.addColorStop(1, 'rgba(15, 23, 42, 0.05)');
+    grad.addColorStop(0, instrument.hasSpectrometryMode ? 'rgba(14, 165, 233, 0.55)' : 'rgba(245, 158, 11, 0.45)');
+    grad.addColorStop(1, 'rgba(11, 17, 23, 0.05)');
 
-    // Отрисовка области под кривой
     ctx.beginPath();
     ctx.moveTo(padLeft, h - padBottom);
 
@@ -154,7 +137,6 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
     ctx.fillStyle = grad;
     ctx.fill();
 
-    // Отрисовка контурной линии спектра
     ctx.beginPath();
     for (let i = 0; i < spectrumData.channels.length; i++) {
       const x = padLeft + (i / spectrumData.channels.length) * plotW;
@@ -163,41 +145,37 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = instrument.hasSpectrometryMode ? '#38bdf8' : '#eab308';
+    ctx.strokeStyle = instrument.hasSpectrometryMode ? '#0EA5E9' : '#F59E0B';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Подсветка и аннотация фотопиков (если не в слепом режиме)
     if (!isBlindMode) {
       spectrumData.peaks.forEach(peak => {
         const peakX = padLeft + (peak.energyKev / maxE) * plotW;
         if (peakX < padLeft || peakX > w - padRight) return;
 
-        // Вертикальная пунктирная линия
         ctx.setLineDash([3, 3]);
-        ctx.strokeStyle = '#f43f5e';
+        ctx.strokeStyle = '#EF4444';
         ctx.beginPath();
         ctx.moveTo(peakX, padTop);
         ctx.lineTo(peakX, h - padBottom);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Метка пика
-        ctx.fillStyle = '#f43f5e';
+        ctx.fillStyle = '#EF4444';
         ctx.beginPath();
         ctx.arc(peakX, padTop + 14, 4, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = '#fecdd3';
-        ctx.font = 'bold 11px monospace';
+        ctx.fillStyle = '#F1F5F9';
+        ctx.font = 'bold 11px "JetBrains Mono", monospace';
         ctx.textAlign = 'center';
         ctx.fillText(`${peak.energyKev.toFixed(0)} кэВ`, peakX, padTop + 8);
       });
     }
 
-    // Подпись осей
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = '11px "IBM Plex Sans", sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('Энергия излучения E_γ (кэВ)', padLeft + plotW / 2, h - 8);
 
@@ -208,7 +186,6 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
     ctx.restore();
   }, [spectrumData, instrument, isBlindMode]);
 
-  // Обработка движения мыши над канвасом для считывания энергии
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas || !spectrumData) return;
@@ -236,54 +213,51 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
     if (!studentSelectedNuclide) return;
     const isCorrect = studentSelectedNuclide.toLowerCase() === activeIsotopeId.toLowerCase();
     if (isCorrect) {
-      setVerdictFeedback('✓ ВЕРНО! Изотоп успешно идентифицирован по характеристическому спектру.');
+      setVerdictFeedback('ВЕРНО: изотоп успешно идентифицирован по характеристическому спектру.');
       onIdentifyVerdict?.(studentSelectedNuclide);
     } else {
-      setVerdictFeedback(`✕ ОШИБКА: Выбранный радионуклид ${studentSelectedNuclide} не соответствует наблюдаемому положению пиков.`);
+      setVerdictFeedback(`ОШИБКА: радионуклид ${studentSelectedNuclide} не соответствует положению пиков.`);
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 font-sans">
-      <div className="glass-panel max-w-4xl w-full rounded-2xl p-5 border border-sky-500/40 flex flex-col gap-4 max-h-[92vh] overflow-hidden shadow-2xl bg-slate-950/95 text-slate-100">
-        
+    <div className="fixed inset-0 z-50 bg-[#0B1117]/80 backdrop-blur-md flex items-center justify-center p-3 font-sans">
+      <div className="alara-glass-elevated max-w-4xl w-full rounded-xl p-5 flex flex-col gap-4 max-h-[92vh] overflow-hidden text-[#F1F5F9]">
+
         {/* Заголовок */}
-        <div className="flex justify-between items-center border-b border-slate-800 pb-3 shrink-0">
+        <div className="flex justify-between items-center border-b border-[rgba(148,163,184,0.16)] pb-3 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/40">
-              <Activity className="w-6 h-6" />
+            <div className="p-2.5 bg-[#0EA5E9]/15 text-[#0EA5E9] rounded-[10px] border border-[#0EA5E9]/35">
+              <Activity className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <span>Многоканальный амплитудный анализатор (МКА)</span>
-                <span className="text-xs px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 font-mono">
-                  {instrument.name}
-                </span>
+              <h2 className="text-lg font-bold text-[#F1F5F9]">
+                Многоканальный амплитудный анализатор (МКА) · {instrument.name}
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-[#94A3B8] mt-0.5">
                 {instrument.hasSpectrometryMode
-                  ? 'Спектрометрический тракт активен: разрешение по энергии позволяет идентифицировать нуклиды.'
-                  : 'Внимание: выбранный дозиметр работает в интегральном счетном режиме. Для детальной спектрометрии используйте NaI(Tl) или CdZnTe.'}
+                  ? 'Спектрометрический тракт активен: разрешение позволяет идентифицировать нуклиды.'
+                  : 'Выбранный дозиметр работает в интегральном режиме. Для спектрометрии используйте NaI(Tl) или CdZnTe.'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-2 rounded-lg hover:bg-slate-800 transition"
+            className="text-[#94A3B8] hover:text-[#F1F5F9] p-2 rounded-[10px] hover:bg-white/5 transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* График спектра Canvas */}
-        <div className="relative rounded-xl overflow-hidden border border-slate-800 bg-slate-900/60 p-2">
+        <div className="relative rounded-xl overflow-hidden alara-surface p-2">
           <canvas
             ref={canvasRef}
             width={720}
             height={300}
-            className="w-full h-[280px] cursor-crosshair block"
+            className="w-full h-[280px] cursor-crosshair block rounded-[8px]"
             onMouseMove={handleMouseMove}
             onMouseLeave={() => {
               setHoverEnergy(null);
@@ -291,83 +265,78 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
             }}
           />
 
-          {/* Плавающий считыватель курсора */}
           {hoverEnergy !== null && (
-            <div className="absolute top-4 right-4 bg-slate-950/90 border border-slate-700 rounded-lg px-3 py-1.5 font-mono text-xs shadow-lg backdrop-blur">
-              <span className="text-slate-400">E: </span>
-              <span className="text-sky-300 font-bold">{hoverEnergy} кэВ</span>
-              <span className="text-slate-500 mx-2">|</span>
-              <span className="text-slate-400">N: </span>
-              <span className="text-amber-300 font-bold">{hoverCounts} имп</span>
+            <div className="absolute top-4 right-4 bg-[#0B1117]/90 border border-[rgba(148,163,184,0.2)] rounded-[10px] px-3 py-1.5 font-mono alara-tabular text-xs">
+              <span className="text-[#94A3B8]">E: </span>
+              <span className="text-[#0EA5E9] font-bold">{hoverEnergy} кэВ</span>
+              <span className="text-[#64748B] mx-2">|</span>
+              <span className="text-[#94A3B8]">N: </span>
+              <span className="text-[#F59E0B] font-bold">{hoverCounts} имп</span>
             </div>
           )}
         </div>
 
         {/* Панель идентификации и характеристик */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-          
-          {/* Левая колонка: Пики и параметры набора */}
-          <div className="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
-            <h4 className="font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>Обнаруженные фотопики полного поглощения:</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs overflow-y-auto">
+          <div className="p-3.5 rounded-xl alara-surface space-y-2">
+            <h4 className="font-bold text-[#94A3B8] uppercase tracking-wider">
+              Фотопики полного поглощения
             </h4>
             {spectrumData?.peaks && spectrumData.peaks.length > 0 ? (
               <div className="space-y-1.5">
                 {spectrumData.peaks.map((p, idx) => (
-                  <div key={idx} className="flex justify-between items-center p-2 rounded bg-slate-950 border border-slate-800 font-mono">
+                  <div key={idx} className="flex justify-between items-center p-2 rounded-[10px] bg-[#0B1117]/70 border border-[rgba(148,163,184,0.14)] font-mono alara-tabular">
                     <div>
-                      <span className="text-rose-400 font-bold">{p.energyKev.toFixed(1)} кэВ</span>
-                      <span className="text-slate-500 text-[11px] ml-2">(FWHM: {p.fwhmKev} кэВ)</span>
+                      <span className="text-[#EF4444] font-bold">{p.energyKev.toFixed(1)} кэВ</span>
+                      <span className="text-[#64748B] text-[11px] ml-2">(FWHM: {p.fwhmKev} кэВ)</span>
                     </div>
-                    <div className="text-slate-400">
-                      S_net: <strong className="text-cyan-300">{p.netCounts}</strong> имп
+                    <div className="text-[#94A3B8]">
+                      S_net: <strong className="text-[#0EA5E9]">{p.netCounts}</strong> имп
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-slate-500 italic p-2">
+              <div className="text-[#64748B] p-2">
                 Фотопики не выражены или мощность дозы ниже порога статистической достоверности.
               </div>
             )}
           </div>
 
-          {/* Правая колонка: Результат идентификации / Слепой вердикт студента */}
-          <div className="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2.5">
-            <h4 className="font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Search className="w-4 h-4 text-sky-400" />
-              <span>Идентификация радионуклида:</span>
+          <div className="p-3.5 rounded-xl alara-surface space-y-2.5">
+            <h4 className="font-bold text-[#94A3B8] uppercase tracking-wider flex items-center gap-1.5">
+              <Search className="w-4 h-4 text-[#0EA5E9]" />
+              <span>Идентификация радионуклида</span>
             </h4>
 
             {isBlindMode ? (
               <div className="space-y-2">
-                <p className="text-amber-300 text-xs">
-                  Режим слепой идентификации: проанализируйте положение пиков и выберите изотоп вручную.
+                <p className="text-[#F59E0B] text-xs">
+                  Режим слепой идентификации: проанализируйте пики и выберите изотоп.
                 </p>
                 <div className="flex gap-2">
                   <select
                     value={studentSelectedNuclide}
                     onChange={e => setStudentSelectedNuclide(e.target.value)}
-                    className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 font-mono text-cyan-300"
+                    className="flex-1 bg-[#0B1117] border border-[rgba(148,163,184,0.2)] rounded-[10px] px-2.5 py-1.5 font-mono text-[#0EA5E9]"
                   >
-                    <option value="">-- Выберите предполагаемый изотоп --</option>
-                    <option value="Cs-137">¹³⁷Cs (Цезий-137, 661.7 кэВ)</option>
-                    <option value="Co-60">⁶⁰Co (Кобальт-60, 1173 + 1332 кэВ)</option>
-                    <option value="Am-241">²⁴¹Am (Америций-241, 59.5 кэВ)</option>
-                    <option value="Sr-90">⁹⁰Sr (Стронций-90, чистый бета-спектр)</option>
-                    <option value="Pu-239">²³⁹Pu (Плутоний-239, 51.6 кэВ)</option>
-                    <option value="Cf-252">²⁵²Cf (Калифорний-252, нейтроны + γ)</option>
+                    <option value="">-- Выберите изотоп --</option>
+                    <option value="Cs-137">Cs-137 (Цезий-137, 661.7 кэВ)</option>
+                    <option value="Co-60">Co-60 (Кобальт-60, 1173 + 1332 кэВ)</option>
+                    <option value="Am-241">Am-241 (Америций-241, 59.5 кэВ)</option>
+                    <option value="Sr-90">Sr-90 (Стронций-90, чистый бета-спектр)</option>
+                    <option value="Pu-239">Pu-239 (Плутоний-239, 51.6 кэВ)</option>
+                    <option value="Cf-252">Cf-252 (Калифорний-252, нейтроны + γ)</option>
                   </select>
                   <button
                     onClick={handleVerdictSubmit}
-                    className="px-3 py-1.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-lg transition"
+                    className="px-3 py-1.5 bg-[#0EA5E9] hover:bg-[#38BDF8] text-[#0B1117] font-bold rounded-[10px] transition"
                   >
                     Подтвердить
                   </button>
                 </div>
                 {verdictFeedback && (
-                  <div className={`p-2 rounded border text-xs font-semibold ${verdictFeedback.startsWith('✓') ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300' : 'bg-rose-950/40 border-rose-500/40 text-rose-300'}`}>
+                  <div className={`p-2 rounded-[10px] border text-xs font-semibold ${verdictFeedback.startsWith('ВЕРНО') ? 'bg-[#10B981]/10 border-[#10B981]/35 text-[#10B981]' : 'bg-[#EF4444]/10 border-[#EF4444]/35 text-[#EF4444]'}`}>
                     {verdictFeedback}
                   </div>
                 )}
@@ -376,49 +345,46 @@ export const GammaSpectrometryWidget: React.FC<GammaSpectrometryWidgetProps> = (
               <div className="space-y-2">
                 {spectrumData?.identifiedIsotopes && spectrumData.identifiedIsotopes.length > 0 ? (
                   spectrumData.identifiedIsotopes.map((iso, i) => (
-                    <div key={i} className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-500/40 flex items-center justify-between">
+                    <div key={i} className="p-2.5 rounded-[10px] bg-[#10B981]/10 border border-[#10B981]/30 flex items-center justify-between">
                       <div>
-                        <div className="font-bold text-emerald-300 text-sm">
+                        <div className="font-bold text-[#10B981] text-sm">
                           {ISOTOPE_GAMMA_PEAKS[iso.isotopeId]?.nameRu || iso.isotopeId}
                         </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
-                          Библиотечное совпадение спектральных линий по ГОСТ
+                        <div className="text-[11px] text-[#94A3B8] mt-0.5">
+                          Библиотечное совпадение линий по ГОСТ
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-mono font-bold">
-                          {iso.confidencePercent.toFixed(1)}%
-                        </span>
+                      <div className="text-right font-mono alara-tabular font-bold text-[#10B981]">
+                        {iso.confidencePercent.toFixed(1)}%
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="text-slate-500 italic">Набор спектра продолжается...</div>
+                  <div className="text-[#64748B]">Набор спектра продолжается...</div>
                 )}
               </div>
             )}
           </div>
-
         </div>
 
-        {/* Нижняя панель управления */}
-        <div className="flex justify-between items-center border-t border-slate-800 pt-2 shrink-0 text-xs">
+        {/* Нижняя панель */}
+        <div className="flex justify-between items-center border-t border-[rgba(148,163,184,0.16)] pt-3 shrink-0 text-xs">
           <div className="flex items-center gap-2">
-            <span className="text-slate-400">Время экспозиции:</span>
+            <span className="text-[#94A3B8]">Время экспозиции:</span>
             <select
               value={acquisitionTimeSec}
               onChange={e => setAcquisitionTimeSec(parseInt(e.target.value) || 10)}
-              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 font-mono text-cyan-300"
+              className="bg-[#0B1117] border border-[rgba(148,163,184,0.2)] rounded-[10px] px-2.5 py-1 font-mono text-[#0EA5E9]"
             >
-              <option value={5}>5 секунд (Экспресс)</option>
-              <option value={10}>10 секунд (Стандарт)</option>
-              <option value={30}>30 секунд (Высокая статистика)</option>
-              <option value={60}>60 секунд (Прецизионный)</option>
+              <option value={5}>5 с (Экспресс)</option>
+              <option value={10}>10 с (Стандарт)</option>
+              <option value={30}>30 с (Высокая статистика)</option>
+              <option value={60}>60 с (Прецизионный)</option>
             </select>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg transition"
+            className="px-4 py-1.5 bg-white/10 hover:bg-white/15 text-[#F1F5F9] font-semibold rounded-[10px] transition"
           >
             Закрыть анализатор
           </button>

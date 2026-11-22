@@ -965,18 +965,20 @@ export class WebXRManager {
     btn.style.left = '14px';
     btn.style.transform = 'none';
     btn.style.zIndex = '45';
-    btn.style.backgroundColor = 'rgba(8, 13, 24, 0.88)';
-    btn.style.border = '1px solid rgba(255, 255, 255, 0.14)';
+    btn.style.backgroundColor = 'rgba(11, 17, 23, 0.82)';
+    btn.style.backdropFilter = 'blur(12px)';
+    btn.style.border = '1px solid rgba(148, 163, 184, 0.16)';
     btn.style.borderRadius = '10px';
     btn.style.padding = '7px 12px';
+    btn.style.fontFamily = "'JetBrains Mono', monospace";
     btn.style.fontSize = '11px';
-    btn.style.color = '#fef08a';
+    btn.style.color = '#F59E0B';
     btn.style.fontWeight = '600';
     btn.style.letterSpacing = '0.03em';
     btn.style.cursor = 'pointer';
-    btn.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.45)';
+    btn.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.45)';
     btn.style.transition = 'all 0.2s ease';
-    btn.textContent = 'ВОЙТИ В VR (WEBXR)';
+    btn.textContent = 'ВОЙТИ В VR (HTC VIVE)';
 
     btn.onclick = async (e: MouseEvent) => {
       e.preventDefault();
@@ -995,11 +997,11 @@ export class WebXRManager {
       target.style.display = this.isInVR ? 'none' : 'block';
       target.textContent = this.isInVR
         ? 'ВЫЙТИ ИЗ VR'
-        : 'ВОЙТИ В VR (WEBXR)';
+        : 'ВОЙТИ В VR (HTC VIVE)';
       target.style.borderColor = this.isInVR
-        ? 'rgba(239, 68, 68, 0.8)'
-        : 'rgba(234, 179, 8, 0.8)';
-      target.style.color = this.isInVR ? '#fca5a5' : '#fef08a';
+        ? 'rgba(239, 68, 68, 0.6)'
+        : 'rgba(14, 165, 233, 0.35)';
+      target.style.color = this.isInVR ? '#EF4444' : '#F59E0B';
     }
   }
 

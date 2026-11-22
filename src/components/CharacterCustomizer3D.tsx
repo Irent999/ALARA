@@ -606,29 +606,27 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
   }, [ppeState]);
 
   return (
-    <div className="flex flex-col lg:flex-row gap-5 items-stretch w-full">
+    <div className="flex flex-col lg:flex-row gap-4 items-stretch w-full">
       {/* 3D Сцена манекена */}
-      <div className="relative flex-1 min-h-[380px] rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 flex items-center justify-center">
+      <div className="relative flex-1 min-h-[380px] rounded-xl overflow-hidden border border-slate-400/15 bg-[#0B1117] flex items-center justify-center">
         <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
-        <div className="absolute top-3 left-3 bg-slate-900/80 backdrop-blur border border-slate-700/60 rounded-xl px-3 py-1.5 text-xs text-slate-300 pointer-events-none flex items-center gap-1.5">
-          <RotateCcw className="w-3.5 h-3.5 text-sky-400" />
-          <span>Вращайте манекен мышью (360° CAD View)</span>
+        <div className="absolute top-3 left-3 alara-glass rounded-[10px] px-3 py-1.5 text-xs text-[#94A3B8] pointer-events-none flex items-center gap-1.5">
+          <RotateCcw className="w-3.5 h-3.5 text-[#0EA5E9]" />
+          <span>Вращайте манекен мышью (360° CAD)</span>
         </div>
       </div>
 
       {/* Панель переключения СИЗ и прибора */}
       <div className="w-full lg:w-96 flex flex-col gap-3 text-xs">
-        
-        {/* Выбор защитного костюма */}
-        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
-          <label className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-            <Shield className="w-4 h-4 text-sky-400" />
-            <span>Защитный костюм (СИЗ тела):</span>
+        <div className="p-3.5 rounded-xl alara-surface space-y-2">
+          <label className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
+            <Shield className="w-4 h-4 text-[#0EA5E9]" />
+            <span>Защитный костюм (СИЗ тела)</span>
           </label>
           <select
             value={ppeState.suitId}
             onChange={e => onChangePPE({ ...ppeState, suitId: e.target.value as SuitTypeId })}
-            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-cyan-300 font-mono font-semibold"
+            className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-2 text-[#14B8A6] font-mono font-medium focus:outline-none focus:border-[#0EA5E9]"
           >
             {Object.entries(SUIT_DEFINITIONS).map(([id, s]) => (
               <option key={id} value={id}>
@@ -636,21 +634,20 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
               </option>
             ))}
           </select>
-          <p className="text-[11px] text-slate-400 leading-normal">
+          <p className="text-[11px] text-[#94A3B8] leading-normal">
             {SUIT_DEFINITIONS[ppeState.suitId].descRu}
           </p>
         </div>
 
-        {/* Выбор защиты дыхания (СИЗОД) */}
-        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
-          <label className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-            <Eye className="w-4 h-4 text-emerald-400" />
-            <span>Защита органов дыхания (СИЗОД):</span>
+        <div className="p-3.5 rounded-xl alara-surface space-y-2">
+          <label className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
+            <Eye className="w-4 h-4 text-[#10B981]" />
+            <span>Защита органов дыхания (СИЗОД)</span>
           </label>
           <select
             value={ppeState.respiratorId}
             onChange={e => onChangePPE({ ...ppeState, respiratorId: e.target.value as RespiratorTypeId })}
-            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-emerald-300 font-mono font-semibold"
+            className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-2 text-[#10B981] font-mono font-medium focus:outline-none focus:border-[#10B981]"
           >
             {Object.entries(RESPIRATOR_DEFINITIONS).map(([id, r]) => (
               <option key={id} value={id}>
@@ -658,21 +655,20 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
               </option>
             ))}
           </select>
-          <p className="text-[11px] text-slate-400 leading-normal">
+          <p className="text-[11px] text-[#94A3B8] leading-normal">
             {RESPIRATOR_DEFINITIONS[ppeState.respiratorId].descRu}
           </p>
         </div>
 
-        {/* Выбор дозиметрического прибора в руке */}
-        <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
-          <label className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>Прибор в руке дозиметриста:</span>
+        <div className="p-3.5 rounded-xl alara-surface space-y-2">
+          <label className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
+            <Sparkles className="w-4 h-4 text-[#F59E0B]" />
+            <span>Прибор в руке дозиметриста</span>
           </label>
           <select
             value={ppeState.instrumentId}
             onChange={e => onChangePPE({ ...ppeState, instrumentId: e.target.value as InstrumentId })}
-            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-amber-300 font-mono font-semibold"
+            className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-2 text-[#F59E0B] font-mono font-medium focus:outline-none focus:border-[#F59E0B]"
           >
             {Object.values(GOST_INSTRUMENTS).map(inst => (
               <option key={inst.id} value={inst.id}>
@@ -680,22 +676,21 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
               </option>
             ))}
           </select>
-          <p className="text-[11px] text-slate-400 leading-normal">
+          <p className="text-[11px] text-[#94A3B8] leading-normal">
             {GOST_INSTRUMENTS[ppeState.instrumentId].nameFull}
           </p>
         </div>
 
-        {/* Выбор дистанционного инструмента / манипулятора */}
         {onChangeRemoteTool && (
-          <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
-            <label className="font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-sky-400" />
-              <span>Дистанционный инструмент (Защита расстоянием):</span>
+          <div className="p-3.5 rounded-xl alara-surface space-y-2">
+            <label className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
+              <Layers className="w-4 h-4 text-[#0EA5E9]" />
+              <span>Дистанционный инструмент</span>
             </label>
             <select
               value={selectedRemoteToolId || 'hand'}
               onChange={e => onChangeRemoteTool(e.target.value as RemoteToolId)}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sky-300 font-mono font-semibold"
+              className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-2 text-[#0EA5E9] font-mono font-medium focus:outline-none focus:border-[#0EA5E9]"
             >
               {Object.values(REMOTE_TOOLS).map(tool => (
                 <option key={tool.id} value={tool.id}>
@@ -703,36 +698,34 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-slate-400 leading-normal">
+            <p className="text-[11px] text-[#94A3B8] leading-normal">
               {REMOTE_TOOLS[selectedRemoteToolId || 'hand']?.descriptionRu}
             </p>
           </div>
         )}
 
-        {/* Метрологическая карточка суммарной защиты */}
-        <div className="p-3 rounded-xl bg-cyan-950/30 border border-cyan-800/40 text-[11px] font-mono space-y-1">
+        <div className="p-3 rounded-xl bg-[#0EA5E9]/8 border border-[#0EA5E9]/25 text-[11px] font-mono alara-tabular space-y-1">
           <div className="flex justify-between">
-            <span className="text-slate-400">Свинцовый эквивалент:</span>
-            <span className="text-cyan-300 font-bold">{SUIT_DEFINITIONS[ppeState.suitId].leadEquivalentMm} мм Pb</span>
+            <span className="text-[#94A3B8]">Свинцовый эквивалент:</span>
+            <span className="text-[#0EA5E9] font-semibold">{SUIT_DEFINITIONS[ppeState.suitId].leadEquivalentMm} мм Pb</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-400">Задержка α / Коэф. β:</span>
-            <span className="text-emerald-300 font-bold">
+            <span className="text-[#94A3B8]">Задержка α / Коэф. β:</span>
+            <span className="text-[#10B981] font-semibold">
               {SUIT_DEFINITIONS[ppeState.suitId].alphaBlockingPercent}% / ×{SUIT_DEFINITIONS[ppeState.suitId].betaAttenuationFactor}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-400">Коэф. ослабления γ:</span>
-            <span className="text-amber-300 font-bold">×{SUIT_DEFINITIONS[ppeState.suitId].gammaAttenuationFactor}</span>
+            <span className="text-[#94A3B8]">Коэф. ослабления γ:</span>
+            <span className="text-[#F59E0B] font-semibold">×{SUIT_DEFINITIONS[ppeState.suitId].gammaAttenuationFactor}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-400">Термостойкость / Диэлектрик:</span>
-            <span className="text-orange-300 font-bold">
-              {SUIT_DEFINITIONS[ppeState.suitId].thermalRatingC}°C {SUIT_DEFINITIONS[ppeState.suitId].isDielectric ? '• 10 кВ' : ''}
+            <span className="text-[#94A3B8]">Термостойкость / Диэлектрик:</span>
+            <span className="text-[#F59E0B] font-semibold">
+              {SUIT_DEFINITIONS[ppeState.suitId].thermalRatingC}°C {SUIT_DEFINITIONS[ppeState.suitId].isDielectric ? '· 10 кВ' : ''}
             </span>
           </div>
         </div>
-
       </div>
     </div>
   );

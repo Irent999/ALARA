@@ -1,38 +1,25 @@
 /**
  * ALARA-Planner Pro VR — Главное меню виртуального лабораторного практикума (Main Menu UI)
- * Содержит 4 ключевых раздела:
- * 1. "Лабораторные работы" (Лабораторные 1, 2, 3 + выбор "Свободная лаборатория" / "Экзамен/Зачет")
- * 2. "База приборов и источников" (Каталог приборов по видам ИИ, карточки изотопов Co-60, Cs-137, Am-241, Sr-90, Pu-239, Cf-252)
- * 3. "Экипировка (СИЗ)" (3D-просмотр манекена с Orbit Controls и сменой СИЗ в реальном времени)
- * 4. "Настройки" (Звук, физика, ГОСТ константы, флаг скрытия начального окна выбора)
+ * Унифицированная тактическая дизайн-система для сценариев 1–4.
  */
 
 import React, { useState } from 'react';
 import {
-  GraduationCap,
-  BookOpen,
   Shield,
+  BookOpen,
   Settings,
   X,
   Play,
   CheckCircle2,
-  AlertCircle,
-  Sparkles,
   Flame,
-  Layers,
   Activity,
-  Award,
   ChevronRight,
-  Eye,
-  EyeOff,
-  Volume2,
   Atom,
-  HelpCircle,
   FileSpreadsheet
 } from 'lucide-react';
-import { SCENARIOS, ScenarioDefinition } from '../scene/scenarios';
-import { InstrumentId, GOST_INSTRUMENTS, InstrumentCategory } from '../instruments/gostInstruments';
-import { ISOTOPE_DATABASE, IsotopeData, NORMAL_CONDITIONS, RemoteToolId } from '../physics/gostPhysics';
+import { SCENARIOS } from '../scene/scenarios';
+import { InstrumentId, GOST_INSTRUMENTS } from '../instruments/gostInstruments';
+import { ISOTOPE_DATABASE, NORMAL_CONDITIONS, RemoteToolId } from '../physics/gostPhysics';
 import { CharacterCustomizer3D, CharacterPPEState } from './CharacterCustomizer3D';
 
 export type MainMenuTab = 'labs' | 'database' | 'ppe' | 'settings';
@@ -67,7 +54,7 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   onChangeExamMode,
   selectedInstrumentId,
   onSelectInstrument,
-  selectedIsotopeId,
+  selectedIsotopeId: _selectedIsotopeId,
   onSelectIsotope,
   ppeState,
   onChangePPE,
@@ -88,150 +75,140 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
   const currentLabScenario = SCENARIOS.find(s => s.id === activeScenarioId) || SCENARIOS[0];
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/92 flex items-center justify-center p-3 sm:p-5 font-sans select-none">
-      <div className="glass-panel max-w-6xl w-full h-[92vh] rounded-3xl border border-sky-500/40 flex flex-col overflow-hidden shadow-2xl bg-slate-950/95 text-slate-100">
-        
-        {/* Верхняя шапка Главного Меню */}
-        <header className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-slate-800 bg-slate-900/50 shrink-0">
+    <div className="fixed inset-0 z-50 bg-[#0B1117]/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 font-sans select-none">
+      <div className="alara-glass-elevated max-w-6xl w-full h-[92vh] rounded-xl flex flex-col overflow-hidden text-[#F1F5F9]">
+
+        {/* Верхняя шапка */}
+        <header className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[rgba(148,163,184,0.16)] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-br from-sky-500 to-indigo-600 rounded-2xl shadow-lg shadow-sky-500/20 text-white">
-              <GraduationCap className="w-6 h-6" />
+            <div className="p-2.5 bg-[#0EA5E9]/15 border border-[#0EA5E9]/35 rounded-[10px] text-[#0EA5E9]">
+              <Shield className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-black tracking-tight text-white uppercase">
-                  ALARA МЧС — Тренажёр Ликвидации ЧС на АЭС
-                </h1>
-                <span className="text-[11px] px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30 font-mono font-bold">
-                  МЧС УЗБЕКИСТАНА · НРБ-99/2009
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Обучение подразделений МЧС действиям при радиационных выбросах, кабельных пожарах и обесточивании БПУ АЭС
+              <h1 className="text-lg font-bold tracking-tight text-[#F1F5F9]">
+                ALARA МЧС — Тренажёр Ликвидации ЧС на АЭС
+              </h1>
+              <p className="text-xs text-[#94A3B8] mt-0.5">
+                МЧС Узбекистана · НРБ-99/2009 · Подготовка подразделений к радиационной разведке и аварийным работам
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Переключатель режимов: Свободная лабораторная / Экзамен */}
-            <div className="flex items-center p-1 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold">
+            <div className="flex items-center p-1 rounded-[10px] alara-surface text-xs font-semibold">
               <button
                 onClick={() => onChangeExamMode(false)}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-[8px] transition ${
                   !isExamMode
-                    ? 'bg-sky-500 text-slate-950 font-bold shadow-md'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-[#0EA5E9] text-[#0B1117] font-bold'
+                    : 'text-[#94A3B8] hover:text-[#F1F5F9]'
                 }`}
               >
-                🔬 Свободная лабораторная
+                Практикум
               </button>
               <button
                 onClick={() => onChangeExamMode(true)}
-                className={`px-3 py-1.5 rounded-lg transition ${
+                className={`px-3 py-1.5 rounded-[8px] transition ${
                   isExamMode
-                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-[#F59E0B] text-[#0B1117] font-bold'
+                    : 'text-[#94A3B8] hover:text-[#F1F5F9]'
                 }`}
               >
-                🎓 Экзамен / Зачёт
+                Экзамен
               </button>
             </div>
 
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="p-2 rounded-[10px] text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-white/5 transition"
               title="Закрыть меню (Esc)"
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         </header>
 
-        {/* Навигационная панель разделов */}
-        <nav className="flex items-center gap-2 px-6 py-2.5 border-b border-slate-800/80 bg-slate-950 shrink-0 text-xs font-bold">
+        {/* Навигация */}
+        <nav className="flex flex-wrap items-center gap-1.5 px-6 py-2.5 border-b border-[rgba(148,163,184,0.16)] shrink-0 text-xs font-semibold">
           <button
             onClick={() => setActiveTab('labs')}
-            className={`px-4 py-2 rounded-xl transition flex items-center gap-2 ${
+            className={`px-3.5 py-2 rounded-[10px] transition flex items-center gap-2 ${
               activeTab === 'labs'
-                ? 'bg-sky-500 text-slate-950 shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                ? 'bg-[#0EA5E9] text-[#0B1117] font-bold'
+                : 'text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-white/5'
             }`}
           >
             <BookOpen className="w-4 h-4" />
-            <span>1. Лабораторные работы</span>
+            <span>1. Сценарии 1–4</span>
           </button>
           <button
             onClick={() => setActiveTab('database')}
-            className={`px-4 py-2 rounded-xl transition flex items-center gap-2 ${
+            className={`px-3.5 py-2 rounded-[10px] transition flex items-center gap-2 ${
               activeTab === 'database'
-                ? 'bg-sky-500 text-slate-950 shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                ? 'bg-[#0EA5E9] text-[#0B1117] font-bold'
+                : 'text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-white/5'
             }`}
           >
             <Atom className="w-4 h-4" />
-            <span>2. База приборов и источников</span>
+            <span>2. Приборы и источники</span>
           </button>
           <button
             onClick={() => setActiveTab('ppe')}
-            className={`px-4 py-2 rounded-xl transition flex items-center gap-2 ${
+            className={`px-3.5 py-2 rounded-[10px] transition flex items-center gap-2 ${
               activeTab === 'ppe'
-                ? 'bg-sky-500 text-slate-950 shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                ? 'bg-[#0EA5E9] text-[#0B1117] font-bold'
+                : 'text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-white/5'
             }`}
           >
             <Shield className="w-4 h-4" />
-            <span>3. Экипировка (СИЗ) и 3D-Манекен</span>
+            <span>3. Экипировка и 3D-манекен</span>
           </button>
           <button
             onClick={() => setActiveTab('settings')}
-            className={`px-4 py-2 rounded-xl transition flex items-center gap-2 ${
+            className={`px-3.5 py-2 rounded-[10px] transition flex items-center gap-2 ${
               activeTab === 'settings'
-                ? 'bg-sky-500 text-slate-950 shadow-md'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                ? 'bg-[#0EA5E9] text-[#0B1117] font-bold'
+                : 'text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-white/5'
             }`}
           >
             <Settings className="w-4 h-4" />
-            <span>4. Настройки и Регламент</span>
+            <span>4. Настройки и регламент</span>
           </button>
         </nav>
 
-        {/* Основной контент активного раздела */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Основной контент */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
 
-          {/* ===================================================================== */}
-          {/* РАЗДЕЛ 1: ЛАБОРАТОРНЫЕ РАБОТЫ */}
-          {/* ===================================================================== */}
+          {/* РАЗДЕЛ 1: СЦЕНАРИИ 1–4 */}
           {activeTab === 'labs' && (
-            <div className="space-y-6">
-              
-              {/* Баннер текущего режима */}
-              <div className={`p-4 rounded-2xl border flex items-center justify-between ${
+            <div className="space-y-5">
+              {/* Режим и быстрые инструменты */}
+              <div className={`p-4 rounded-xl border flex flex-wrap items-center justify-between gap-3 ${
                 isExamMode
-                  ? 'bg-amber-950/30 border-amber-500/40 text-amber-200'
-                  : 'bg-sky-950/30 border-sky-500/40 text-sky-200'
+                  ? 'bg-[#F59E0B]/10 border-[#F59E0B]/35 text-[#F1F5F9]'
+                  : 'bg-[#0EA5E9]/10 border-[#0EA5E9]/30 text-[#F1F5F9]'
               }`}>
                 <div>
-                  <h3 className="font-bold text-sm flex items-center gap-2">
-                    {isExamMode ? <Award className="w-4 h-4 text-amber-400" /> : <Sparkles className="w-4 h-4 text-sky-400" />}
-                    <span>{isExamMode ? 'Режим экзамена и квалификационного зачёта' : 'Режим свободной лабораторной работы'}</span>
+                  <h3 className="font-bold text-sm text-[#F1F5F9]">
+                    {isExamMode ? 'Режим экзамена и квалификационного зачёта' : 'Режим учебного практикума'}
                   </h3>
-                  <p className="text-xs opacity-80 mt-0.5">
+                  <p className="text-xs text-[#94A3B8] mt-0.5">
                     {isExamMode
-                      ? 'Маркеры изотопов скрыты. Необходим строгий расчет в журнале и защита отчета по критериям НРБ-99/2009.'
-                      : 'Доступны подсказки, отображение траекторий частиц, формулы и ручной выбор оборудования.'}
+                      ? 'Подсказки и маркеры скрыты. Действия оцениваются по нормативам НРБ-99/2009.'
+                      : 'Доступны пошаговые подсказки, журнал расчётов и спектрометр МКА.'}
                   </p>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={onOpenLabNotebook}
-                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold rounded-xl text-xs transition border border-slate-700 flex items-center gap-1.5"
+                    className="px-3.5 py-1.5 alara-surface hover:bg-white/10 text-[#0EA5E9] font-semibold rounded-[10px] text-xs transition flex items-center gap-1.5"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>Лаб. Журнал</span>
+                    <span>Лаб. журнал</span>
                   </button>
                   <button
                     onClick={onOpenSpectrometry}
-                    className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-300 font-bold rounded-xl text-xs transition border border-slate-700 flex items-center gap-1.5"
+                    className="px-3.5 py-1.5 alara-surface hover:bg-white/10 text-[#14B8A6] font-semibold rounded-[10px] text-xs transition flex items-center gap-1.5"
                   >
                     <Activity className="w-3.5 h-3.5" />
                     <span>Спектрометр МКА</span>
@@ -239,144 +216,55 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                 </div>
               </div>
 
-              {/* Быстрое комплектование экипировки и СИЗ МЧС перед выходом на сцену */}
-              <div className="p-4 rounded-2xl bg-slate-900/75 border border-slate-800 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-xs font-bold text-orange-300 uppercase tracking-wider flex items-center gap-1.5">
-                      <Shield className="w-4 h-4 text-orange-400" />
-                      <span>Предстартовое комплектование экипировки МЧС (СИЗ и приборы):</span>
-                    </h2>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Выберите регламентированный комплект перед стартом сценария или перейдите во вкладку «3. Экипировка (СИЗ) и 3D-Манекен».
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setActiveTab('ppe')}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 text-xs font-bold border border-slate-700 transition"
-                  >
-                    Открыть 3D-манекен →
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                  <button
-                    onClick={() => {
-                      onSelectInstrument('dp5');
-                      onChangePPE({ suitId: 'bop_suit', respiratorId: 'ppm88_mask', instrumentId: 'dp5' });
-                    }}
-                    className={`p-3.5 rounded-xl border text-left transition ${
-                      ppeState.suitId === 'bop_suit'
-                        ? 'bg-orange-950/40 border-orange-400 ring-1 ring-orange-400/70'
-                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-orange-300 flex items-center gap-1.5">
-                        <Flame className="w-3.5 h-3.5" />
-                        Пожарный расчёт БОП-1
-                      </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-200">
-                        350°C • 10 кВ
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-300 mt-1">
-                      БОП-1 термостойкий + Маска ППМ-88 + ДП-5В
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      onSelectInstrument('dp5');
-                      onChangePPE({ suitId: 'kih4_suit', respiratorId: 'gp7vm_gasmask', instrumentId: 'dp5' });
-                    }}
-                    className={`p-3.5 rounded-xl border text-left transition ${
-                      ppeState.suitId === 'kih4_suit'
-                        ? 'bg-amber-950/40 border-amber-400 ring-1 ring-amber-400/70'
-                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-amber-300 flex items-center gap-1.5">
-                        <Shield className="w-3.5 h-3.5" />
-                        РХБ-защита КИХ-4 / ГП-7ВМ
-                      </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200">
-                        α/β 100%
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-300 mt-1">
-                      Изолирующий КИХ-4 + Противогаз ГП-7ВМ + ДП-5В
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      onSelectInstrument('dp5');
-                      onChangePPE({ suitId: 'l1_suit', respiratorId: 'asv2_scba', instrumentId: 'dp5' });
-                    }}
-                    className={`p-3.5 rounded-xl border text-left transition ${
-                      ppeState.suitId === 'l1_suit'
-                        ? 'bg-emerald-950/40 border-emerald-400 ring-1 ring-emerald-400/70'
-                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-emerald-300 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5" />
-                        Разведка Л-1 + АСВ-2
-                      </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-200">
-                        300 бар
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-300 mt-1">
-                      Костюм Л-1 МЧС + Дыхательный аппарат АСВ-2 + ДП-5В
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Карточки 3 основных сценариев МЧС на АЭС */}
+              {/* Унифицированная сетка 2×2 сценариев 1–4 */}
               <div>
-                <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-3">
-                  Базовые оперативные сценарии МЧС на объектах АЭС:
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {SCENARIOS.slice(0, 3).map((scenario) => {
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider">
+                    Оперативные сценарии АЭС (1–4)
+                  </h2>
+                  <span className="text-xs font-mono alara-tabular text-[#64748B]">
+                    Активен: #{activeScenarioId}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {SCENARIOS.map((scenario) => {
                     const isSelected = scenario.id === activeScenarioId;
+                    const isScenario4 = scenario.id === 4;
                     return (
                       <div
                         key={scenario.id}
                         onClick={() => onSelectScenario(scenario.id)}
-                        className={`p-5 rounded-2xl border transition cursor-pointer flex flex-col justify-between group ${
+                        className={`p-4 rounded-xl border transition cursor-pointer flex flex-col justify-between ${
                           isSelected
-                            ? 'bg-sky-950/40 border-sky-400 shadow-xl shadow-sky-500/10 ring-1 ring-sky-400'
-                            : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                            ? 'bg-[#0EA5E9]/10 border-[#0EA5E9] ring-1 ring-[#0EA5E9]/50'
+                            : 'alara-surface hover:border-[rgba(148,163,184,0.32)]'
                         }`}
                       >
-                        <div className="space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-orange-300 font-bold border border-slate-700">
-                              СЦЕНАРИЙ МЧС #{scenario.id}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`text-[11px] font-mono font-bold alara-tabular ${
+                              isScenario4 ? 'text-[#14B8A6]' : 'text-[#F59E0B]'
+                            }`}>
+                              СЦЕНАРИЙ #{scenario.id}{isScenario4 ? ' · АЭС (.GLB)' : ''}
                             </span>
                             {isSelected && (
-                              <span className="text-xs text-emerald-400 font-bold flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Активен
+                              <span className="text-xs text-[#10B981] font-semibold flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Выбран
                               </span>
                             )}
                           </div>
-                          <h3 className="font-bold text-sm text-white group-hover:text-sky-300 transition line-clamp-2">
+                          <h3 className="font-bold text-sm text-[#F1F5F9] line-clamp-2">
                             {scenario.titleRu}
                           </h3>
-                          <p className="text-xs text-slate-400 leading-relaxed line-clamp-3">
+                          <p className="text-xs text-[#94A3B8] leading-relaxed line-clamp-2">
                             {scenario.shortDescriptionRu}
                           </p>
                         </div>
 
-                        <div className="pt-4 border-t border-slate-800/80 mt-4 flex items-center justify-between text-xs">
-                          <span className="text-slate-500 font-mono">
-                            Факторы: {scenario.dominantIsotopes.join(', ')}
+                        <div className="pt-3 border-t border-[rgba(148,163,184,0.12)] mt-3 flex items-center justify-between text-xs">
+                          <span className="text-[#64748B] font-mono alara-tabular truncate pr-2">
+                            {scenario.dominantIsotopes.join(', ')} · лимит {scenario.recommendedPermitLimitMsv} мЗв
                           </span>
                           <button
                             onClick={(e) => {
@@ -384,13 +272,13 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                               onSelectScenario(scenario.id);
                               onClose();
                             }}
-                            className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1 ${
+                            className={`px-3 py-1.5 rounded-[10px] font-bold transition flex items-center gap-1 shrink-0 ${
                               isSelected
-                                ? 'bg-sky-500 text-slate-950'
-                                : 'bg-slate-800 text-slate-200 group-hover:bg-slate-700'
+                                ? 'bg-[#0EA5E9] text-[#0B1117]'
+                                : 'bg-white/10 hover:bg-white/15 text-[#F1F5F9]'
                             }`}
                           >
-                            <span>Выезд</span>
+                            <span>Запуск</span>
                             <ChevronRight className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -400,106 +288,138 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                 </div>
               </div>
 
-              {/* Комплексный практический тренажёр МЧС на 3D-модели АЭС (.glb) — Сценарий #4 */}
-              {SCENARIOS.find(s => s.id === 4) && (
-                <div>
-                  <h2 className="text-sm font-bold text-emerald-300 uppercase tracking-wider mb-2.5 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-emerald-400" />
-                    Практический VR-тренажёр МЧС на 3D-модели комплекса АЭС (.glb):
-                  </h2>
-                  {(() => {
-                    const scen4 = SCENARIOS.find(s => s.id === 4)!;
-                    const isSelected = scen4.id === activeScenarioId;
-                    return (
-                      <div
-                        onClick={() => onSelectScenario(scen4.id)}
-                        className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                          isSelected
-                            ? 'bg-emerald-950/45 border-emerald-400 ring-1 ring-emerald-400 shadow-lg shadow-emerald-500/10'
-                            : 'bg-slate-900/70 border-emerald-500/35 hover:border-emerald-400/70 hover:bg-slate-900'
-                        }`}
-                      >
-                        <div className="space-y-1.5 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
-                              СЦЕНАРИЙ #{scen4.id} • КОМПЛЕКС АЭС (.GLB)
-                            </span>
-                            <span className="text-[11px] font-mono text-slate-400">
-                              6 шагов FSM • 3 очага • Эвакуация персонала • ОУ-5 (CO₂)
-                            </span>
-                            {isSelected && (
-                              <span className="text-xs text-emerald-400 font-bold flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Активен
-                              </span>
-                            )}
-                          </div>
-                          <h3 className="font-bold text-sm text-white">{scen4.titleRu}</h3>
-                          <p className="text-xs text-slate-300 leading-relaxed">
-                            {scen4.shortDescriptionRu}
-                          </p>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectScenario(scen4.id);
-                            onClose();
-                          }}
-                          className={`px-4 py-2.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5 shrink-0 ${
-                            isSelected
-                              ? 'bg-emerald-400 text-slate-950'
-                              : 'bg-emerald-500/90 hover:bg-emerald-400 text-slate-950'
-                          }`}
-                        >
-                          <span>Запустить комплекс АЭС</span>
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    );
-                  })()}
+              {/* Быстрое комплектование СИЗ */}
+              <div className="p-4 rounded-xl alara-surface space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-xs font-semibold text-[#F59E0B] uppercase tracking-wider flex items-center gap-1.5">
+                      <Shield className="w-4 h-4" />
+                      <span>Комплект СИЗ МЧС перед выходом</span>
+                    </h2>
+                    <p className="text-[11px] text-[#94A3B8] mt-0.5">
+                      Выберите базовый комплект или настройте элементы вручную в 3D-редакторе.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('ppe')}
+                    className="px-3 py-1.5 rounded-[10px] bg-white/5 hover:bg-white/10 border border-[rgba(148,163,184,0.16)] text-[#0EA5E9] text-xs font-semibold transition"
+                  >
+                    3D-манекен →
+                  </button>
                 </div>
-              )}
 
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  <button
+                    onClick={() => {
+                      onSelectInstrument('dp5');
+                      onChangePPE({ suitId: 'bop_suit', respiratorId: 'ppm88_mask', instrumentId: 'dp5' });
+                    }}
+                    className={`p-3.5 rounded-[10px] border text-left transition ${
+                      ppeState.suitId === 'bop_suit'
+                        ? 'bg-[#F59E0B]/15 border-[#F59E0B] text-[#F1F5F9]'
+                        : 'bg-[#0B1117]/60 border-[rgba(148,163,184,0.16)] hover:border-[rgba(148,163,184,0.32)]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-[#F59E0B] flex items-center gap-1.5">
+                        <Flame className="w-3.5 h-3.5" />
+                        Пожарный расчёт БОП-1
+                      </span>
+                      <span className="text-[11px] font-mono alara-tabular text-[#94A3B8]">
+                        350°C
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[#94A3B8] mt-1">
+                      БОП-1 + Маска ППМ-88 + ДП-5В
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onSelectInstrument('dp5');
+                      onChangePPE({ suitId: 'kih4_suit', respiratorId: 'gp7vm_gasmask', instrumentId: 'dp5' });
+                    }}
+                    className={`p-3.5 rounded-[10px] border text-left transition ${
+                      ppeState.suitId === 'kih4_suit'
+                        ? 'bg-[#0EA5E9]/15 border-[#0EA5E9] text-[#F1F5F9]'
+                        : 'bg-[#0B1117]/60 border-[rgba(148,163,184,0.16)] hover:border-[rgba(148,163,184,0.32)]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-[#0EA5E9] flex items-center gap-1.5">
+                        <Shield className="w-3.5 h-3.5" />
+                        РХБ-защита КИХ-4
+                      </span>
+                      <span className="text-[11px] font-mono alara-tabular text-[#94A3B8]">
+                        α/β 100%
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[#94A3B8] mt-1">
+                      КИХ-4 + Противогаз ГП-7ВМ + ДП-5В
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      onSelectInstrument('dp5');
+                      onChangePPE({ suitId: 'l1_suit', respiratorId: 'asv2_scba', instrumentId: 'dp5' });
+                    }}
+                    className={`p-3.5 rounded-[10px] border text-left transition ${
+                      ppeState.suitId === 'l1_suit'
+                        ? 'bg-[#10B981]/15 border-[#10B981] text-[#F1F5F9]'
+                        : 'bg-[#0B1117]/60 border-[rgba(148,163,184,0.16)] hover:border-[rgba(148,163,184,0.32)]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-[#10B981] flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Разведка Л-1 + АСВ-2
+                      </span>
+                      <span className="text-[11px] font-mono alara-tabular text-[#94A3B8]">
+                        300 бар
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[#94A3B8] mt-1">
+                      Костюм Л-1 + ДАСВ АСВ-2 + ДП-5В
+                    </div>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
-          {/* ===================================================================== */}
           {/* РАЗДЕЛ 2: БАЗА ПРИБОРОВ И ИСТОЧНИКОВ */}
-          {/* ===================================================================== */}
           {activeTab === 'database' && (
             <div className="space-y-5">
-              
-              {/* Подвкладки: Приборы vs Радионуклиды */}
-              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+              <div className="flex flex-wrap items-center gap-2 border-b border-[rgba(148,163,184,0.16)] pb-3">
                 <button
                   onClick={() => setDbSubTab('instruments')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                  className={`px-3.5 py-1.5 rounded-[10px] text-xs font-bold transition ${
                     dbSubTab === 'instruments'
-                      ? 'bg-sky-500 text-slate-950'
-                      : 'bg-slate-900 text-slate-400 hover:text-white'
+                      ? 'bg-[#0EA5E9] text-[#0B1117]'
+                      : 'alara-surface text-[#94A3B8] hover:text-[#F1F5F9]'
                   }`}
                 >
-                  Детекторы и Дозиметры по видам ИИ (ГОСТ 27451-87)
+                  Дозиметры (ГОСТ 27451-87)
                 </button>
                 <button
                   onClick={() => setDbSubTab('isotopes')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                  className={`px-3.5 py-1.5 rounded-[10px] text-xs font-bold transition ${
                     dbSubTab === 'isotopes'
-                      ? 'bg-sky-500 text-slate-950'
-                      : 'bg-slate-900 text-slate-400 hover:text-white'
+                      ? 'bg-[#0EA5E9] text-[#0B1117]'
+                      : 'alara-surface text-[#94A3B8] hover:text-[#F1F5F9]'
                   }`}
                 >
-                  Справочник радионуклидов (Co-60, Cs-137, Am-241, Sr-90, Pu-239, Cf-252)
+                  Радионуклиды (Co-60, Cs-137, Am-241, Sr-90, Pu-239, Cf-252)
                 </button>
               </div>
 
-              {/* Подраздел 2.1: База детекторов по видам излучения */}
               {dbSubTab === 'instruments' && (
                 <div className="space-y-4">
-                  {/* Фильтры категорий детектора */}
                   <div className="flex flex-wrap gap-2 text-xs">
                     {[
                       { id: 'all', label: 'Все детекторы' },
-                      { id: 'geiger', label: 'Счетчики Гейгера-Мюллера (Слюдяные, Цилиндрические)' },
+                      { id: 'geiger', label: 'Счетчики Гейгера-Мюллера' },
                       { id: 'scintillator', label: 'Сцинтилляционные (NaI, ZnS)' },
                       { id: 'semiconductor', label: 'Полупроводниковые (CdZnTe, PIPS)' },
                       { id: 'ion_chamber', label: 'Ионизационные камеры' },
@@ -508,10 +428,10 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                       <button
                         key={f.id}
                         onClick={() => setInstrumentCategoryFilter(f.id)}
-                        className={`px-3 py-1 rounded-lg border transition ${
+                        className={`px-3 py-1.5 rounded-[10px] border transition ${
                           instrumentCategoryFilter === f.id
-                            ? 'bg-sky-500/20 border-sky-400 text-sky-300 font-bold'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                            ? 'bg-[#0EA5E9]/15 border-[#0EA5E9] text-[#0EA5E9] font-semibold'
+                            : 'alara-surface text-[#94A3B8] hover:text-[#F1F5F9]'
                         }`}
                       >
                         {f.label}
@@ -519,7 +439,6 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                     ))}
                   </div>
 
-                  {/* Список приборов */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                     {Object.values(GOST_INSTRUMENTS)
                       .filter(inst => instrumentCategoryFilter === 'all' || inst.category === instrumentCategoryFilter)
@@ -528,40 +447,28 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                         return (
                           <div
                             key={inst.id}
-                            className={`p-4 rounded-2xl border transition flex flex-col justify-between ${
+                            className={`p-4 rounded-xl border transition flex flex-col justify-between ${
                               isEquipped
-                                ? 'bg-sky-950/40 border-sky-400 ring-1 ring-sky-400'
-                                : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                                ? 'bg-[#0EA5E9]/10 border-[#0EA5E9] ring-1 ring-[#0EA5E9]/50'
+                                : 'alara-surface hover:border-[rgba(148,163,184,0.32)]'
                             }`}
                           >
                             <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-mono text-[#94A3B8]">
                                   {inst.gostStandard}
                                 </span>
-                                <div className="flex gap-1">
-                                  {inst.detectedRadiation.map(r => (
-                                    <span
-                                      key={r}
-                                      className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-mono font-bold ${
-                                        r === 'alpha' ? 'bg-rose-500/20 text-rose-300' :
-                                        r === 'beta' ? 'bg-sky-500/20 text-sky-300' :
-                                        r === 'gamma' ? 'bg-amber-500/20 text-amber-300' :
-                                        'bg-purple-500/20 text-purple-300'
-                                      }`}
-                                    >
-                                      {r}
-                                    </span>
-                                  ))}
-                                </div>
+                                <span className="text-[10px] uppercase font-mono font-bold text-[#F59E0B]">
+                                  {inst.detectedRadiation.join(' · ')}
+                                </span>
                               </div>
-                              <h4 className="font-bold text-sm text-white">{inst.name}</h4>
-                              <p className="text-[11px] text-slate-400 line-clamp-2">{inst.nameFull}</p>
-                              
-                              <div className="pt-2 text-[11px] font-mono space-y-1 text-slate-300 border-t border-slate-800/80">
-                                <div>Диапазон: <span className="text-cyan-300">{inst.measurementRangeRu}</span></div>
-                                <div>Погрешность: <span className="text-amber-300">±{inst.basicErrorPercent}%</span></div>
-                                <div>Инерционность: <span className="text-slate-400">τ = {inst.timeConstantSec} с</span></div>
+                              <h4 className="font-bold text-sm text-[#F1F5F9]">{inst.name}</h4>
+                              <p className="text-[11px] text-[#94A3B8] line-clamp-2">{inst.nameFull}</p>
+
+                              <div className="pt-2 text-[11px] font-mono alara-tabular space-y-1 text-[#94A3B8] border-t border-[rgba(148,163,184,0.12)]">
+                                <div>Диапазон: <span className="text-[#0EA5E9]">{inst.measurementRangeRu}</span></div>
+                                <div>Погрешность: <span className="text-[#F59E0B]">±{inst.basicErrorPercent}%</span></div>
+                                <div>Инерционность: <span className="text-[#F1F5F9]">τ = {inst.timeConstantSec} с</span></div>
                               </div>
                             </div>
 
@@ -570,14 +477,14 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                                 onSelectInstrument(inst.id);
                                 onChangePPE({ ...ppeState, instrumentId: inst.id });
                               }}
-                              className={`mt-3 w-full py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                              className={`mt-3 w-full py-2 rounded-[10px] text-xs font-bold transition flex items-center justify-center gap-1.5 ${
                                 isEquipped
-                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                  : 'bg-slate-800 hover:bg-slate-700 text-white'
+                                  ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40'
+                                  : 'bg-white/10 hover:bg-white/15 text-[#F1F5F9]'
                               }`}
                             >
                               {isEquipped ? <CheckCircle2 className="w-3.5 h-3.5" /> : null}
-                              <span>{isEquipped ? 'Экипирован в руку' : 'Выбрать данный прибор'}</span>
+                              <span>{isEquipped ? 'Экипирован' : 'Выбрать прибор'}</span>
                             </button>
                           </div>
                         );
@@ -586,10 +493,8 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                 </div>
               )}
 
-              {/* Подраздел 2.2: База радионуклидов */}
               {dbSubTab === 'isotopes' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-                  {/* Список радионуклидов */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
                   <div className="space-y-2 lg:col-span-1 max-h-[500px] overflow-y-auto pr-1">
                     {['Co-60', 'Cs-137', 'Am-241', 'Sr-90', 'Pu-239', 'Cf-252', 'Ir-192', 'Ra-226', 'F-18'].map(key => {
                       const iso = ISOTOPE_DATABASE[key];
@@ -602,22 +507,22 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                             setSelectedDbNuclideKey(key);
                             onSelectIsotope(key);
                           }}
-                          className={`p-3 rounded-xl border transition cursor-pointer flex items-center justify-between ${
+                          className={`p-3 rounded-[10px] border transition cursor-pointer flex items-center justify-between ${
                             isSel
-                              ? 'bg-sky-950/40 border-sky-400 text-sky-200 shadow-md'
-                              : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 text-slate-300'
+                              ? 'bg-[#0EA5E9]/15 border-[#0EA5E9] text-[#F1F5F9]'
+                              : 'alara-surface hover:border-[rgba(148,163,184,0.32)] text-[#94A3B8]'
                           }`}
                         >
                           <div>
-                            <div className="font-bold text-sm text-white flex items-center gap-2">
+                            <div className="font-bold text-sm text-[#F1F5F9] flex items-center gap-2">
                               <span>{iso.symbol}</span>
-                              <span className="text-xs text-slate-400 font-normal">({iso.nameRu})</span>
+                              <span className="text-xs text-[#94A3B8] font-normal">({iso.nameRu})</span>
                             </div>
-                            <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                              T½: {iso.halfLifeText} • w_R = {iso.wR}
+                            <div className="text-[11px] text-[#64748B] font-mono alara-tabular mt-0.5">
+                              T½: {iso.halfLifeText} · w_R = {iso.wR}
                             </div>
                           </div>
-                          <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-amber-300">
+                          <span className="text-xs font-mono font-bold text-[#F59E0B]">
                             {iso.radiationType.toUpperCase()}
                           </span>
                         </div>
@@ -625,53 +530,52 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                     })}
                   </div>
 
-                  {/* Карточка паспортных данных выбранного радионуклида */}
                   {ISOTOPE_DATABASE[selectedDbNuclideKey] && (
-                    <div className="lg:col-span-2 p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 text-xs">
+                    <div className="lg:col-span-2 p-5 rounded-xl alara-surface space-y-4 text-xs">
                       {(() => {
                         const iso = ISOTOPE_DATABASE[selectedDbNuclideKey];
                         return (
                           <>
-                            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div className="flex items-center justify-between border-b border-[rgba(148,163,184,0.16)] pb-3 gap-3">
                               <div>
-                                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <h3 className="text-base font-bold text-[#F1F5F9] flex items-center gap-2">
                                   <span>{iso.symbol}</span>
-                                  <span className="text-slate-400 font-normal">{iso.nameRu}</span>
+                                  <span className="text-[#94A3B8] font-normal">{iso.nameRu}</span>
                                 </h3>
-                                <p className="text-slate-400 text-xs mt-0.5">{iso.descriptionRu}</p>
+                                <p className="text-[#94A3B8] text-xs mt-0.5">{iso.descriptionRu}</p>
                               </div>
                               <button
                                 onClick={() => onSelectIsotope(iso.id)}
-                                className="px-3 py-1.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-xl transition shadow"
+                                className="px-3.5 py-2 bg-[#0EA5E9] hover:bg-[#38BDF8] text-[#0B1117] font-bold rounded-[10px] transition shrink-0"
                               >
-                                Установить в 3D сцену
+                                В 3D-сцену
                               </button>
                             </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono">
-                              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">Период полураспада T½:</span>
-                                <strong className="text-cyan-300 text-sm">{iso.halfLifeText}</strong>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono alara-tabular">
+                              <div className="p-3 rounded-[10px] bg-[#0B1117]/70 border border-[rgba(148,163,184,0.14)]">
+                                <span className="text-[#64748B] block text-[10px]">Период полураспада T½</span>
+                                <strong className="text-[#0EA5E9] text-sm">{iso.halfLifeText}</strong>
                               </div>
-                              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">Гамма-постоянная Г_γ:</span>
-                                <strong className="text-amber-300 text-sm">{iso.gammaConstant} (мкЗв·м²)/(ч·МБк)</strong>
+                              <div className="p-3 rounded-[10px] bg-[#0B1117]/70 border border-[rgba(148,163,184,0.14)]">
+                                <span className="text-[#64748B] block text-[10px]">Гамма-постоянная Г_γ</span>
+                                <strong className="text-[#F59E0B] text-sm">{iso.gammaConstant} (мкЗв·м²)/(ч·МБк)</strong>
                               </div>
-                              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">Весовой коэф. w_R:</span>
-                                <strong className="text-rose-300 text-sm">{iso.wR} (НРБ-99/2009)</strong>
+                              <div className="p-3 rounded-[10px] bg-[#0B1117]/70 border border-[rgba(148,163,184,0.14)]">
+                                <span className="text-[#64748B] block text-[10px]">Весовой коэф. w_R</span>
+                                <strong className="text-[#EF4444] text-sm">{iso.wR} (НРБ-99/2009)</strong>
                               </div>
-                              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">Энергия E_γ (средняя):</span>
-                                <strong className="text-white text-sm">{iso.energyMev} МэВ</strong>
+                              <div className="p-3 rounded-[10px] bg-[#0B1117]/70 border border-[rgba(148,163,184,0.14)]">
+                                <span className="text-[#64748B] block text-[10px]">Энергия E_γ (средняя)</span>
+                                <strong className="text-[#F1F5F9] text-sm">{iso.energyMev} МэВ</strong>
                               </div>
-                              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">Макс. энергия E_β:</span>
-                                <strong className="text-white text-sm">{iso.maxBetaEnergyMev} МэВ</strong>
+                              <div className="p-3 rounded-[10px] bg-[#0B1117]/70 border border-[rgba(148,163,184,0.14)]">
+                                <span className="text-[#64748B] block text-[10px]">Макс. энергия E_β</span>
+                                <strong className="text-[#F1F5F9] text-sm">{iso.maxBetaEnergyMev} МэВ</strong>
                               </div>
-                              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">Доля излучения:</span>
-                                <strong className="text-emerald-300 text-sm">
+                              <div className="p-3 rounded-[10px] bg-[#0B1117]/70 border border-[rgba(148,163,184,0.14)]">
+                                <span className="text-[#64748B] block text-[10px]">Доля излучения</span>
+                                <strong className="text-[#10B981] text-sm">
                                   {Object.entries(iso.emissionShares)
                                     .filter(([_, v]) => v > 0)
                                     .map(([k, v]) => `${k}:${(v * 100).toFixed(0)}%`)
@@ -686,18 +590,15 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                   )}
                 </div>
               )}
-
             </div>
           )}
 
-          {/* ===================================================================== */}
           {/* РАЗДЕЛ 3: ЭКИПИРОВКА (СИЗ) И 3D-МАНЕКЕН */}
-          {/* ===================================================================== */}
           {activeTab === 'ppe' && (
             <div className="space-y-4">
-              <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 leading-relaxed">
-                <strong className="text-sky-400">Регламент обеспечения СИЗ (ОСПОРБ-99/2010):</strong>{' '}
-                Кастомизация защитного снаряжения дозиметриста. Вращайте 3D-манекен мышью (360° CAD View) и переключайте костюмы, респираторы и приборы в реальном времени.
+              <div className="p-3.5 rounded-xl alara-surface text-xs text-[#94A3B8] leading-relaxed">
+                <strong className="text-[#0EA5E9]">Регламент обеспечения СИЗ (ОСПОРБ-99/2010):</strong>{' '}
+                Вращайте 3D-манекен и переключайте костюмы, респираторы и приборы в реальном времени.
               </div>
 
               <CharacterCustomizer3D
@@ -709,80 +610,73 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
             </div>
           )}
 
-          {/* ===================================================================== */}
           {/* РАЗДЕЛ 4: НАСТРОЙКИ И РЕГЛАМЕНТ */}
-          {/* ===================================================================== */}
           {activeTab === 'settings' && (
-            <div className="space-y-5 max-w-2xl text-xs">
-              
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-                <h3 className="font-bold text-sm text-white">Режим отображения интерфейса при запуске:</h3>
-                <label className="flex items-center gap-3 cursor-pointer p-2.5 rounded-xl hover:bg-slate-800 transition">
+            <div className="space-y-4 max-w-2xl text-xs">
+              <div className="p-4 rounded-xl alara-surface space-y-3">
+                <h3 className="font-bold text-sm text-[#F1F5F9]">Запуск тренажёра</h3>
+                <label className="flex items-center gap-3 cursor-pointer p-2.5 rounded-[10px] hover:bg-white/5 transition">
                   <input
                     type="checkbox"
                     checked={hideStartupModal}
                     onChange={e => onToggleHideStartupModal(e.target.checked)}
-                    className="w-4 h-4 rounded text-sky-500 focus:ring-0 cursor-pointer"
+                    className="w-4 h-4 rounded accent-[#0EA5E9] cursor-pointer"
                   />
                   <div>
-                    <span className="font-bold text-slate-200">Скрыть начальное окно выбора при следующем запуске</span>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Студент сразу попадает в 3D-лабораторию без вступительного окна. Главное меню всегда доступно по кнопке 🏠 в верхнем левом углу HUD.
+                    <span className="font-semibold text-[#F1F5F9]">Скрывать стартовое меню при запуске</span>
+                    <p className="text-[11px] text-[#94A3B8] mt-0.5">
+                      Меню всегда доступно по клавишам Tab / Esc или через кнопку в верхней панели HUD.
                     </p>
                   </div>
                 </label>
               </div>
 
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-                <h3 className="font-bold text-sm text-white">Физические параметры и Нормальные Условия (НУ):</h3>
-                <div className="grid grid-cols-2 gap-3 font-mono">
-                  <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                    <span className="text-slate-500 block text-[10px]">Температура воздуха Т₀:</span>
-                    <strong className="text-cyan-300">{NORMAL_CONDITIONS.temperatureC} °C (293.15 K)</strong>
+              <div className="p-4 rounded-xl alara-surface space-y-3">
+                <h3 className="font-bold text-sm text-[#F1F5F9]">Нормальные условия (НУ) и стандарты</h3>
+                <div className="grid grid-cols-2 gap-3 font-mono alara-tabular">
+                  <div className="p-3 rounded-[10px] bg-[#0B1117]/70 border border-[rgba(148,163,184,0.14)]">
+                    <span className="text-[#64748B] block text-[10px]">Температура Т₀</span>
+                    <strong className="text-[#0EA5E9]">{NORMAL_CONDITIONS.temperatureC} °C (293.15 K)</strong>
                   </div>
-                  <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                    <span className="text-slate-500 block text-[10px]">Барометрическое давление Р₀:</span>
-                    <strong className="text-cyan-300">{NORMAL_CONDITIONS.pressureKpa} кПа (760 мм рт. ст.)</strong>
+                  <div className="p-3 rounded-[10px] bg-[#0B1117]/70 border border-[rgba(148,163,184,0.14)]">
+                    <span className="text-[#64748B] block text-[10px]">Давление Р₀</span>
+                    <strong className="text-[#0EA5E9]">{NORMAL_CONDITIONS.pressureKpa} кПа</strong>
                   </div>
-                  <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                    <span className="text-slate-500 block text-[10px]">Плотность воздуха ρ₀:</span>
-                    <strong className="text-cyan-300">{NORMAL_CONDITIONS.airDensityGPerCm3} г/см³</strong>
+                  <div className="p-3 rounded-[10px] bg-[#0B1117]/70 border border-[rgba(148,163,184,0.14)]">
+                    <span className="text-[#64748B] block text-[10px]">Плотность воздуха ρ₀</span>
+                    <strong className="text-[#0EA5E9]">{NORMAL_CONDITIONS.airDensityGPerCm3} г/см³</strong>
                   </div>
-                  <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
-                    <span className="text-slate-500 block text-[10px]">Дозиметрический стандарт:</span>
-                    <strong className="text-emerald-300">ГОСТ Р 8.804-2012</strong>
+                  <div className="p-3 rounded-[10px] bg-[#0B1117]/70 border border-[rgba(148,163,184,0.14)]">
+                    <span className="text-[#64748B] block text-[10px]">Стандарт</span>
+                    <strong className="text-[#10B981]">ГОСТ Р 8.804-2012</strong>
                   </div>
                 </div>
               </div>
-
             </div>
           )}
 
         </div>
 
-        {/* Нижний колонтитул */}
-        <footer className="flex flex-wrap items-center justify-between gap-3 px-6 py-3.5 border-t border-slate-800 bg-slate-900/60 shrink-0 text-xs">
-          <div className="flex items-center gap-2 text-slate-400">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Выбрана: <strong className="text-white">{currentLabScenario.titleRu}</strong></span>
+        {/* Нижняя панель */}
+        <footer className="flex flex-wrap items-center justify-between gap-3 px-6 py-3.5 border-t border-[rgba(148,163,184,0.16)] shrink-0 text-xs">
+          <div className="text-[#94A3B8]">
+            Выбран сценарий: <strong className="text-[#F1F5F9]">{currentLabScenario.titleRu}</strong>
           </div>
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => {
-                onToggleHideStartupModal(!hideStartupModal);
-              }}
-              className="px-3 py-2 text-slate-400 hover:text-white transition text-xs"
+              onClick={() => onToggleHideStartupModal(!hideStartupModal)}
+              className="px-3 py-2 text-[#94A3B8] hover:text-[#F1F5F9] transition text-xs"
             >
-              {hideStartupModal ? '✓ Меню скрыто при старте' : 'Показывать меню при старте'}
+              {hideStartupModal ? 'Меню скрыто при старте' : 'Показывать при старте'}
             </button>
 
             <button
               onClick={onClose}
-              className="px-6 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-slate-950 font-black rounded-xl transition shadow-lg shadow-sky-500/20 flex items-center gap-2"
+              className="px-5 py-2 bg-[#0EA5E9] hover:bg-[#38BDF8] text-[#0B1117] font-bold rounded-[10px] transition flex items-center gap-2"
             >
               <Play className="w-4 h-4 fill-current" />
-              <span>Начать операцию на 3D-сцене АЭС</span>
+              <span>Начать операцию</span>
             </button>
           </div>
         </footer>

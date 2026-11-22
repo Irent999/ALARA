@@ -49,16 +49,16 @@ export const ScenarioSuccessModal: React.FC<ScenarioSuccessModalProps> = ({
   if (!isOpen) return null;
 
   let grade = alaraRating || 'ОТЛИЧНО (КЛАСС А)';
-  let gradeColor = 'text-emerald-400';
-  let gradeBadgeBg = 'bg-emerald-500/20 border-emerald-500/50';
+  let gradeColor = 'text-[#10B981]';
+  let gradeBadgeBg = 'bg-[#10B981]/10 border-[#10B981]/40';
   if (cumulativeDoseMsv > permitLimitMsv * 0.8) {
     grade = 'УДОВЛЕТВОРИТЕЛЬНО (КЛАСС C)';
-    gradeColor = 'text-amber-400';
-    gradeBadgeBg = 'bg-amber-500/20 border-amber-500/50';
+    gradeColor = 'text-[#F59E0B]';
+    gradeBadgeBg = 'bg-[#F59E0B]/10 border-[#F59E0B]/40';
   } else if (cumulativeDoseMsv > permitLimitMsv * 0.4) {
     grade = 'ХОРОШО (КЛАСС B)';
-    gradeColor = 'text-sky-400';
-    gradeBadgeBg = 'bg-sky-500/20 border-sky-500/50';
+    gradeColor = 'text-[#0EA5E9]';
+    gradeBadgeBg = 'bg-[#0EA5E9]/10 border-[#0EA5E9]/40';
   }
 
   const mins = Math.floor(missionTimeSec / 60);
@@ -66,161 +66,150 @@ export const ScenarioSuccessModal: React.FC<ScenarioSuccessModalProps> = ({
   const timeFormatted = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 pointer-events-auto animate-fadeIn">
-      {/* Мягкий изумрудный периметр успеха */}
-      <div className="absolute inset-0 border-4 border-emerald-500/40 pointer-events-none shadow-[inset_0_0_80px_rgba(16,185,129,0.25)]" />
-
-      <div className="relative w-full max-w-2xl bg-slate-950/95 border-2 border-emerald-500/80 rounded-3xl p-6 md:p-8 shadow-[0_0_80px_rgba(16,185,129,0.4)] text-slate-100">
-        {/* Кнопка закрытия [ ✕ ] */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B1117]/85 backdrop-blur-sm p-4 pointer-events-auto">
+      <div className="relative w-full max-w-2xl alara-glass-elevated border-[#10B981]/45 rounded-xl p-6 space-y-5">
         <button
+          type="button"
           onClick={onClose}
-          className="absolute top-5 right-5 p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer"
+          className="absolute top-4 right-4 p-2 rounded-[10px] alara-surface hover:bg-slate-800/80 text-[#94A3B8] hover:text-[#F1F5F9] transition cursor-pointer"
           title="Закрыть"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </button>
 
-        {/* Заголовок с золотым кубком */}
-        <div className="flex items-start gap-4">
-          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-500/30 to-amber-500/30 border border-emerald-500/60 text-amber-400 shrink-0 shadow-lg shadow-emerald-500/20">
-            <Trophy className="w-9 h-9 animate-bounce text-amber-400" />
+        <div className="flex items-start gap-3.5 border-b border-slate-400/15 pb-4">
+          <div className="p-2.5 rounded-xl bg-[#10B981]/15 border border-[#10B981]/40 text-[#10B981] shrink-0">
+            <Trophy className="w-7 h-7" />
           </div>
-          <div className="flex-1 pr-8">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-md bg-emerald-600 text-white text-[11px] font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+          <div className="flex-1 pr-8 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+              <span className="text-[#10B981] font-bold uppercase tracking-wider flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                СЦЕНАРИЙ УСПЕШНО ЗАВЕРШЕН
+                Сценарий завершён
               </span>
-              <span className="font-mono text-xs text-emerald-400 font-bold">
-                Сценарий #{scenarioId} / 4
-              </span>
+              <span className="text-[#64748B]">·</span>
+              <span className="text-[#94A3B8]">Сценарий #{scenarioId} / 4</span>
             </div>
-            <h2 className="text-xl md:text-2xl font-black text-white mt-1.5 leading-tight">
+            <h2 className="text-lg md:text-xl font-bold text-[#F1F5F9] mt-1 leading-tight">
               {scenarioTitle}
             </h2>
-            <p className="text-xs text-emerald-400/90 font-mono mt-0.5">
-              Все целевые критерии безопасности и радиационные задачи выполнены в полном объеме
+            <p className="text-xs text-[#94A3B8] mt-0.5">
+              Все целевые критерии радиационной безопасности выполнены в полном объёме
             </p>
           </div>
         </div>
 
-        {/* Метрики выполнения */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
-          {/* Доза */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
-            <div className="text-[11px] text-slate-400 flex items-center gap-1">
-              <Radiation className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Накопленная доза</span>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+          <div className="alara-surface rounded-[10px] p-3 flex flex-col justify-between">
+            <div className="text-[11px] text-[#94A3B8] flex items-center gap-1">
+              <Radiation className="w-3.5 h-3.5 text-[#10B981]" />
+              <span>Доза</span>
             </div>
             <div className="mt-1.5">
-              <div className="text-lg font-mono font-bold text-emerald-400">
-                {(cumulativeDoseMsv * 1000).toFixed(1)} <span className="text-xs font-normal">мкЗв</span>
+              <div className="text-base font-mono alara-tabular font-bold text-[#10B981]">
+                {(cumulativeDoseMsv * 1000).toFixed(1)} <span className="text-[11px] font-normal">мкЗв</span>
               </div>
-              <div className="text-[10px] font-mono text-slate-500">
-                Лимит: {(permitLimitMsv * 1000).toFixed(0)} мкЗв
+              <div className="text-[10px] font-mono alara-tabular text-[#64748B]">
+                Лимит {(permitLimitMsv * 1000).toFixed(0)} мкЗв
               </div>
             </div>
           </div>
 
-          {/* Время */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
-            <div className="text-[11px] text-slate-400 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5 text-sky-400" />
-              <span>Время миссии</span>
+          <div className="alara-surface rounded-[10px] p-3 flex flex-col justify-between">
+            <div className="text-[11px] text-[#94A3B8] flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5 text-[#0EA5E9]" />
+              <span>Время</span>
             </div>
             <div className="mt-1.5">
-              <div className="text-lg font-mono font-bold text-sky-400">{timeFormatted}</div>
-              <div className="text-[10px] font-mono text-slate-500">
-                {Math.round(missionTimeSec)} секунд
+              <div className="text-base font-mono alara-tabular font-bold text-[#0EA5E9]">{timeFormatted}</div>
+              <div className="text-[10px] font-mono alara-tabular text-[#64748B]">
+                {Math.round(missionTimeSec)} с
               </div>
             </div>
           </div>
 
-          {/* Задачи */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between">
-            <div className="text-[11px] text-slate-400 flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-              <span>Задачи этапов</span>
+          <div className="alara-surface rounded-[10px] p-3 flex flex-col justify-between">
+            <div className="text-[11px] text-[#94A3B8] flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#F59E0B]" />
+              <span>Этапы</span>
             </div>
             <div className="mt-1.5">
-              <div className="text-lg font-bold text-amber-400">
+              <div className="text-base font-mono alara-tabular font-bold text-[#F59E0B]">
                 {completedTasksCount} / {totalTasksCount}
               </div>
-              <div className="text-[10px] font-mono text-emerald-400">100% Выполнено</div>
+              <div className="text-[10px] font-mono text-[#10B981]">100% Выполнено</div>
             </div>
           </div>
 
-          {/* Оценка ALARA */}
-          <div className={`rounded-2xl p-3.5 border flex flex-col justify-between ${gradeBadgeBg}`}>
-            <div className="text-[11px] text-slate-400 flex items-center gap-1">
-              <Award className="w-3.5 h-3.5 text-amber-300" />
+          <div className={`rounded-[10px] p-3 border flex flex-col justify-between ${gradeBadgeBg}`}>
+            <div className="text-[11px] text-[#94A3B8] flex items-center gap-1">
+              <Award className="w-3.5 h-3.5 text-[#F59E0B]" />
               <span>Рейтинг ALARA</span>
             </div>
             <div className="mt-1.5">
-              <div className={`text-sm md:text-base font-black ${gradeColor}`}>{grade}</div>
-              <div className="text-[10px] font-mono text-slate-400">ОСПОРБ-99/2010</div>
+              <div className={`text-xs font-bold leading-snug ${gradeColor}`}>{grade}</div>
+              <div className="text-[10px] font-mono text-[#64748B] mt-0.5">ОСПОРБ-99/2010</div>
             </div>
           </div>
         </div>
 
-        {/* Текстовое резюме безопасности */}
-        <div className="mt-4 p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 text-xs text-slate-300 space-y-1.5">
-          <div className="font-bold text-emerald-300 flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Заключение службы радиационной безопасности:</span>
+        <div className="p-3.5 rounded-[10px] alara-surface border-[#10B981]/30 text-xs text-[#94A3B8] space-y-1.5">
+          <div className="font-semibold text-[#10B981] flex items-center gap-1.5">
+            <ShieldCheck className="w-4 h-4 shrink-0" />
+            <span>Заключение службы радиационной безопасности</span>
           </div>
-          <p className="leading-relaxed">
-            Операция выполнена с соблюдением всех трех составляющих оптимизации радиационной защиты
-            (ALARA): минимальное время пребывания в поле излучения, соблюдение безопасной дистанции
-            и эффективное применение экранирующих барьеров.
+          <p className="leading-relaxed text-[#F1F5F9]">
+            Операция выполнена с соблюдением трёх принципов оптимизации ALARA: минимальное время, безопасная дистанция и эффективное экранирование.
           </p>
           {mchsMetrics && (mchsMetrics.operationsCompleted > 0 || mchsMetrics.totalExtractable > 0) && (
-            <div className="pt-2 border-t border-emerald-500/20 flex flex-wrap gap-3 font-mono text-[11px] text-emerald-200">
+            <div className="pt-2 border-t border-slate-400/15 flex flex-wrap gap-3 font-mono alara-tabular text-[11px] text-[#14B8A6]">
               <span>Операций МЧС: {mchsMetrics.operationsCompleted}</span>
               <span>Эвакуация в САР: {mchsMetrics.extractedCount}/{mchsMetrics.totalExtractable}</span>
               <span>Щипцы ЦМ-1.5: {mchsMetrics.tongsCompliantExtractions}</span>
               {mchsMetrics.bareHandViolations > 0 && (
-                <span className="text-rose-400">
-                  Нарушения (хват без щипцов): {mchsMetrics.bareHandViolations}
+                <span className="text-[#EF4444]">
+                  Хват без щипцов: {mchsMetrics.bareHandViolations}
                 </span>
               )}
             </div>
           )}
         </div>
 
-        {/* Кнопки действий */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <button
+            type="button"
             onClick={() => {
               onClose();
               onNextScenario();
             }}
-            className="py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition cursor-pointer"
+            className="py-2.5 px-4 rounded-[10px] bg-[#10B981] hover:bg-emerald-400 text-[#0B1117] font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap"
           >
             <span>Следующий сценарий</span>
             <ArrowRight className="w-4 h-4" />
           </button>
 
           <button
+            type="button"
             onClick={() => {
               onClose();
               onRestartScenario();
             }}
-            className="py-3 px-4 rounded-xl bg-amber-600/80 hover:bg-amber-600 text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer"
+            className="py-2.5 px-4 rounded-[10px] alara-surface border-[#F59E0B]/40 hover:bg-slate-800/80 text-[#F59E0B] font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap"
           >
             <RotateCcw className="w-4 h-4" />
-            <span>Повторить сценарий</span>
+            <span>Повторить</span>
           </button>
 
           <button
+            type="button"
             onClick={() => {
               onClose();
               onOpenReport();
             }}
-            className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition cursor-pointer"
+            className="py-2.5 px-4 rounded-[10px] alara-surface hover:bg-slate-800/80 text-[#F1F5F9] font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap"
           >
-            <BarChart3 className="w-4 h-4 text-sky-400" />
-            <span>Анализ ALARA (Отчет)</span>
+            <BarChart3 className="w-4 h-4 text-[#0EA5E9]" />
+            <span>Отчёт ALARA</span>
           </button>
         </div>
       </div>

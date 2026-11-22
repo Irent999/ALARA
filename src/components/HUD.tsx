@@ -1,12 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
   Droplets,
   Eye,
   EyeOff,
   Glasses,
   PackageCheck,
   Radiation,
+  RotateCcw,
   Tablet
 } from 'lucide-react';
 import { MchsToolId, NozzleSprayMode, TOOL_SLOTS } from '../scene/ToolManager';
@@ -117,39 +121,39 @@ export const DesktopDebugHUD: React.FC<DesktopDebugHUDProps> = ({
   const nextMinuteDoseMsv = accumulateDose(displayRateMsv, 60, accumulatedDoseMsv);
 
   return (
-    <div className="pointer-events-auto rounded-xl border border-white/10 bg-slate-950/90 p-3 text-xs text-slate-200 shadow-xl">
-      <div className="flex items-center justify-between border-b border-white/10 pb-1.5 mb-2">
-        <span className="font-semibold text-amber-300">Ядро ГОСТ Р 54413-2011</span>
-        <span className="font-mono tabular-nums text-[11px] text-emerald-300">
+    <div className="pointer-events-auto rounded-xl alara-glass p-3 text-xs text-[#F1F5F9]">
+      <div className="flex items-center justify-between border-b border-slate-400/15 pb-1.5 mb-2">
+        <span className="font-semibold text-[#F59E0B]">Ядро ГОСТ Р 54413-2011</span>
+        <span className="font-mono alara-tabular text-[11px] text-[#10B981]">
           {nuclide.symbol} · Kγ={nuclide.kGamma}
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-2 font-mono tabular-nums text-[11px]">
+      <div className="grid grid-cols-2 gap-2 font-mono alara-tabular text-[11px]">
         <div>
-          <span className="text-slate-400">МЭД H(r): </span>
-          <b className="text-white">{displayRateMsv.toFixed(4)} мЗв/ч</b>
+          <span className="text-[#94A3B8]">МЭД H(r): </span>
+          <b className="text-[#F1F5F9]">{displayRateMsv.toFixed(4)} мЗв/ч</b>
         </div>
         <div>
-          <span className="text-slate-400">Доза H(t): </span>
-          <b className="text-amber-300">{accumulatedDoseMsv.toFixed(4)} мЗв</b>
+          <span className="text-[#94A3B8]">Доза H(t): </span>
+          <b className="text-[#F59E0B]">{accumulatedDoseMsv.toFixed(4)} мЗв</b>
         </div>
         <div>
-          <span className="text-slate-400">B(μx): </span>
-          <b className="text-sky-300">{calc.effectiveBuildupFactor.toFixed(2)}</b>
+          <span className="text-[#94A3B8]">B(μx): </span>
+          <b className="text-[#0EA5E9]">{calc.effectiveBuildupFactor.toFixed(2)}</b>
         </div>
         <div>
-          <span className="text-slate-400">K_att: </span>
-          <b className="text-emerald-300">×{calc.attenuationFactor.toFixed(1)}</b>
+          <span className="text-[#94A3B8]">K_att: </span>
+          <b className="text-[#10B981]">×{calc.attenuationFactor.toFixed(1)}</b>
         </div>
-        <div className="col-span-2 text-slate-400">
-          Экран: <span className="text-slate-200">{shieldMat.nameRu}</span> ({shieldThicknessCm} см) · +60с:{' '}
+        <div className="col-span-2 text-[#94A3B8]">
+          Экран: <span className="text-[#F1F5F9]">{shieldMat.nameRu}</span> ({shieldThicknessCm} см) · +60с:{' '}
           {nextMinuteDoseMsv.toFixed(4)} мЗв
         </div>
       </div>
       {onToggleFlashlight && (
         <button
           onClick={onToggleFlashlight}
-          className="mt-2 w-full rounded-lg bg-slate-800 hover:bg-slate-700 py-1.5 text-[11px] font-medium text-amber-300 transition whitespace-nowrap"
+          className="mt-2 w-full rounded-[10px] alara-surface hover:bg-slate-800/70 py-1.5 text-[11px] font-medium text-[#F59E0B] transition whitespace-nowrap cursor-pointer"
         >
           Фонарь (5500K): {isFlashlightOn ? 'Вкл' : 'Выкл'}
         </button>
@@ -263,6 +267,7 @@ export const HUD: React.FC<HUDProps> = ({
   threatLevel,
   cumulativeDoseMsv,
   currentDoseRateMicroSv,
+  onOpenGostGuide,
   onToggleVR,
   isVRSupported,
   isInVR,
@@ -293,6 +298,7 @@ export const HUD: React.FC<HUDProps> = ({
   onToggleVisibility,
   onOpenMainMenu,
   onOpenTablet,
+  onStepChange,
   targetedObject = null,
   doseResetCount = 0,
   getSessionLimitsSummary,
@@ -308,6 +314,8 @@ export const HUD: React.FC<HUDProps> = ({
   onCloseAnalyticsWindow
 }) => {
   const { isPresenting } = useXR(undefined, isInVR);
+  const [isMissionCollapsed, setIsMissionCollapsed] = useState(true);
+  const [isHintOpen, setIsHintOpen] = useState(false);
 
   // Строгое исключение 2D HTML-оверлея при надетом VR-шлеме
   if (isPresenting || isInVR) {
@@ -332,14 +340,15 @@ export const HUD: React.FC<HUDProps> = ({
 
   const threatTextColor =
     threatLevel === 'danger'
-      ? 'text-rose-300'
+      ? 'text-[#EF4444]'
       : threatLevel === 'warning'
-      ? 'text-amber-300'
-      : 'text-emerald-300';
+      ? 'text-[#F59E0B]'
+      : 'text-[#10B981]';
 
   const isScenario4 = scenario.id === 4 && Boolean(scenario4Snapshot);
   const activeStepNumber = isScenario4 ? scenario4Snapshot!.stepNumber : scenarioStep + 1;
   const totalSteps = isScenario4 ? scenario4Snapshot!.totalSteps : scenario.stages.length;
+  const currentStage = scenario.stages[scenarioStep] || scenario.stages[0];
 
   const holdProgress01 = holdSnapshot?.isHolding ? holdSnapshot.progress : 0;
   const isHoldingAny = Boolean(holdSnapshot?.isHolding);
@@ -407,10 +416,10 @@ export const HUD: React.FC<HUDProps> = ({
           <button
             type="button"
             onClick={() => onToggleVisibility?.(true)}
-            className="px-3 py-1.5 rounded-lg bg-slate-950/90 hover:bg-slate-900 text-slate-200 border border-slate-700 shadow-lg transition flex items-center gap-1.5 text-xs font-mono cursor-pointer"
+            className="px-3 py-1.5 rounded-[10px] alara-glass hover:bg-slate-800/80 text-[#F1F5F9] transition flex items-center gap-1.5 text-xs font-mono cursor-pointer whitespace-nowrap"
             title="Показать 2D HUD [H]"
           >
-            <Eye className="w-3.5 h-3.5 text-amber-400" />
+            <Eye className="w-3.5 h-3.5 text-[#F59E0B]" />
             <span>[H] Показать HUD</span>
           </button>
         </div>
@@ -476,22 +485,22 @@ export const HUD: React.FC<HUDProps> = ({
         mchsMetrics={mchsMetrics}
       />
 
-      {/* Контекстный уведомитель голоса (PTT [V]) — только во время записи или свежего тоста */}
+      {/* Контекстный уведомитель голоса (PTT [V]) */}
       {(isVoicePushToTalkActive || latestVoiceToast) && (
         <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 pointer-events-none max-w-md w-[88vw]">
           <div
-            className={`bg-slate-950/92 border rounded-xl px-3.5 py-2 shadow-xl ${
+            className={`alara-glass rounded-xl px-3.5 py-2 ${
               isVoicePushToTalkActive
-                ? 'border-emerald-400/70'
+                ? 'border-[#10B981]/60'
                 : latestVoiceToast?.kind === 'error'
-                ? 'border-rose-500/70'
+                ? 'border-[#EF4444]/60'
                 : latestVoiceToast?.kind === 'command'
-                ? 'border-sky-400/70'
-                : 'border-amber-400/70'
+                ? 'border-[#0EA5E9]/60'
+                : 'border-[#F59E0B]/60'
             }`}
           >
             <div className="flex items-center justify-between gap-3 mb-0.5">
-              <span className="text-[10px] font-mono font-semibold text-emerald-300">
+              <span className="text-[11px] font-mono font-semibold text-[#10B981]">
                 {isVoicePushToTalkActive
                   ? `Голос PTT [${
                       voiceMode === 'commands'
@@ -511,7 +520,7 @@ export const HUD: React.FC<HUDProps> = ({
                     <span
                       key={idx}
                       className={`w-1 rounded-sm ${
-                        isVoicePushToTalkActive ? 'bg-emerald-400' : 'bg-slate-600'
+                        isVoicePushToTalkActive ? 'bg-[#10B981]' : 'bg-slate-600'
                       }`}
                       style={{ height: `${activeBar}%` }}
                     />
@@ -519,7 +528,7 @@ export const HUD: React.FC<HUDProps> = ({
                 })}
               </div>
             </div>
-            <div className="text-xs text-white leading-snug">
+            <div className="text-xs text-[#F1F5F9] leading-snug">
               {isVoicePushToTalkActive
                 ? voiceInterimTranscript || 'Произнесите замер или команду...'
                 : latestVoiceToast?.text}
@@ -533,23 +542,23 @@ export const HUD: React.FC<HUDProps> = ({
         <button
           type="button"
           onClick={() => openTabletHandler?.()}
-          className="pointer-events-auto flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-slate-950/90 hover:bg-slate-900 border border-white/12 shadow-lg text-[11px] font-mono tabular-nums text-slate-200 cursor-pointer whitespace-nowrap"
+          className="pointer-events-auto flex items-center gap-2.5 px-3 py-1.5 rounded-xl alara-glass hover:bg-slate-800/80 text-[12px] font-mono alara-tabular text-[#F1F5F9] cursor-pointer whitespace-nowrap transition"
           title="Открыть Тактический Планшет [Tab]"
         >
-          <span className="font-bold text-sky-300">Сц. {scenario.id}</span>
-          <span className="text-slate-500">·</span>
-          <span className="text-slate-300">
+          <span className="font-bold text-[#0EA5E9]">Сц. {scenario.id}</span>
+          <span className="text-[#64748B]">·</span>
+          <span className="text-[#94A3B8]">
             Фаза {activeStepNumber}/{totalSteps}
           </span>
-          <span className="text-slate-500">·</span>
+          <span className="text-[#64748B]">·</span>
           <span className={`flex items-center gap-1 font-semibold ${threatTextColor}`}>
-            <Radiation className="w-3 h-3 shrink-0" />
+            <Radiation className="w-3.5 h-3.5 shrink-0" />
             {formattedDoseRate} {doseRateUnit}
           </span>
-          <span className="text-slate-400 hidden sm:inline">
+          <span className="text-[#94A3B8] hidden sm:inline">
             · Доза {(cumulativeDoseMsv * 1000).toFixed(1)} мкЗв
           </span>
-          <span className="text-slate-500 hidden md:inline">· {countdownFormatted}</span>
+          <span className="text-[#64748B] hidden md:inline">· {countdownFormatted}</span>
         </button>
 
         <div className="pointer-events-auto flex items-center gap-1.5">
@@ -557,12 +566,12 @@ export const HUD: React.FC<HUDProps> = ({
             <button
               type="button"
               onClick={openTabletHandler}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-950/90 hover:bg-slate-900 border border-white/12 text-slate-200 text-xs font-medium flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap"
+              className="px-3 py-1.5 rounded-[10px] alara-glass hover:bg-slate-800/80 text-[#F1F5F9] text-xs font-medium flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition"
               title="Тактический Планшет [Tab]"
             >
-              <Tablet className="w-3.5 h-3.5 text-sky-400" />
+              <Tablet className="w-3.5 h-3.5 text-[#0EA5E9]" />
               <span className="hidden sm:inline">Планшет</span>
-              <span className="text-[10px] font-mono text-slate-400">[Tab]</span>
+              <span className="text-[11px] font-mono text-[#94A3B8]">[Tab]</span>
             </button>
           )}
 
@@ -570,12 +579,12 @@ export const HUD: React.FC<HUDProps> = ({
             type="button"
             onClick={onToggleVR}
             disabled={!isVRSupported}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border shadow-lg flex items-center gap-1 whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-[10px] text-xs font-medium alara-glass flex items-center gap-1.5 whitespace-nowrap transition ${
               isVRSupported
-                ? 'bg-slate-950/90 hover:bg-slate-900 border-white/12 text-amber-300 cursor-pointer'
-                : 'bg-slate-950/60 border-white/5 text-slate-500 cursor-not-allowed'
+                ? 'hover:bg-slate-800/80 text-[#F59E0B] cursor-pointer'
+                : 'opacity-50 text-[#64748B] cursor-not-allowed'
             }`}
-            title={isVRSupported ? 'Войти в VR-режим (WebXR)' : 'WebXR не обнаружен'}
+            title={isVRSupported ? 'Войти в VR-режим (HTC Vive / WebXR)' : 'WebXR не обнаружен'}
           >
             <Glasses className="w-3.5 h-3.5" />
             <span>VR</span>
@@ -584,19 +593,111 @@ export const HUD: React.FC<HUDProps> = ({
           <button
             type="button"
             onClick={() => onToggleVisibility?.(false)}
-            className="px-2.5 py-1.5 rounded-lg bg-slate-950/90 hover:bg-slate-900 border border-white/12 text-slate-300 text-xs flex items-center gap-1 shadow-lg cursor-pointer whitespace-nowrap"
+            className="px-2.5 py-1.5 rounded-[10px] alara-glass hover:bg-slate-800/80 text-[#94A3B8] hover:text-[#F1F5F9] text-xs flex items-center gap-1 cursor-pointer whitespace-nowrap transition"
             title="Скрыть 2D HUD [H]"
           >
             <EyeOff className="w-3.5 h-3.5" />
-            <span className="hidden md:inline font-mono text-[10px] text-slate-400">[H]</span>
+            <span className="hidden md:inline font-mono text-[11px]">[H]</span>
           </button>
         </div>
       </div>
 
+      {/* КОЛЛАПСИРУЕМАЯ КАРТОЧКА ЗАДАЧИ ДЛЯ СЦЕНАРИЕВ 1–3 (унифицировано со Сценарием 4) */}
+      {!isScenario4 && currentStage && (
+        <div className="fixed top-14 left-3 z-30 pointer-events-auto max-w-sm">
+          {isMissionCollapsed ? (
+            <button
+              type="button"
+              onClick={() => setIsMissionCollapsed(false)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl alara-glass hover:bg-slate-800/80 text-xs text-[#F1F5F9] transition cursor-pointer"
+              title="Развернуть текущую задачу миссии"
+            >
+              <span className="font-mono alara-tabular font-semibold text-[#0EA5E9]">
+                Задача {activeStepNumber}/{totalSteps}
+              </span>
+              <span className="text-[#94A3B8] truncate max-w-[210px]">{currentStage.titleRu}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-[#94A3B8] shrink-0" />
+            </button>
+          ) : (
+            <div className="rounded-xl alara-glass p-3.5 space-y-2.5 text-xs text-[#F1F5F9]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-mono alara-tabular text-[11px] font-semibold text-[#0EA5E9]">
+                    Шаг {activeStepNumber} из {totalSteps}
+                  </div>
+                  <div className="font-semibold text-sm text-[#F1F5F9] truncate">
+                    {currentStage.titleRu}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMissionCollapsed(true)}
+                  className="p-1.5 rounded-[10px] alara-surface hover:bg-slate-800/80 text-[#94A3B8] hover:text-[#F1F5F9] cursor-pointer shrink-0"
+                  title="Свернуть карточку"
+                >
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <p className="text-[#94A3B8] leading-relaxed">{currentStage.taskRu}</p>
+
+              {currentStage.hintRu && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setIsHintOpen(prev => !prev)}
+                    className="flex items-center gap-1 text-[11px] font-medium text-[#14B8A6] hover:text-[#0EA5E9] cursor-pointer"
+                  >
+                    <ChevronRight
+                      className={`w-3.5 h-3.5 transition-transform ${isHintOpen ? 'rotate-90' : ''}`}
+                    />
+                    <span>Подсказка ALARA</span>
+                  </button>
+                  {isHintOpen && (
+                    <div className="mt-1.5 p-2.5 rounded-[10px] alara-surface text-[11px] text-[#94A3B8] leading-relaxed">
+                      {currentStage.hintRu}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-400/15">
+                {onStepChange && scenarioStep < totalSteps - 1 && (
+                  <button
+                    type="button"
+                    onClick={() => onStepChange(scenarioStep + 1)}
+                    className="px-2.5 py-1.5 rounded-[10px] bg-[#0EA5E9] hover:bg-sky-400 text-[#0B1117] font-semibold text-[11px] cursor-pointer whitespace-nowrap transition"
+                  >
+                    Зачесть шаг →
+                  </button>
+                )}
+                {onOpenGostGuide && (
+                  <button
+                    type="button"
+                    onClick={onOpenGostGuide}
+                    className="px-2.5 py-1.5 rounded-[10px] alara-surface hover:bg-slate-800/80 text-[#F1F5F9] text-[11px] font-medium cursor-pointer whitespace-nowrap transition"
+                  >
+                    Приборы ГОСТ
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onResetScenario}
+                  className="ml-auto px-2.5 py-1.5 rounded-[10px] alara-surface hover:bg-slate-800/80 text-[#94A3B8] hover:text-[#F1F5F9] text-[11px] flex items-center gap-1 cursor-pointer whitespace-nowrap transition"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Сброс</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ЦЕНТРАЛЬНЫЙ ПРИЦЕЛ + КОЛЬЦЕВОЙ ИНДИКАТОР УДЕРЖАНИЯ + КОНТЕКСТНАЯ ПОДСКАЗКА */}
       <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-20">
         <div className="relative flex items-center justify-center">
-          {/* Круговой SVG-индикатор прогресса удержания (только во время зажима) */}
+          {/* Круговой SVG-индикатор прогресса удержания */}
           {isHoldingAny && holdProgress01 > 0 && (
             <svg className="w-12 h-12 -rotate-90" viewBox="0 0 44 44">
               <circle
@@ -604,7 +705,7 @@ export const HUD: React.FC<HUDProps> = ({
                 cy="22"
                 r="19"
                 fill="none"
-                stroke="rgba(15, 23, 42, 0.75)"
+                stroke="rgba(11, 17, 23, 0.78)"
                 strokeWidth="3"
               />
               <circle
@@ -612,7 +713,7 @@ export const HUD: React.FC<HUDProps> = ({
                 cy="22"
                 r="19"
                 fill="none"
-                stroke="#34d399"
+                stroke="#10B981"
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeDasharray={ringCircumference}
@@ -623,31 +724,33 @@ export const HUD: React.FC<HUDProps> = ({
 
           {/* Точка прицела 6px */}
           <div
-            className={`absolute w-1.5 h-1.5 rounded-full border border-slate-950 ${
+            className={`absolute w-1.5 h-1.5 rounded-full border border-[#0B1117] ${
               isHoldingAny
-                ? 'bg-emerald-400 scale-125'
+                ? 'bg-[#10B981] scale-125'
                 : targetedObject || scen4Prompt
-                ? 'bg-amber-300'
-                : 'bg-white/75'
+                ? 'bg-[#F59E0B]'
+                : 'bg-[#F1F5F9]/80'
             }`}
           />
 
-          {/* Единая компактная строка взаимодействия ровно под прицелом (только при наведении/удержании) */}
+          {/* Единая компактная строка взаимодействия ровно под прицелом */}
           {showCrosshairPrompt && (
             <div className="absolute top-8 left-1/2 -translate-x-1/2 whitespace-nowrap max-w-[85vw]">
               {holdLabel && holdProgress01 > 0 ? (
-                <div className="px-3 py-1 rounded-lg bg-slate-950/92 border border-emerald-400/70 text-[11px] font-mono text-emerald-300 shadow-lg">
+                <div className="px-3 py-1 rounded-[10px] alara-glass border-[#10B981]/60 text-[11px] font-mono alara-tabular text-[#10B981]">
                   {holdLabel} — {Math.round(holdProgress01 * 100)}%
                 </div>
               ) : scen4Prompt ? (
-                <div className="px-3 py-1.5 rounded-lg bg-slate-950/92 border border-sky-400/70 text-[11px] text-sky-100 font-medium shadow-lg">
+                <div className="px-3 py-1.5 rounded-[10px] alara-glass border-[#0EA5E9]/50 text-xs text-[#F1F5F9] font-medium">
                   {scen4Prompt}
                 </div>
               ) : targetedObject ? (
-                <div className="px-3 py-1.5 rounded-lg bg-slate-950/90 border border-slate-700 text-[11px] text-slate-100 shadow-lg flex items-center gap-2">
-                  <span className="font-bold text-white">{targetedObject.nameRu}</span>
-                  <span className="text-slate-400 font-mono">{targetedObject.distanceM.toFixed(1)}м</span>
-                  <span className="text-amber-300 font-mono">
+                <div className="px-3 py-1.5 rounded-[10px] alara-glass text-xs text-[#F1F5F9] flex items-center gap-2">
+                  <span className="font-semibold text-[#F1F5F9]">{targetedObject.nameRu}</span>
+                  <span className="text-[#94A3B8] font-mono alara-tabular">
+                    {targetedObject.distanceM.toFixed(1)} м
+                  </span>
+                  <span className="text-[#F59E0B] font-mono">
                     {targetedObject.isGrabbed
                       ? '[E] Отпустить'
                       : targetedObject.holdPromptRu
@@ -665,21 +768,20 @@ export const HUD: React.FC<HUDProps> = ({
 
       {/* НИЖНИЙ КОМПАКТНЫЙ ХОТБАР ИНСТРУМЕНТОВ [1–4] + ДОП. [5–6] */}
       <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 pointer-events-auto flex flex-col items-center gap-1.5 max-w-[96vw]">
-        {/* Индикатор переносимого в САР опасного объекта — появляется только при переноске */}
         {carriedHazard && (
           <div
-            className={`px-3 py-1 rounded-lg border text-[11px] font-medium flex items-center gap-2 shadow-lg ${
+            className={`px-3 py-1.5 rounded-[10px] alara-glass text-xs font-medium flex items-center gap-2 ${
               carriedHazard.bareHandViolation
-                ? 'bg-rose-950/95 border-rose-500/70 text-rose-200'
-                : 'bg-emerald-950/95 border-emerald-500/70 text-emerald-200'
+                ? 'border-[#EF4444]/60 text-[#EF4444]'
+                : 'border-[#10B981]/60 text-[#10B981]'
             }`}
           >
             {carriedHazard.bareHandViolation ? (
-              <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
             ) : (
-              <PackageCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <PackageCheck className="w-3.5 h-3.5 shrink-0" />
             )}
-            <span>
+            <span className="text-[#F1F5F9]">
               В руках: <strong>{carriedHazard.item.nameRu}</strong>
               {carriedHazard.nearestDropZoneDistanceM !== null
                 ? ` · До САР: ${carriedHazard.nearestDropZoneDistanceM.toFixed(1)} м`
@@ -689,7 +791,7 @@ export const HUD: React.FC<HUDProps> = ({
         )}
 
         {/* Строка слотов инструментов */}
-        <div className="flex items-center gap-1 px-1.5 py-1 rounded-lg bg-slate-950/90 border border-white/12 shadow-xl">
+        <div className="flex items-center gap-1 p-1 rounded-xl alara-glass">
           {primarySlots.map(slot => {
             const isSelected = activeToolId === slot.id;
             return (
@@ -697,14 +799,14 @@ export const HUD: React.FC<HUDProps> = ({
                 key={slot.id}
                 type="button"
                 onClick={() => onSelectTool?.(slot.id)}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-mono transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                className={`px-2.5 py-1.5 rounded-[10px] text-[11px] font-mono alara-tabular transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                   isSelected
-                    ? 'bg-sky-500 text-slate-950 font-bold shadow'
-                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border border-white/8'
+                    ? 'bg-[#0EA5E9] text-[#0B1117] font-bold'
+                    : 'alara-surface hover:bg-slate-800/80 text-[#94A3B8] hover:text-[#F1F5F9]'
                 }`}
                 title={`${slot.nameRu} — ${slot.purposeRu} [${slot.hotkey}]`}
               >
-                <span className={isSelected ? 'text-slate-950 font-black' : 'text-sky-400'}>
+                <span className={isSelected ? 'text-[#0B1117] font-bold' : 'text-[#0EA5E9]'}>
                   [{slot.hotkey}]
                 </span>
                 <span>{slot.shortNameRu}</span>
@@ -714,7 +816,7 @@ export const HUD: React.FC<HUDProps> = ({
 
           {!isScenario4 && (
             <>
-              <div className="w-px h-5 bg-white/10 mx-0.5 hidden sm:block" />
+              <div className="w-px h-5 bg-slate-400/15 mx-0.5 hidden sm:block" />
               {secondarySlots.map(slot => {
                 const isSelected = activeToolId === slot.id;
                 return (
@@ -722,14 +824,14 @@ export const HUD: React.FC<HUDProps> = ({
                     key={slot.id}
                     type="button"
                     onClick={() => onSelectTool?.(slot.id)}
-                    className={`px-2 py-1 rounded-md text-[11px] font-mono transition hidden sm:flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                    className={`px-2.5 py-1.5 rounded-[10px] text-[11px] font-mono alara-tabular transition hidden sm:flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                       isSelected
-                        ? 'bg-amber-400 text-slate-950 font-bold shadow'
-                        : 'bg-slate-900/60 hover:bg-slate-800 text-slate-400 border border-white/8'
+                        ? 'bg-[#F59E0B] text-[#0B1117] font-bold'
+                        : 'alara-surface hover:bg-slate-800/80 text-[#94A3B8] hover:text-[#F1F5F9]'
                     }`}
                     title={`${slot.nameRu} — ${slot.purposeRu} [${slot.hotkey}]`}
                   >
-                    <span className={isSelected ? 'text-slate-950 font-black' : 'text-slate-500'}>
+                    <span className={isSelected ? 'text-[#0B1117] font-bold' : 'text-[#64748B]'}>
                       [{slot.hotkey}]
                     </span>
                     <span>{slot.shortNameRu}</span>
@@ -739,15 +841,14 @@ export const HUD: React.FC<HUDProps> = ({
             </>
           )}
 
-          {/* Переключатель режима струи [Q] только при активном стволе/огнетушителе [3] */}
           {activeToolId === 'extinguisher' && (
             <button
               type="button"
               onClick={onToggleNozzleSprayMode}
-              className="ml-0.5 px-2.5 py-1 rounded-md text-[11px] font-mono font-semibold bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-400/45 text-cyan-200 flex items-center gap-1 cursor-pointer whitespace-nowrap"
+              className="ml-0.5 px-2.5 py-1.5 rounded-[10px] text-[11px] font-mono font-semibold bg-[#14B8A6]/15 hover:bg-[#14B8A6]/25 border border-[#14B8A6]/45 text-[#14B8A6] flex items-center gap-1 cursor-pointer whitespace-nowrap transition"
               title="Переключить режим струи [Q]"
             >
-              <Droplets className="w-3 h-3 text-cyan-300" />
+              <Droplets className="w-3.5 h-3.5" />
               <span>[Q] {nozzleSprayMode === 'SOLID' ? 'Сплошная' : 'Распыл'}</span>
             </button>
           )}

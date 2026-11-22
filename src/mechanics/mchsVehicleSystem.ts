@@ -11,8 +11,9 @@
  */
 
 import * as THREE from 'three';
-import { SCENARIO_4_CONFIG, type WallColliderBox } from '../npp/nppNodeConfig';
+import { AC40_CAB_CONFIG, SCENARIO_4_CONFIG, type WallColliderBox } from '../npp/nppNodeConfig';
 import type { BuildingVolumeInfo, NamedWorldMarker } from '../npp/nppSceneInspector';
+import { Ac40CabCockpit } from './ac40CabCockpit';
 
 export interface VehicleAutopilotTarget {
   readonly index: number;
@@ -31,6 +32,7 @@ export interface MchsVehicleSnapshot {
   readonly hoseLengthM: number;
   readonly maxHoseLengthM: number;
   readonly hoseOverstretched: boolean;
+  readonly beaconsOn: boolean;
   readonly targets: VehicleAutopilotTarget[];
 }
 
@@ -73,6 +75,9 @@ export class MchsVehicleSystem {
 
   private readonly wheels: THREE.Group[] = [];
   private readonly frontSteerPivots: THREE.Group[] = [];
+  private readonly cabCockpit: Ac40CabCockpit;
+  private beaconBlueMat!: THREE.MeshStandardMaterial;
+  private beaconAmberMat!: THREE.MeshStandardMaterial;
   private readonly doorHaloMesh: THREE.Mesh;
   private readonly pumpHaloMesh: THREE.Mesh;
   private readonly pumpNozzleMount = new THREE.Object3D();
@@ -95,8 +100,10 @@ export class MchsVehicleSystem {
   public nearDoor = false;
   public nearHoseReel = false;
   public isHoseAttached = false;
+  public beaconsOn = true;
   public currentSpeedMps = 0;
   private currentSteerAngle = 0;
+  private currentThrottle = 0;
   public autopilotTargetIndex: number | null = null;
   public hoseLengthM = 0;
   public hoseOverstretched = false;
@@ -129,6 +136,9 @@ export class MchsVehicleSystem {
     const dx = params.lookTarget.x - params.spawnPos.x;
     const dz = params.lookTarget.z - params.spawnPos.z;
     this.vehicleYaw = Math.atan2(dx, dz);
+
+    this.cabCockpit = new Ac40CabCockpit();
+    this.vehicleGroup.add(this.cabCockpit.rootGroup);
 
     const { doorHalo, pumpHalo } = this.buildTruckMesh();
     this.doorHaloMesh = doorHalo;
@@ -180,41 +190,32 @@ export class MchsVehicleSystem {
     const metalMat = this.track(
       new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.38, metalness: 0.8 })
     );
-    const glassMat = this.track(
-      new THREE.MeshStandardMaterial({
-        color: 0x0ea5e9,
-        roughness: 0.12,
-        metalness: 0.4,
-        transparent: true,
-        opacity: 0.52
-      })
-    );
     const tireMat = this.track(
       new THREE.MeshStandardMaterial({ color: 0x171717, roughness: 0.88, metalness: 0.08 })
     );
     const brassMat = this.track(
       new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.28, metalness: 0.85 })
     );
-    const beaconBlueMat = this.track(
+    this.beaconBlueMat = this.track(
       new THREE.MeshStandardMaterial({
         color: 0x38bdf8,
         emissive: 0x0284c7,
-        emissiveIntensity: 0.85,
+        emissiveIntensity: 0.9,
         roughness: 0.2
       })
     );
-    const beaconAmberMat = this.track(
+    this.beaconAmberMat = this.track(
       new THREE.MeshStandardMaterial({
         color: 0xfacc15,
         emissive: 0xeab308,
-        emissiveIntensity: 0.75,
+        emissiveIntensity: 0.8,
         roughness: 0.2
       })
     );
     const doorTex = this.track(createMchsDoorTexture());
     const doorMat = this.track(new THREE.MeshBasicMaterial({ map: doorTex }));
 
-    // 1. Шасси и бампер
+    // 1. Шасси и передний бампер
     const chassis = new THREE.Mesh(
       this.track(new THREE.BoxGeometry(2.26, 0.32, 6.2)),
       chassisMat
@@ -227,33 +228,13 @@ export class MchsVehicleSystem {
       this.track(new THREE.BoxGeometry(2.38, 0.34, 0.36)),
       whitePaint
     );
-    bumper.position.set(0, 0.58, 3.18);
+    bumper.position.set(0, 0.58, 3.12);
     this.vehicleGroup.add(bumper);
 
-    // 2. Кабина боевого расчёта (впереди по +Z)
-    const cab = new THREE.Mesh(
-      this.track(new THREE.BoxGeometry(2.28, 1.56, 2.05)),
-      redPaint
-    );
-    cab.position.set(0, 1.48, 1.95);
-    cab.castShadow = true;
-    this.vehicleGroup.add(cab);
+    // 2. Полый корпус кабины + остекление + панель приборов + руль + пульт МЧС
+    //    строятся в Ac40CabCockpit без сплошных коробов и пересекающих салон полос.
 
-    const windshield = new THREE.Mesh(
-      this.track(new THREE.BoxGeometry(2.04, 0.68, 0.08)),
-      glassMat
-    );
-    windshield.position.set(0, 1.72, 2.98);
-    this.vehicleGroup.add(windshield);
-
-    const sideWinGeo = this.track(new THREE.BoxGeometry(0.08, 0.56, 1.3));
-    const winL = new THREE.Mesh(sideWinGeo, glassMat);
-    winL.position.set(-1.14, 1.72, 2.0);
-    const winR = new THREE.Mesh(sideWinGeo, glassMat);
-    winR.position.set(1.14, 1.72, 2.0);
-    this.vehicleGroup.add(winL, winR);
-
-    // 3. Цистерна и насосный отсек (сзади по -Z)
+    // 3. Цистерна и насосный отсек (сзади по -Z, z = -2.88..+0.78)
     const body = new THREE.Mesh(
       this.track(new THREE.BoxGeometry(2.34, 1.72, 3.65)),
       redPaint
@@ -262,12 +243,15 @@ export class MchsVehicleSystem {
     body.castShadow = true;
     this.vehicleGroup.add(body);
 
-    const stripeGeo = this.track(new THREE.BoxGeometry(2.38, 0.24, 5.6));
-    const stripe = new THREE.Mesh(stripeGeo, whitePaint);
-    stripe.position.set(0, 1.24, 0.05);
-    this.vehicleGroup.add(stripe);
+    // Белая полоса МЧС только на заднем кузове/цистерне (не заходит внутрь кабины!)
+    const bodyStripe = new THREE.Mesh(
+      this.track(new THREE.BoxGeometry(2.38, 0.22, 3.62)),
+      whitePaint
+    );
+    bodyStripe.position.set(0, 1.26, -1.05);
+    this.vehicleGroup.add(bodyStripe);
 
-    // Таблички МЧС по бортам
+    // Таблички МЧС по бортам цистерны
     const plateGeo = this.track(new THREE.PlaneGeometry(2.6, 0.96));
     const plateL = new THREE.Mesh(plateGeo, doorMat);
     plateL.position.set(-1.19, 1.66, -1.05);
@@ -298,17 +282,17 @@ export class MchsVehicleSystem {
       this.track(new THREE.BoxGeometry(1.7, 0.1, 0.28)),
       chassisMat
     );
-    barBase.position.set(0, 2.31, 2.25);
+    barBase.position.set(0, AC40_CAB_CONFIG.cabRoofY + 0.06, 2.25);
     const beaconL = new THREE.Mesh(
       this.track(new THREE.BoxGeometry(0.42, 0.16, 0.24)),
-      beaconBlueMat
+      this.beaconBlueMat
     );
-    beaconL.position.set(-0.56, 2.42, 2.25);
+    beaconL.position.set(-0.56, AC40_CAB_CONFIG.cabRoofY + 0.17, 2.25);
     const beaconR = new THREE.Mesh(
       this.track(new THREE.BoxGeometry(0.42, 0.16, 0.24)),
-      beaconAmberMat
+      this.beaconAmberMat
     );
-    beaconR.position.set(0.56, 2.42, 2.25);
+    beaconR.position.set(0.56, AC40_CAB_CONFIG.cabRoofY + 0.17, 2.25);
     this.vehicleGroup.add(barBase, beaconL, beaconR);
 
     // 5. 4 колеса с передней поворотной осью
@@ -339,7 +323,7 @@ export class MchsVehicleSystem {
       }
     });
 
-    // 6. Якоря места водителя, выхода, насоса и подсвеченные наземные кольца
+    // 6. Якоря места водителя (леворульная посадка), выхода, насоса и подсвеченные кольца
     const seatOff = SCENARIO_4_CONFIG.VEHICLE.seatLocalOffset;
     this.seatMount.position.set(seatOff[0], seatOff[1], seatOff[2]);
     this.vehicleGroup.add(this.seatMount);
@@ -365,7 +349,8 @@ export class MchsVehicleSystem {
       doorHaloMat
     );
     doorHalo.rotation.x = -Math.PI / 2;
-    doorHalo.position.set(-1.95, 0.03, 1.95);
+    const haloOff = AC40_CAB_CONFIG.doorHaloLocalOffset;
+    doorHalo.position.set(haloOff[0], haloOff[1], haloOff[2]);
     this.vehicleGroup.add(doorHalo);
 
     const pumpHaloMat = this.track(
@@ -476,6 +461,11 @@ export class MchsVehicleSystem {
     this.autopilotTargetIndex = null;
   }
 
+  public toggleBeacons(): boolean {
+    this.beaconsOn = !this.beaconsOn;
+    return this.beaconsOn;
+  }
+
   public pickupHose(playerPos: THREE.Vector3): boolean {
     if (this.isHoseAttached) return false;
     this.vehicleGroup.updateMatrixWorld(true);
@@ -561,6 +551,8 @@ export class MchsVehicleSystem {
     hasVrHandQuat?: boolean;
     manualThrottle: number;
     manualSteer: number;
+    isSpraying?: boolean;
+    hasAlert?: boolean;
     extraColliders: ReadonlyArray<WallColliderBox>;
   }): { arrivedBuildingName: string | null } {
     const { dt } = params;
@@ -612,6 +604,7 @@ export class MchsVehicleSystem {
     }
 
     const vCfg = SCENARIO_4_CONFIG.VEHICLE;
+    this.currentThrottle = throttle;
     if (this.isSeated && !this.isHoseAttached) {
       const targetMax = throttle >= 0 ? vCfg.maxSpeedMps * throttle : vCfg.reverseSpeedMps * throttle;
       if (Math.abs(throttle) > 0.04) {
@@ -647,6 +640,7 @@ export class MchsVehicleSystem {
       this.clampVehicleBounds(params.extraColliders);
     } else {
       this.currentSpeedMps = 0;
+      this.currentThrottle = 0;
       this.currentSteerAngle = THREE.MathUtils.lerp(this.currentSteerAngle, 0, Math.min(1, dt * 6));
     }
 
@@ -664,6 +658,40 @@ export class MchsVehicleSystem {
 
     // Обновление позиции ствола и геометрии вытянутого пожарного рукава
     this.updateHoseGeometry(params);
+
+    // Анимация проблесковых маячков на крыше и обновление 3D-кабины/приборов
+    const nowMs = performance.now();
+    if (this.beaconsOn) {
+      const phaseA = Math.floor(nowMs / 240) % 2 === 0;
+      this.beaconBlueMat.emissiveIntensity = phaseA ? 1.65 : 0.25;
+      this.beaconAmberMat.emissiveIntensity = phaseA ? 0.25 : 1.55;
+    } else {
+      this.beaconBlueMat.emissiveIntensity = 0.05;
+      this.beaconAmberMat.emissiveIntensity = 0.05;
+    }
+
+    this.cabCockpit.update(
+      {
+        isSeated: this.isSeated,
+        speedKmh: Math.round(Math.abs(this.currentSpeedMps) * 3.6),
+        steerAngleRad: this.currentSteerAngle,
+        throttle: this.currentThrottle,
+        isAutopilot: this.autopilotTargetIndex !== null,
+        autopilotTargetName:
+          this.autopilotTargetIndex !== null
+            ? this.driveTargets[this.autopilotTargetIndex]?.name ?? null
+            : null,
+        isHoseAttached: this.isHoseAttached,
+        isSpraying: Boolean(params.isSpraying && this.isHoseAttached),
+        hoseLengthM: this.hoseLengthM,
+        maxHoseLengthM: SCENARIO_4_CONFIG.HOSE.maxLengthM,
+        hoseOverstretched: this.hoseOverstretched,
+        beaconsOn: this.beaconsOn,
+        commsActive: true,
+        hasAlert: Boolean(params.hasAlert)
+      },
+      nowMs
+    );
 
     return { arrivedBuildingName };
   }
@@ -820,11 +848,13 @@ export class MchsVehicleSystem {
       hoseLengthM: Number(this.hoseLengthM.toFixed(1)),
       maxHoseLengthM: SCENARIO_4_CONFIG.HOSE.maxLengthM,
       hoseOverstretched: this.hoseOverstretched,
+      beaconsOn: this.beaconsOn,
       targets
     };
   }
 
   public dispose(): void {
+    this.cabCockpit.dispose();
     this.disposables.forEach(d => d.dispose());
     this.rootGroup.parent?.remove(this.rootGroup);
   }

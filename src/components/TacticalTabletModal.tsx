@@ -1,14 +1,6 @@
 /**
- * ALARA-Planner Pro VR — Единый Тактический Планшет (TacticalTabletModal.tsx)
- * Вызывается по клавише [Tab] или [Esc] (и кнопкой «Планшет [Tab]» в правом верхнем углу HUD).
- * Объединяет все второстепенные функции без загромождения 3D-экрана:
- *  1. Задачи и Сценарии (этапы, сброс, экзамен, выбор сценария #1–#4)
- *  2. Экипировка и СИЗ (пресеты МЧС, CharacterCustomizer3D, физио-телеметрия, звено РХБЗ)
- *  3. Приборы и Изотопы (ГОСТ 27451-87, база радионуклидов, справочник)
- *  4. Аналитика ALARA (факторы K_prot, лимит дозы, CSV/PDF экспорт, графики, журнал, МКА, AAR, голос PTT)
- *  5. Графика и Управление (горячие клавиши, освещение/поле квантов/звук/тени/Haptic VR, НУ)
- *
- * Правило WebGL-совместимости: строго без backdrop-filter / backdrop-blur-* и без animate-pulse.
+ * ALARA — Единый Тактический Планшет (TacticalTabletModal.tsx)
+ * Вызывается по клавише [Tab] или [Esc] (и кнопкой «Планшет [Tab]» в HUD).
  */
 
 import React, { useState } from 'react';
@@ -19,15 +11,18 @@ import {
   BarChart3,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   Download,
   FileSpreadsheet,
   FileText,
   Flame,
+  Glasses,
   GraduationCap,
   Heart,
   Layers,
   Mic,
+  Monitor,
   Moon,
   NotebookPen,
   Play,
@@ -78,6 +73,10 @@ export type ShadowQualitySetting = 'low' | 'medium';
 export interface TacticalTabletModalProps {
   isOpen: boolean;
   onClose: () => void;
+  isVRSupported?: boolean;
+  isInVR?: boolean;
+  onToggleVR?: () => void;
+
   activeScenarioId: number;
   scenario: ScenarioDefinition;
   scenarioStep: number;
@@ -163,6 +162,9 @@ export interface TacticalTabletModalProps {
 export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
   isOpen,
   onClose,
+  isVRSupported = false,
+  isInVR = false,
+  onToggleVR,
   activeScenarioId,
   scenario,
   scenarioStep,
@@ -241,6 +243,8 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
   const [selectedDbNuclideKey, setSelectedDbNuclideKey] = useState<string>('Cs-137');
   const [voiceNoteInput, setVoiceNoteInput] = useState<string>('');
   const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
+  const [isStageListOpen, setIsStageListOpen] = useState<boolean>(false);
+  const [isToolsDrawerOpen, setIsToolsDrawerOpen] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -290,38 +294,75 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3 sm:p-5 font-sans select-none">
-      <div className="max-w-6xl w-full h-[92vh] rounded-3xl border border-sky-500/40 flex flex-col overflow-hidden shadow-2xl bg-slate-950/95 text-slate-100">
+    <div className="fixed inset-0 z-50 bg-[#0B1117]/75 flex items-center justify-center p-3 sm:p-5 font-sans select-none">
+      <div className="max-w-5xl w-full h-[90vh] rounded-xl alara-glass-elevated flex flex-col overflow-hidden text-[#F1F5F9]">
         {/* Верхняя панель планшета */}
-        <header className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-800 bg-slate-900 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-sky-600 rounded-xl text-white shadow">
+        <header className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-400/15 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-[10px] bg-[#0EA5E9]/15 border border-[#0EA5E9]/35 text-[#0EA5E9] shrink-0">
               <GraduationCap className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-base sm:text-lg font-bold tracking-tight text-white uppercase">
-                  Тактический Планшет ALARA МЧС
-                </h1>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30 font-mono font-bold">
-                  СЦ. #{scenario.id} • НРБ-99/2009
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-xs text-[#94A3B8]">
+                <span className="font-mono alara-tabular text-[#0EA5E9] font-semibold">
+                  Сценарий {scenario.id}
                 </span>
+                <span aria-hidden="true">·</span>
+                <span>МЧС Узбекистана · НРБ-99/2009</span>
               </div>
-              <p className="text-[11px] text-slate-400 truncate max-w-[540px]">
-                {scenario.titleRu} — {scenario.facilityRu}
-              </p>
+              <h1 className="text-base sm:text-lg font-semibold text-[#F1F5F9] truncate">
+                ALARA — Тактический планшет
+              </h1>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <div className="flex items-center p-1 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Переключатель Desktop / VR (HTC Vive) */}
+            <div className="flex items-center p-0.5 rounded-[10px] alara-surface text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isInVR && onToggleVR) onToggleVR();
+                }}
+                className={`px-2.5 py-1.5 rounded-[8px] flex items-center gap-1.5 transition cursor-pointer whitespace-nowrap ${
+                  !isInVR ? 'bg-[#0EA5E9] text-[#0B1117] font-semibold' : 'text-[#94A3B8] hover:text-[#F1F5F9]'
+                }`}
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                <span>Desktop</span>
+              </button>
+              <button
+                type="button"
+                disabled={!isVRSupported || !onToggleVR}
+                onClick={() => {
+                  if (isVRSupported && !isInVR && onToggleVR) {
+                    onClose();
+                    onToggleVR();
+                  }
+                }}
+                title={isVRSupported ? 'Переключиться в VR-шлем (HTC Vive)' : 'WebXR не обнаружен в браузере'}
+                className={`px-2.5 py-1.5 rounded-[8px] flex items-center gap-1.5 transition whitespace-nowrap ${
+                  isInVR
+                    ? 'bg-[#F59E0B] text-[#0B1117] font-semibold cursor-pointer'
+                    : isVRSupported && onToggleVR
+                    ? 'text-[#F59E0B] hover:bg-slate-800/70 cursor-pointer'
+                    : 'text-[#64748B] opacity-50 cursor-not-allowed'
+                }`}
+              >
+                <Glasses className="w-3.5 h-3.5" />
+                <span>VR (HTC Vive)</span>
+              </button>
+            </div>
+
+            {/* Переключатель режима: Практикум / Экзамен */}
+            <div className="flex items-center p-0.5 rounded-[10px] alara-surface text-xs font-medium">
               <button
                 type="button"
                 onClick={() => onChangeExamMode(false)}
-                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-[8px] transition cursor-pointer whitespace-nowrap ${
                   !isExamMode
-                    ? 'bg-sky-500 text-slate-950 font-bold'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-[#14B8A6] text-[#0B1117] font-semibold'
+                    : 'text-[#94A3B8] hover:text-[#F1F5F9]'
                 }`}
               >
                 Практикум
@@ -329,10 +370,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
               <button
                 type="button"
                 onClick={() => onChangeExamMode(true)}
-                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-[8px] transition cursor-pointer whitespace-nowrap ${
                   isExamMode
-                    ? 'bg-amber-500 text-slate-950 font-bold'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-[#F59E0B] text-[#0B1117] font-semibold'
+                    : 'text-[#94A3B8] hover:text-[#F1F5F9]'
                 }`}
               >
                 Экзамен
@@ -342,22 +383,22 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800 cursor-pointer"
+              className="p-2 rounded-[10px] text-[#94A3B8] hover:text-[#F1F5F9] alara-surface hover:bg-slate-800/80 cursor-pointer transition"
               title="Закрыть планшет (Tab / Esc)"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </header>
 
         {/* Навигация по 5 вкладкам */}
-        <nav className="flex flex-wrap items-center gap-1.5 px-5 py-2.5 border-b border-slate-800 bg-slate-950 shrink-0 text-xs font-bold">
+        <nav className="flex flex-wrap items-center gap-1 px-5 py-2 border-b border-slate-400/15 shrink-0 text-xs font-medium">
           {[
-            { id: 'tasks' as const, label: '1. Задачи и Сценарии', icon: BookOpen },
+            { id: 'tasks' as const, label: '1. Миссии и Сценарии', icon: BookOpen },
             { id: 'ppe' as const, label: '2. Экипировка и СИЗ', icon: Shield },
             { id: 'database' as const, label: '3. Приборы и Изотопы', icon: Atom },
             { id: 'analytics' as const, label: '4. Аналитика ALARA', icon: BarChart3 },
-            { id: 'settings' as const, label: '5. Графика и Управление', icon: Settings }
+            { id: 'settings' as const, label: '5. Система и Клавиши', icon: Settings }
           ].map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -366,10 +407,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-3.5 py-2 rounded-xl transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-[10px] transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                   isActive
-                    ? 'bg-sky-500 text-slate-950 shadow'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                    ? 'bg-[#0EA5E9] text-[#0B1117] font-semibold'
+                    : 'text-[#94A3B8] hover:text-[#F1F5F9] hover:bg-slate-800/60'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -382,207 +423,30 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
         {/* Содержимое активной вкладки */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* ===================================================================== */}
-          {/* ВКЛАДКА 1: ЗАДАЧИ И СЦЕНАРИИ */}
+          {/* ВКЛАДКА 1: МИССИИ И СЦЕНАРИИ */}
           {/* ===================================================================== */}
           {activeTab === 'tasks' && (
             <div className="space-y-5">
-              {/* Текущая боевая задача и чек-лист этапов */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="lg:col-span-2 p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
-                    <div>
-                      <div className="text-[11px] font-mono text-sky-400 uppercase font-bold">
-                        Текущий шаг ({scenarioStep + 1}/{scenario.stages.length})
-                      </div>
-                      <h2 className="text-sm font-bold text-white mt-0.5">
-                        {currentStage?.titleRu || scenario.titleRu}
-                      </h2>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {scenario.id !== 4 && (
-                        <button
-                          type="button"
-                          onClick={() => onStepChange(scenarioStep + 1)}
-                          className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer"
-                        >
-                          Зачесть этап →
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={onResetScenario}
-                        className="px-3 py-1.5 rounded-xl bg-rose-600/85 hover:bg-rose-500 text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        <span>Сброс</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    {scenario4Snapshot && scenario.id === 4
-                      ? scenario4Snapshot.instructionRu
-                      : currentStage?.taskRu}
-                  </p>
-
-                  {scenario4Snapshot && scenario.id === 4 ? (
-                    <div className="space-y-2 pt-1">
-                      <div className="flex flex-wrap gap-3 text-[11px] font-mono text-slate-300 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
-                        <span>
-                          Очаги: <strong className="text-orange-300">{scenario4Snapshot.firesExtinguished}/{scenario4Snapshot.totalFires}</strong>
-                        </span>
-                        <span>
-                          Спасено: <strong className="text-emerald-300">{scenario4Snapshot.rescuedCount}/{scenario4Snapshot.totalNpcCount}</strong>
-                        </span>
-                        <span>
-                          ОУ-5: <strong className="text-sky-300">{scenario4Snapshot.extinguisherChargePct}%</strong>
-                        </span>
-                        <span>
-                          Ошибки: <strong className="text-amber-300">{scenario4Snapshot.safetyErrorCount}</strong>
-                        </span>
-                      </div>
-                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                        {SCENARIO4_STEP_ORDER.map((stepKey, idx) => {
-                          const curIdx = SCENARIO4_STEP_ORDER.indexOf(scenario4Snapshot.stepId);
-                          const isCompletedOutcome = scenario4Snapshot.debrief?.outcome === 'COMPLETED';
-                          const isFailedOutcome = scenario4Snapshot.debrief?.outcome === 'FAILED';
-                          const isDone = isCompletedOutcome || (curIdx >= 0 && idx < curIdx);
-                          const isCurrent =
-                            !scenario4Snapshot.debrief && idx === curIdx;
-                          return (
-                            <div
-                              key={stepKey}
-                              className={`px-3 py-1.5 rounded-lg border text-xs flex items-center justify-between ${
-                                isCurrent
-                                  ? 'bg-sky-950/60 border-sky-400/60 text-white'
-                                  : isDone
-                                  ? 'bg-emerald-950/25 border-emerald-500/30 text-emerald-300'
-                                  : isFailedOutcome && idx === SCENARIO4_STEP_ORDER.length - 1
-                                  ? 'bg-rose-950/35 border-rose-500/40 text-rose-300'
-                                  : 'bg-slate-950 border-slate-800 text-slate-400'
-                              }`}
-                            >
-                              <span>
-                                {idx + 1}. {SCENARIO4_STEPS[stepKey].titleRu}
-                              </span>
-                              <span className="text-[10px] font-mono">
-                                {isDone
-                                  ? 'ГОТОВО'
-                                  : isCurrent
-                                  ? 'АКТИВНО'
-                                  : isFailedOutcome && idx === SCENARIO4_STEP_ORDER.length - 1
-                                  ? 'ПРОВАЛ'
-                                  : 'ОЖИДАНИЕ'}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      {scenario.stages.map((st, idx) => {
-                        const isDone = idx < scenarioStep;
-                        const isCurrent = idx === scenarioStep;
-                        return (
-                          <div
-                            key={st.titleRu + idx}
-                            className={`px-3 py-2 rounded-lg border text-xs ${
-                              isCurrent
-                                ? 'bg-sky-950/60 border-sky-400/60 text-white'
-                                : isDone
-                                ? 'bg-emerald-950/25 border-emerald-500/30 text-emerald-300'
-                                : 'bg-slate-950 border-slate-800 text-slate-400'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between font-bold">
-                              <span>
-                                {idx + 1}. {st.titleRu}
-                              </span>
-                              <span className="text-[10px] font-mono">
-                                {isDone ? 'ГОТОВО' : isCurrent ? 'ТЕКУЩИЙ' : 'ДАЛЕЕ'}
-                              </span>
-                            </div>
-                            <p className="text-[11px] opacity-85 mt-0.5">{st.taskRu}</p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Быстрые параметры прохождения */}
-                <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 text-xs">
-                  <h3 className="font-bold text-slate-200 uppercase tracking-wider text-[11px]">
-                    Режим работы и инструменты
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={onToggleRandomizedHazardMode}
-                    className={`w-full px-3 py-2 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
-                      isRandomizedHazardMode
-                        ? 'bg-amber-500/20 border-amber-400/60 text-amber-200 font-bold'
-                        : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
-                    }`}
-                  >
-                    <span>Рандомизация очагов угроз</span>
-                    <span className="font-mono text-[11px]">
-                      {isRandomizedHazardMode ? 'ВКЛ' : 'ВЫКЛ'}
-                    </span>
-                  </button>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onOpenLabNotebook();
-                      }}
-                      className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-cyan-300 font-semibold flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <NotebookPen className="w-3.5 h-3.5" />
-                      <span>Лаб. журнал</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onOpenSpectrometry();
-                      }}
-                      className="px-3 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-purple-300 font-semibold flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Activity className="w-3.5 h-3.5" />
-                      <span>Спектрометр</span>
-                    </button>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1 font-mono text-[11px]">
-                    <div className="text-slate-400">ВЫПОЛНЕНИЕ ЗАДАЧ МЧС</div>
-                    <div className="flex justify-between text-slate-200">
-                      <span>Операций / Эвак.:</span>
-                      <strong>
-                        {mchsMetrics.operationsCompleted} / {mchsMetrics.extractedCount} из{' '}
-                        {mchsMetrics.totalExtractable}
-                      </strong>
-                    </div>
-                    <div className="flex justify-between text-slate-200">
-                      <span>Просыпи / Пожар:</span>
-                      <strong>
-                        {mchsMetrics.spillsDecontaminated} / {mchsMetrics.firesExtinguished}
-                      </strong>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Основные сценарии МЧС #1–#3 */}
+              {/* Единая сетка 4 сценариев МЧС (#1–#4) */}
               <div>
-                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                  Базовые оперативные сценарии МЧС на объектах АЭС (#1–#3):
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {SCENARIOS.slice(0, 3).map(scen => {
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <div>
+                    <h2 className="text-sm font-semibold text-[#F1F5F9]">
+                      Выбор оперативного сценария (1–4)
+                    </h2>
+                    <p className="text-xs text-[#94A3B8]">
+                      Нажмите на карточку, чтобы развернуть 3D-объект и приступить к выполнению миссии
+                    </p>
+                  </div>
+                  <div className="font-mono alara-tabular text-xs text-[#94A3B8]">
+                    Активен: <span className="text-[#0EA5E9] font-semibold">Сц. #{activeScenarioId}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {SCENARIOS.map(scen => {
                     const isSelected = scen.id === activeScenarioId;
+                    const isGlbModel = scen.id === 4;
                     return (
                       <div
                         key={scen.id}
@@ -590,34 +454,40 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                           onSelectScenario(scen.id);
                           onClose();
                         }}
-                        className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col justify-between ${
+                        className={`p-4 rounded-xl border transition cursor-pointer flex flex-col justify-between gap-3 ${
                           isSelected
-                            ? 'bg-sky-950/45 border-sky-400'
-                            : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                            ? 'bg-[#0EA5E9]/10 border-[#0EA5E9]'
+                            : 'alara-surface hover:border-slate-400/35 hover:bg-slate-900/70'
                         }`}
                       >
                         <div className="space-y-1.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-orange-300 font-bold">
-                              МЧС #{scen.id}
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="font-mono alara-tabular text-[#0EA5E9] font-semibold">
+                              Сценарий {scen.id}{isGlbModel ? ' · Комплекс АЭС (.GLB)' : ''}
                             </span>
-                            {isSelected && (
-                              <span className="text-[11px] text-emerald-400 font-bold flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3" /> Активен
+                            {isSelected ? (
+                              <span className="text-[#10B981] font-medium flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Активен
+                              </span>
+                            ) : (
+                              <span className="text-[#64748B] font-mono alara-tabular">
+                                {scen.stages.length} этап.
                               </span>
                             )}
                           </div>
-                          <h3 className="font-bold text-xs text-white">{scen.titleRu}</h3>
-                          <p className="text-[11px] text-slate-400 line-clamp-3">
+                          <h3 className="font-semibold text-sm text-[#F1F5F9]">{scen.titleRu}</h3>
+                          <p className="text-xs text-[#94A3B8] line-clamp-2 leading-relaxed">
                             {scen.shortDescriptionRu}
                           </p>
                         </div>
-                        <div className="pt-3 mt-3 border-t border-slate-800 flex items-center justify-between text-[11px]">
-                          <span className="text-slate-500 font-mono truncate">
-                            {scen.dominantIsotopes.join(', ')}
+
+                        <div className="pt-2.5 border-t border-slate-400/15 flex items-center justify-between text-xs">
+                          <span className="text-[#64748B] font-mono truncate">
+                            {scen.dominantIsotopes.join(' · ')}
                           </span>
-                          <span className="text-sky-400 font-bold flex items-center gap-0.5">
-                            Выезд <ChevronRight className="w-3 h-3" />
+                          <span className="text-[#0EA5E9] font-medium flex items-center gap-1 shrink-0">
+                            <span>Запустить</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
                           </span>
                         </div>
                       </div>
@@ -626,51 +496,220 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                 </div>
               </div>
 
-              {/* Сценарий #4: Комплекс АЭС (.glb) */}
-              {SCENARIOS.find(s => s.id === 4) && (
-                <div>
-                  <h2 className="text-xs font-bold text-emerald-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-emerald-400" />
-                    Практический VR-тренажёр МЧС на 3D-модели комплекса АЭС (Сценарий #4):
-                  </h2>
-                  {(() => {
-                    const scen4 = SCENARIOS.find(s => s.id === 4)!;
-                    const isSelected = scen4.id === activeScenarioId;
-                    return (
-                      <div
-                        onClick={() => {
-                          onSelectScenario(scen4.id);
-                          onClose();
-                        }}
-                        className={`p-4 rounded-2xl border transition cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 ${
-                          isSelected
-                            ? 'bg-emerald-950/50 border-emerald-400'
-                            : 'bg-slate-900 border-emerald-500/35 hover:border-emerald-400/70'
+              {/* Активная задача (верхняя полоса + сворачиваемый чек-лист этапов) */}
+              <div className="rounded-xl alara-surface p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-mono alara-tabular text-[#0EA5E9]">
+                      Текущая фаза {scenario.id === 4 && scenario4Snapshot ? scenario4Snapshot.stepNumber : scenarioStep + 1} /{' '}
+                      {scenario.id === 4 && scenario4Snapshot ? scenario4Snapshot.totalSteps : scenario.stages.length}
+                    </div>
+                    <h3 className="text-sm font-semibold text-[#F1F5F9] mt-0.5">
+                      {scenario4Snapshot && scenario.id === 4
+                        ? scenario4Snapshot.stepTitleRu
+                        : currentStage?.titleRu || scenario.titleRu}
+                    </h3>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {scenario.id !== 4 && (
+                      <button
+                        type="button"
+                        onClick={() => onStepChange(scenarioStep + 1)}
+                        className="px-3 py-1.5 rounded-[10px] bg-[#10B981] hover:bg-emerald-400 text-[#0B1117] text-xs font-semibold cursor-pointer whitespace-nowrap transition"
+                      >
+                        Зачесть этап →
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={onResetScenario}
+                      className="px-3 py-1.5 rounded-[10px] bg-[#EF4444]/15 hover:bg-[#EF4444]/25 border border-[#EF4444]/40 text-[#EF4444] text-xs font-medium flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Сброс миссии</span>
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-[#94A3B8] leading-relaxed">
+                  {scenario4Snapshot && scenario.id === 4
+                    ? scenario4Snapshot.instructionRu
+                    : currentStage?.taskRu}
+                </p>
+
+                {scenario4Snapshot && scenario.id === 4 && (
+                  <div className="flex flex-wrap gap-4 text-xs font-mono alara-tabular text-[#94A3B8] pt-1 border-t border-slate-400/15">
+                    <span>
+                      Очаги:{' '}
+                      <strong className="text-[#F59E0B]">
+                        {scenario4Snapshot.firesExtinguished}/{scenario4Snapshot.totalFires}
+                      </strong>
+                    </span>
+                    <span>
+                      Спасено:{' '}
+                      <strong className="text-[#10B981]">
+                        {scenario4Snapshot.rescuedCount}/{scenario4Snapshot.totalNpcCount}
+                      </strong>
+                    </span>
+                    <span>
+                      ОУ-5:{' '}
+                      <strong className="text-[#0EA5E9]">
+                        {scenario4Snapshot.extinguisherChargePct}%
+                      </strong>
+                    </span>
+                    <span>
+                      Нарушения:{' '}
+                      <strong className="text-[#EF4444]">{scenario4Snapshot.safetyErrorCount}</strong>
+                    </span>
+                  </div>
+                )}
+
+                {/* Сворачиваемый чек-лист этапов */}
+                <div className="pt-1 border-t border-slate-400/15">
+                  <button
+                    type="button"
+                    onClick={() => setIsStageListOpen(prev => !prev)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-[#94A3B8] hover:text-[#F1F5F9] cursor-pointer py-1"
+                  >
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 transition-transform ${isStageListOpen ? 'rotate-180' : ''}`}
+                    />
+                    <span>Этапы выполнения сценария</span>
+                  </button>
+
+                  {isStageListOpen && (
+                    <div className="mt-2 space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                      {scenario4Snapshot && scenario.id === 4
+                        ? SCENARIO4_STEP_ORDER.map((stepKey, idx) => {
+                            const curIdx = SCENARIO4_STEP_ORDER.indexOf(scenario4Snapshot.stepId);
+                            const isCompletedOutcome =
+                              scenario4Snapshot.debrief?.outcome === 'COMPLETED';
+                            const isFailedOutcome =
+                              scenario4Snapshot.debrief?.outcome === 'FAILED';
+                            const isDone = isCompletedOutcome || (curIdx >= 0 && idx < curIdx);
+                            const isCurrent = !scenario4Snapshot.debrief && idx === curIdx;
+                            return (
+                              <div
+                                key={stepKey}
+                                className={`px-3 py-1.5 rounded-[10px] border text-xs flex items-center justify-between ${
+                                  isCurrent
+                                    ? 'bg-[#0EA5E9]/12 border-[#0EA5E9]/50 text-[#F1F5F9]'
+                                    : isDone
+                                    ? 'bg-[#10B981]/10 border-[#10B981]/35 text-[#10B981]'
+                                    : isFailedOutcome && idx === SCENARIO4_STEP_ORDER.length - 1
+                                    ? 'bg-[#EF4444]/10 border-[#EF4444]/40 text-[#EF4444]'
+                                    : 'border-slate-400/15 text-[#94A3B8]'
+                                }`}
+                              >
+                                <span>
+                                  {idx + 1}. {SCENARIO4_STEPS[stepKey].titleRu}
+                                </span>
+                                <span className="text-[11px] font-mono alara-tabular">
+                                  {isDone
+                                    ? 'Готово'
+                                    : isCurrent
+                                    ? 'Активно'
+                                    : isFailedOutcome && idx === SCENARIO4_STEP_ORDER.length - 1
+                                    ? 'Срыв'
+                                    : 'Ожидание'}
+                                </span>
+                              </div>
+                            );
+                          })
+                        : scenario.stages.map((st, idx) => {
+                            const isDone = idx < scenarioStep;
+                            const isCurrent = idx === scenarioStep;
+                            return (
+                              <div
+                                key={st.titleRu + idx}
+                                className={`px-3 py-2 rounded-[10px] border text-xs ${
+                                  isCurrent
+                                    ? 'bg-[#0EA5E9]/12 border-[#0EA5E9]/50 text-[#F1F5F9]'
+                                    : isDone
+                                    ? 'bg-[#10B981]/10 border-[#10B981]/35 text-[#10B981]'
+                                    : 'border-slate-400/15 text-[#94A3B8]'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between font-medium">
+                                  <span>
+                                    {idx + 1}. {st.titleRu}
+                                  </span>
+                                  <span className="text-[11px] font-mono">
+                                    {isDone ? 'Готово' : isCurrent ? 'Текущий' : 'Далее'}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-[#94A3B8] mt-0.5">{st.taskRu}</p>
+                              </div>
+                            );
+                          })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Сворачиваемые дополнительные инструменты и параметры */}
+                <div className="pt-1 border-t border-slate-400/15">
+                  <button
+                    type="button"
+                    onClick={() => setIsToolsDrawerOpen(prev => !prev)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-[#94A3B8] hover:text-[#F1F5F9] cursor-pointer py-1"
+                  >
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 transition-transform ${isToolsDrawerOpen ? 'rotate-180' : ''}`}
+                    />
+                    <span>Дополнительные модули и параметры прохождения</span>
+                  </button>
+
+                  {isToolsDrawerOpen && (
+                    <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                      <button
+                        type="button"
+                        onClick={onToggleRandomizedHazardMode}
+                        className={`px-3 py-2 rounded-[10px] border text-left transition flex items-center justify-between cursor-pointer ${
+                          isRandomizedHazardMode
+                            ? 'bg-[#F59E0B]/15 border-[#F59E0B]/50 text-[#F59E0B] font-semibold'
+                            : 'alara-surface text-[#94A3B8] hover:text-[#F1F5F9]'
                         }`}
                       >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/40">
-                              СЦЕНАРИЙ #{scen4.id} • 3D-КОМПЛЕКС АЭС (.GLB)
-                            </span>
-                            {isSelected && (
-                              <span className="text-xs text-emerald-400 font-bold flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Активен
-                              </span>
-                            )}
-                          </div>
-                          <h3 className="font-bold text-sm text-white">{scen4.titleRu}</h3>
-                          <p className="text-xs text-slate-300">{scen4.shortDescriptionRu}</p>
-                        </div>
-                        <span className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 font-bold text-xs flex items-center gap-1 shrink-0 self-start md:self-center">
-                          <span>Запустить</span>
-                          <ChevronRight className="w-4 h-4" />
+                        <span>Рандомизация очагов угроз</span>
+                        <span className="font-mono alara-tabular">
+                          {isRandomizedHazardMode ? 'Вкл' : 'Выкл'}
                         </span>
+                      </button>
+
+                      <div className="px-3 py-2 rounded-[10px] alara-surface flex items-center justify-between font-mono alara-tabular text-[11px] text-[#94A3B8]">
+                        <span>Опер. / Эвак. / Просыпи / Огонь:</span>
+                        <strong className="text-[#F1F5F9]">
+                          {mchsMetrics.operationsCompleted} / {mchsMetrics.extractedCount}/{mchsMetrics.totalExtractable} · {mchsMetrics.spillsDecontaminated}/{mchsMetrics.firesExtinguished}
+                        </strong>
                       </div>
-                    );
-                  })()}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenLabNotebook();
+                        }}
+                        className="px-3 py-2 rounded-[10px] alara-surface hover:bg-slate-800/80 text-[#0EA5E9] font-medium flex items-center gap-2 cursor-pointer"
+                      >
+                        <NotebookPen className="w-3.5 h-3.5" />
+                        <span>Открыть лабораторный журнал</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenSpectrometry();
+                        }}
+                        className="px-3 py-2 rounded-[10px] alara-surface hover:bg-slate-800/80 text-[#14B8A6] font-medium flex items-center gap-2 cursor-pointer"
+                      >
+                        <Activity className="w-3.5 h-3.5" />
+                        <span>Открыть гамма-спектрометр МКА</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           )}
 
@@ -679,7 +718,6 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
           {/* ===================================================================== */}
           {activeTab === 'ppe' && (
             <div className="space-y-4">
-              {/* Регламентированные комплекты МЧС */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                 <button
                   type="button"
@@ -689,17 +727,17 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   }}
                   className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
                     ppeState.suitId === 'bop_suit'
-                      ? 'bg-orange-950/45 border-orange-400'
-                      : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                      ? 'bg-[#F59E0B]/12 border-[#F59E0B]'
+                      : 'alara-surface hover:border-slate-400/35'
                   }`}
                 >
-                  <div className="flex items-center justify-between font-bold text-orange-300">
+                  <div className="flex items-center justify-between font-semibold text-[#F59E0B]">
                     <span className="flex items-center gap-1.5">
                       <Flame className="w-3.5 h-3.5" /> Пожарный расчёт БОП-1
                     </span>
-                    <span className="text-[10px] font-mono">350°C • 10 кВ</span>
+                    <span className="text-[11px] font-mono alara-tabular">350°C · 10 кВ</span>
                   </div>
-                  <div className="text-[11px] text-slate-300 mt-1">
+                  <div className="text-[11px] text-[#94A3B8] mt-1">
                     БОП-1 термостойкий + Маска ППМ-88 + ДП-5В
                   </div>
                 </button>
@@ -712,17 +750,17 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   }}
                   className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
                     ppeState.suitId === 'kih4_suit'
-                      ? 'bg-amber-950/45 border-amber-400'
-                      : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                      ? 'bg-[#0EA5E9]/12 border-[#0EA5E9]'
+                      : 'alara-surface hover:border-slate-400/35'
                   }`}
                 >
-                  <div className="flex items-center justify-between font-bold text-amber-300">
+                  <div className="flex items-center justify-between font-semibold text-[#0EA5E9]">
                     <span className="flex items-center gap-1.5">
                       <Shield className="w-3.5 h-3.5" /> РХБ-защита КИХ-4
                     </span>
-                    <span className="text-[10px] font-mono">α/β 100%</span>
+                    <span className="text-[11px] font-mono alara-tabular">α/β 100%</span>
                   </div>
-                  <div className="text-[11px] text-slate-300 mt-1">
+                  <div className="text-[11px] text-[#94A3B8] mt-1">
                     Изолирующий КИХ-4 + ГП-7ВМ + ДП-5В
                   </div>
                 </button>
@@ -735,32 +773,31 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   }}
                   className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
                     ppeState.suitId === 'l1_suit'
-                      ? 'bg-emerald-950/45 border-emerald-400'
-                      : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                      ? 'bg-[#14B8A6]/12 border-[#14B8A6]'
+                      : 'alara-surface hover:border-slate-400/35'
                   }`}
                 >
-                  <div className="flex items-center justify-between font-bold text-emerald-300">
+                  <div className="flex items-center justify-between font-semibold text-[#14B8A6]">
                     <span className="flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5" /> Разведка Л-1 + АСВ-2
                     </span>
-                    <span className="text-[10px] font-mono">300 бар</span>
+                    <span className="text-[11px] font-mono alara-tabular">300 бар</span>
                   </div>
-                  <div className="text-[11px] text-slate-300 mt-1">
+                  <div className="text-[11px] text-[#94A3B8] mt-1">
                     Костюм Л-1 + Дыхательный аппарат АСВ-2 + ДП-5В
                   </div>
                 </button>
               </div>
 
-              {/* Быстрая смена физиологического профиля СИЗ, дистанционного инструмента и звена РХБЗ */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3.5 rounded-2xl bg-slate-900 border border-slate-800 text-xs">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3.5 rounded-xl alara-surface text-xs">
                 <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">
+                  <label className="text-[11px] text-[#94A3B8] block mb-1">
                     Класс защиты СИЗ (физика ослабления)
                   </label>
                   <select
                     value={selectedPpeId}
                     onChange={e => onChangePpeId(e.target.value as PPELoadoutId)}
-                    className="w-full bg-slate-950 text-white text-xs border border-slate-700 rounded-lg px-2.5 py-1.5"
+                    className="w-full bg-[#0B1117] text-[#F1F5F9] text-xs border border-slate-400/20 rounded-[10px] px-2.5 py-1.5 focus:outline-none focus:border-[#0EA5E9]"
                   >
                     {Object.values(PPE_LOADOUTS).map(ppe => (
                       <option key={ppe.id} value={ppe.id}>
@@ -771,13 +808,13 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">
+                  <label className="text-[11px] text-[#94A3B8] block mb-1">
                     Дистанционный инструмент
                   </label>
                   <select
                     value={selectedRemoteToolId}
                     onChange={e => onSelectRemoteTool(e.target.value as RemoteToolId)}
-                    className="w-full bg-slate-950 text-white text-xs border border-slate-700 rounded-lg px-2.5 py-1.5"
+                    className="w-full bg-[#0B1117] text-[#F1F5F9] text-xs border border-slate-400/20 rounded-[10px] px-2.5 py-1.5 focus:outline-none focus:border-[#0EA5E9]"
                   >
                     {Object.values(REMOTE_TOOLS).map(tool => (
                       <option key={tool.id} value={tool.id}>
@@ -788,24 +825,24 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                 </div>
 
                 <div className="flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
-                    <span className="flex items-center gap-1 text-rose-300">
+                  <div className="flex items-center justify-between text-[11px] font-mono alara-tabular text-[#94A3B8]">
+                    <span className="flex items-center gap-1 text-[#EF4444]">
                       <Heart className="w-3.5 h-3.5" /> {vitalsBpm} уд/мин
                     </span>
                     <span>
-                      O₂ <b className="text-emerald-300">{oxygenPercent.toFixed(0)}%</b> · SpO₂{' '}
+                      O₂ <strong className="text-[#10B981]">{oxygenPercent.toFixed(0)}%</strong> · SpO₂{' '}
                       {spO2Percent.toFixed(0)}% · {coreBodyTempC.toFixed(1)}°C
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={onCycleCoopRole}
-                    className="mt-1.5 px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700 text-cyan-300 text-xs font-semibold flex items-center justify-between cursor-pointer"
+                    className="mt-1.5 px-3 py-1.5 rounded-[10px] bg-[#0B1117] hover:bg-slate-800/80 border border-slate-400/20 text-[#0EA5E9] text-xs font-medium flex items-center justify-between cursor-pointer"
                   >
                     <span className="flex items-center gap-1.5">
                       <UserCheck className="w-3.5 h-3.5" /> Роль звена РХБЗ:
                     </span>
-                    <span className="font-mono">
+                    <span className="font-mono alara-tabular">
                       {coopRoleCallsign} ({coopPeersCount + 1}/3)
                     </span>
                   </button>
@@ -826,15 +863,15 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
           {/* ===================================================================== */}
           {activeTab === 'database' && (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-400/15 pb-2.5">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setDbSubTab('instruments')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-[10px] text-xs font-semibold cursor-pointer transition ${
                       dbSubTab === 'instruments'
-                        ? 'bg-sky-500 text-slate-950'
-                        : 'bg-slate-900 text-slate-400 hover:text-white'
+                        ? 'bg-[#0EA5E9] text-[#0B1117]'
+                        : 'alara-surface text-[#94A3B8] hover:text-[#F1F5F9]'
                     }`}
                   >
                     Приборы ГОСТ 27451-87
@@ -842,10 +879,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setDbSubTab('isotopes')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-[10px] text-xs font-semibold cursor-pointer transition ${
                       dbSubTab === 'isotopes'
-                        ? 'bg-sky-500 text-slate-950'
-                        : 'bg-slate-900 text-slate-400 hover:text-white'
+                        ? 'bg-[#0EA5E9] text-[#0B1117]'
+                        : 'alara-surface text-[#94A3B8] hover:text-[#F1F5F9]'
                     }`}
                   >
                     База радионуклидов
@@ -858,7 +895,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                     onClose();
                     onOpenGostGuide();
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-300 text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 rounded-[10px] alara-surface hover:bg-slate-800/80 text-[#F59E0B] text-xs font-medium flex items-center gap-1.5 cursor-pointer"
                 >
                   <BookOpen className="w-3.5 h-3.5" />
                   <span>Подробный справочник ГОСТ</span>
@@ -880,10 +917,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                         key={f.id}
                         type="button"
                         onClick={() => setInstrumentCategoryFilter(f.id)}
-                        className={`px-2.5 py-1 rounded-lg border cursor-pointer ${
+                        className={`px-2.5 py-1 rounded-[10px] border cursor-pointer transition ${
                           instrumentCategoryFilter === f.id
-                            ? 'bg-sky-500/20 border-sky-400 text-sky-300 font-bold'
-                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                            ? 'bg-[#0EA5E9]/15 border-[#0EA5E9] text-[#0EA5E9] font-semibold'
+                            : 'alara-surface text-[#94A3B8] hover:text-[#F1F5F9]'
                         }`}
                       >
                         {f.label}
@@ -903,24 +940,20 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                         return (
                           <div
                             key={inst.id}
-                            className={`p-3.5 rounded-2xl border flex flex-col justify-between ${
-                              isEquipped
-                                ? 'bg-sky-950/45 border-sky-400'
-                                : 'bg-slate-900 border-slate-800'
+                            className={`p-3.5 rounded-xl border flex flex-col justify-between ${
+                              isEquipped ? 'bg-[#0EA5E9]/10 border-[#0EA5E9]' : 'alara-surface'
                             }`}
                           >
                             <div className="space-y-1.5">
-                              <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                                  {inst.gostStandard}
-                                </span>
-                                <span className="text-[10px] font-mono text-amber-300 uppercase">
+                              <div className="flex items-center justify-between text-[11px] font-mono">
+                                <span className="text-[#94A3B8]">{inst.gostStandard}</span>
+                                <span className="text-[#F59E0B] uppercase">
                                   {inst.detectedRadiation.join('/')}
                                 </span>
                               </div>
-                              <h4 className="font-bold text-sm text-white">{inst.name}</h4>
-                              <p className="text-[11px] text-slate-400 line-clamp-2">{inst.nameFull}</p>
-                              <div className="pt-1.5 text-[11px] font-mono text-slate-300 border-t border-slate-800 space-y-0.5">
+                              <h4 className="font-semibold text-sm text-[#F1F5F9]">{inst.name}</h4>
+                              <p className="text-xs text-[#94A3B8] line-clamp-2">{inst.nameFull}</p>
+                              <div className="pt-2 text-[11px] font-mono alara-tabular text-[#94A3B8] border-t border-slate-400/15 space-y-0.5">
                                 <div>Диапазон: {inst.measurementRangeRu}</div>
                                 <div>
                                   Погрешность ±{inst.basicErrorPercent}% · τ = {inst.timeConstantSec} с
@@ -934,10 +967,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                                 onSelectInstrument(inst.id);
                                 onChangePPE({ ...ppeState, instrumentId: inst.id });
                               }}
-                              className={`mt-3 w-full py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer ${
+                              className={`mt-3 w-full py-1.5 rounded-[10px] text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition ${
                                 isEquipped
-                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                  : 'bg-slate-800 hover:bg-slate-700 text-white'
+                                  ? 'bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/40'
+                                  : 'bg-[#0EA5E9] hover:bg-sky-400 text-[#0B1117]'
                               }`}
                             >
                               {isEquipped ? <CheckCircle2 className="w-3.5 h-3.5" /> : null}
@@ -965,23 +998,23 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                               setSelectedDbNuclideKey(key);
                               onSelectIsotope(key);
                             }}
-                            className={`p-2.5 rounded-xl border cursor-pointer flex items-center justify-between ${
+                            className={`p-2.5 rounded-[10px] border cursor-pointer flex items-center justify-between transition ${
                               isSel
-                                ? 'bg-sky-950/45 border-sky-400 text-sky-200'
-                                : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                                ? 'bg-[#0EA5E9]/12 border-[#0EA5E9] text-[#F1F5F9]'
+                                : 'alara-surface text-[#94A3B8] hover:border-slate-400/35'
                             }`}
                           >
                             <div>
-                              <div className="font-bold text-xs text-white">
+                              <div className="font-semibold text-xs text-[#F1F5F9]">
                                 {iso.symbol}{' '}
-                                <span className="text-slate-400 font-normal">({iso.nameRu})</span>
+                                <span className="text-[#94A3B8] font-normal">({iso.nameRu})</span>
                               </div>
-                              <div className="text-[10px] text-slate-500 font-mono">
+                              <div className="text-[11px] text-[#64748B] font-mono alara-tabular">
                                 T½: {iso.halfLifeText} · w_R = {iso.wR}
                               </div>
                             </div>
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-amber-300">
-                              {iso.radiationType.toUpperCase()}
+                            <span className="text-[11px] font-mono text-[#F59E0B] uppercase">
+                              {iso.radiationType}
                             </span>
                           </div>
                         );
@@ -990,50 +1023,50 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   </div>
 
                   {ISOTOPE_DATABASE[selectedDbNuclideKey] && (
-                    <div className="lg:col-span-2 p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3 text-xs">
+                    <div className="lg:col-span-2 p-4 rounded-xl alara-surface space-y-3 text-xs">
                       {(() => {
                         const iso = ISOTOPE_DATABASE[selectedDbNuclideKey];
                         return (
                           <>
-                            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                            <div className="flex items-center justify-between border-b border-slate-400/15 pb-2.5">
                               <div>
-                                <h3 className="text-base font-bold text-white">
+                                <h3 className="text-base font-semibold text-[#F1F5F9]">
                                   {iso.symbol} — {iso.nameRu}
                                 </h3>
-                                <p className="text-slate-400 text-[11px] mt-0.5">{iso.descriptionRu}</p>
+                                <p className="text-[#94A3B8] text-xs mt-0.5">{iso.descriptionRu}</p>
                               </div>
                               <button
                                 type="button"
                                 onClick={() => onSelectIsotope(iso.id)}
-                                className="px-3 py-1.5 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-xl cursor-pointer shrink-0"
+                                className="px-3 py-1.5 bg-[#0EA5E9] hover:bg-sky-400 text-[#0B1117] font-semibold rounded-[10px] cursor-pointer shrink-0 transition"
                               >
                                 Применить
                               </button>
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 font-mono">
-                              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">T½</span>
-                                <strong className="text-cyan-300">{iso.halfLifeText}</strong>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 font-mono alara-tabular">
+                              <div className="p-2.5 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15">
+                                <span className="text-[#64748B] block text-[11px]">T½</span>
+                                <strong className="text-[#14B8A6]">{iso.halfLifeText}</strong>
                               </div>
-                              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">Г_γ</span>
-                                <strong className="text-amber-300">{iso.gammaConstant}</strong>
+                              <div className="p-2.5 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15">
+                                <span className="text-[#64748B] block text-[11px]">Г_γ</span>
+                                <strong className="text-[#F59E0B]">{iso.gammaConstant}</strong>
                               </div>
-                              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">w_R (НРБ-99)</span>
-                                <strong className="text-rose-300">{iso.wR}</strong>
+                              <div className="p-2.5 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15">
+                                <span className="text-[#64748B] block text-[11px]">w_R (НРБ-99)</span>
+                                <strong className="text-[#EF4444]">{iso.wR}</strong>
                               </div>
-                              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">E_γ (средняя)</span>
-                                <strong className="text-white">{iso.energyMev} МэВ</strong>
+                              <div className="p-2.5 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15">
+                                <span className="text-[#64748B] block text-[11px]">E_γ (средняя)</span>
+                                <strong className="text-[#F1F5F9]">{iso.energyMev} МэВ</strong>
                               </div>
-                              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">E_β max</span>
-                                <strong className="text-white">{iso.maxBetaEnergyMev} МэВ</strong>
+                              <div className="p-2.5 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15">
+                                <span className="text-[#64748B] block text-[11px]">E_β max</span>
+                                <strong className="text-[#F1F5F9]">{iso.maxBetaEnergyMev} МэВ</strong>
                               </div>
-                              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                                <span className="text-slate-500 block text-[10px]">Спектр</span>
-                                <strong className="text-emerald-300 text-[10px]">
+                              <div className="p-2.5 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15">
+                                <span className="text-[#64748B] block text-[11px]">Спектр</span>
+                                <strong className="text-[#10B981] text-[11px]">
                                   {Object.entries(iso.emissionShares)
                                     .filter(([, v]) => v > 0)
                                     .map(([k, v]) => `${k}:${(v * 100).toFixed(0)}%`)
@@ -1056,48 +1089,44 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
           {/* ===================================================================== */}
           {activeTab === 'analytics' && (
             <div className="space-y-4 text-xs">
-              {/* Сводка факторов защиты */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono">
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-[10px] text-slate-400">МЭД D(t)</div>
-                  <div className="text-base font-bold text-white">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono alara-tabular">
+                <div className="p-3 rounded-xl alara-surface">
+                  <div className="text-[11px] text-[#94A3B8]">МЭД D(t)</div>
+                  <div className="text-base font-bold text-[#F1F5F9] mt-0.5">
                     {currentDoseRateMicroSv >= 1000
                       ? `${(currentDoseRateMicroSv / 1000).toFixed(2)} мЗв/ч`
                       : `${currentDoseRateMicroSv.toFixed(1)} мкЗв/ч`}
                   </div>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-[10px] text-slate-400">ДОЗА H(t) / ЛИМИТ</div>
-                  <div className="text-base font-bold text-amber-300">
+                <div className="p-3 rounded-xl alara-surface">
+                  <div className="text-[11px] text-[#94A3B8]">Доза H(t) / Лимит</div>
+                  <div className="text-base font-bold text-[#F59E0B] mt-0.5">
                     {(cumulativeDoseMsv * 1000).toFixed(1)} / {(permitLimitMsv * 1000).toFixed(0)} мкЗв
                   </div>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-[10px] text-slate-400">БЕЗОПАСНОЕ ВРЕМЯ T_доп</div>
-                  <div className="text-base font-bold text-emerald-300">
-                    {safeStay.textRu}
-                  </div>
+                <div className="p-3 rounded-xl alara-surface">
+                  <div className="text-[11px] text-[#94A3B8]">Безопасное время T_доп</div>
+                  <div className="text-base font-bold text-[#10B981] mt-0.5">{safeStay.textRu}</div>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="text-[10px] text-slate-400">K_prot (ЗАЩИТА)</div>
-                  <div className="text-base font-bold text-sky-300">
+                <div className="p-3 rounded-xl alara-surface">
+                  <div className="text-[11px] text-[#94A3B8]">K_prot (Защита)</div>
+                  <div className="text-base font-bold text-[#0EA5E9] mt-0.5">
                     ×{protectionAnalysis.kProtTotal.toFixed(1)}
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
+                  <div className="text-[11px] text-[#64748B] mt-0.5">
                     dist ×{protectionAnalysis.kDist.toFixed(1)} · shield ×{protectionAnalysis.kShield.toFixed(1)} · СИЗ ×{protectionAnalysis.kPpe.toFixed(1)}
                   </div>
                 </div>
               </div>
 
-              {/* Управление нарядом-допуском и окнами отчётов */}
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+              <div className="p-4 rounded-xl alara-surface space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
-                    <label className="text-slate-300 font-semibold">Лимит наряда-допуска:</label>
+                    <label className="text-[#94A3B8] font-medium">Лимит наряда-допуска:</label>
                     <select
                       value={permitLimitMsv}
                       onChange={e => onChangePermitLimitMsv(Number(e.target.value))}
-                      className="bg-slate-950 text-white border border-slate-700 rounded-lg px-2.5 py-1 font-mono"
+                      className="bg-[#0B1117] text-[#F1F5F9] border border-slate-400/20 rounded-[10px] px-2.5 py-1.5 font-mono alara-tabular"
                     >
                       <option value={0.05}>0.05 мЗв (50 мкЗв)</option>
                       <option value={0.1}>0.10 мЗв (100 мкЗв)</option>
@@ -1114,7 +1143,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                         onClose();
                         onOpenAnalyticsWindow();
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold flex items-center gap-1.5 cursor-pointer"
+                      className="px-3 py-1.5 rounded-[10px] bg-[#0EA5E9] hover:bg-sky-400 text-[#0B1117] font-semibold flex items-center gap-1.5 cursor-pointer"
                     >
                       <BarChart3 className="w-3.5 h-3.5" />
                       <span>Графики D(t)/H(t)</span>
@@ -1123,9 +1152,9 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                     <button
                       type="button"
                       onClick={onExportCsv}
-                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold flex items-center gap-1.5 cursor-pointer"
+                      className="px-3 py-1.5 rounded-[10px] bg-[#0B1117] hover:bg-slate-800/80 border border-slate-400/20 text-[#F1F5F9] font-medium flex items-center gap-1.5 cursor-pointer"
                     >
-                      <Download className="w-3.5 h-3.5 text-sky-400" />
+                      <Download className="w-3.5 h-3.5 text-[#0EA5E9]" />
                       <span>Экспорт CSV</span>
                     </button>
 
@@ -1133,7 +1162,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                       type="button"
                       onClick={handleExportPdf}
                       disabled={isExportingPdf}
-                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold flex items-center gap-1.5 cursor-pointer"
+                      className="px-3 py-1.5 rounded-[10px] bg-[#10B981] hover:bg-emerald-400 disabled:opacity-50 text-[#0B1117] font-semibold flex items-center gap-1.5 cursor-pointer"
                     >
                       <FileText className="w-3.5 h-3.5" />
                       <span>{isExportingPdf ? 'Генерация PDF...' : 'Экспорт PDF'}</span>
@@ -1142,7 +1171,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                     <button
                       type="button"
                       onClick={onResetCharts}
-                      className="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-slate-300 flex items-center gap-1 cursor-pointer"
+                      className="px-3 py-1.5 rounded-[10px] bg-[#0B1117] hover:bg-slate-800/80 border border-slate-400/20 text-[#94A3B8] hover:text-[#F1F5F9] flex items-center gap-1 cursor-pointer"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>Сброс графиков</span>
@@ -1150,14 +1179,14 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800">
+                <div className="flex flex-wrap items-center gap-2 pt-2.5 border-t border-slate-400/15">
                   <button
                     type="button"
                     onClick={() => {
                       onClose();
                       onOpenAlaraReport();
                     }}
-                    className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold flex items-center gap-1.5 cursor-pointer"
+                    className="px-3 py-1.5 rounded-[10px] bg-[#F59E0B] hover:bg-amber-400 text-[#0B1117] font-semibold flex items-center gap-1.5 cursor-pointer"
                   >
                     <FileText className="w-3.5 h-3.5" />
                     <span>Отчёт ALARA</span>
@@ -1168,7 +1197,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                       onClose();
                       onOpenAAR();
                     }}
-                    className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/40 font-semibold flex items-center gap-1.5 cursor-pointer"
+                    className="px-3 py-1.5 rounded-[10px] bg-[#14B8A6]/15 hover:bg-[#14B8A6]/25 text-[#14B8A6] border border-[#14B8A6]/40 font-semibold flex items-center gap-1.5 cursor-pointer"
                   >
                     <Award className="w-3.5 h-3.5" />
                     <span>Разбор AAR</span>
@@ -1179,7 +1208,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                       onClose();
                       onOpenLabNotebook();
                     }}
-                    className="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-cyan-300 flex items-center gap-1.5 cursor-pointer"
+                    className="px-3 py-1.5 rounded-[10px] bg-[#0B1117] hover:bg-slate-800/80 border border-slate-400/20 text-[#0EA5E9] flex items-center gap-1.5 cursor-pointer"
                   >
                     <FileSpreadsheet className="w-3.5 h-3.5" />
                     <span>Лаб. журнал</span>
@@ -1190,7 +1219,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                       onClose();
                       onOpenSpectrometry();
                     }}
-                    className="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-purple-300 flex items-center gap-1.5 cursor-pointer"
+                    className="px-3 py-1.5 rounded-[10px] bg-[#0B1117] hover:bg-slate-800/80 border border-slate-400/20 text-[#14B8A6] flex items-center gap-1.5 cursor-pointer"
                   >
                     <Activity className="w-3.5 h-3.5" />
                     <span>Спектрометр МКА</span>
@@ -1198,7 +1227,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   <button
                     type="button"
                     onClick={onConnectHil}
-                    className="ml-auto px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-700 text-amber-300 font-mono text-[11px] cursor-pointer"
+                    className="ml-auto px-3 py-1.5 rounded-[10px] bg-[#0B1117] hover:bg-slate-800/80 border border-slate-400/20 text-[#F59E0B] font-mono alara-tabular text-[11px] cursor-pointer"
                     title={hilProtocolTitle}
                   >
                     HIL: {hilLabel} ({hilCountsPerSec} имп/с)
@@ -1206,11 +1235,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                 </div>
               </div>
 
-              {/* Голосовой протокол и текстовый ввод NLU */}
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2.5">
+              <div className="p-4 rounded-xl alara-surface space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-bold text-slate-200 flex items-center gap-1.5">
-                    <Mic className="w-4 h-4 text-emerald-400" />
+                  <span className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
+                    <Mic className="w-4 h-4 text-[#10B981]" />
                     <span>Голосовое протоколирование (PTT [V])</span>
                   </span>
                   <div className="flex items-center gap-2">
@@ -1221,10 +1249,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                       onMouseLeave={() => {
                         if (isVoicePushToTalkActive) onStopVoicePushToTalk();
                       }}
-                      className={`px-3 py-1 rounded-lg font-semibold cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-[10px] font-semibold cursor-pointer ${
                         isVoicePushToTalkActive
-                          ? 'bg-emerald-500 text-slate-950'
-                          : 'bg-slate-950 border border-emerald-500/40 text-emerald-300'
+                          ? 'bg-[#10B981] text-[#0B1117]'
+                          : 'bg-[#0B1117] border border-[#10B981]/40 text-[#10B981]'
                       }`}
                     >
                       {isVoicePushToTalkActive ? 'Запись...' : 'Удерживать PTT'}
@@ -1232,7 +1260,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                     <button
                       type="button"
                       onClick={onToggleVoiceMode}
-                      className="px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-700 font-mono text-amber-300 cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-[10px] bg-[#0B1117] border border-slate-400/20 font-mono text-[#F59E0B] cursor-pointer"
                     >
                       Режим: {voiceMode === 'hybrid' ? 'АВТО' : voiceMode === 'dictation' ? 'ЛОГ' : 'КОМ'}
                     </button>
@@ -1254,11 +1282,11 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                     value={voiceNoteInput}
                     onChange={e => setVoiceNoteInput(e.target.value)}
                     placeholder="Запись в оперативный журнал или команда..."
-                    className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-sky-500"
+                    className="flex-1 bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-1.5 text-xs text-[#F1F5F9] placeholder:text-[#64748B] focus:outline-none focus:border-[#0EA5E9]"
                   />
                   <button
                     type="submit"
-                    className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold flex items-center gap-1 cursor-pointer"
+                    className="px-3 py-1.5 rounded-[10px] bg-[#0EA5E9] hover:bg-sky-400 text-[#0B1117] font-semibold flex items-center gap-1 cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span>Отправить</span>
@@ -1266,16 +1294,16 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                 </form>
 
                 {voiceLogs.length > 0 && (
-                  <div className="max-h-28 overflow-y-auto space-y-1 pt-1 font-mono text-[11px]">
+                  <div className="max-h-28 overflow-y-auto space-y-1 pt-1 font-mono alara-tabular text-[11px]">
                     {voiceLogs.slice(-6).reverse().map(entry => (
                       <div
                         key={entry.id}
-                        className="px-2.5 py-1 rounded bg-slate-950 border border-slate-800 text-slate-300 flex justify-between gap-2"
+                        className="px-2.5 py-1 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15 text-[#94A3B8] flex justify-between gap-2"
                       >
                         <span className="truncate">
                           [{entry.location}] {entry.textNote}
                         </span>
-                        <span className="text-sky-300 shrink-0">
+                        <span className="text-[#0EA5E9] shrink-0">
                           {entry.currentDoseRate.toFixed(1)} мкЗв/ч
                         </span>
                       </div>
@@ -1287,14 +1315,13 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
           )}
 
           {/* ===================================================================== */}
-          {/* ВКЛАДКА 5: ГРАФИКА, СРЕДА И УПРАВЛЕНИЕ */}
+          {/* ВКЛАДКА 5: СИСТЕМА И КЛАВИШИ */}
           {/* ===================================================================== */}
           {activeTab === 'settings' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
-              {/* Окружение, тени и звук */}
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-                <h3 className="font-bold text-sm text-white flex items-center gap-1.5">
-                  <Sliders className="w-4 h-4 text-sky-400" />
+              <div className="p-4 rounded-xl alara-surface space-y-3">
+                <h3 className="font-semibold text-sm text-[#F1F5F9] flex items-center gap-1.5">
+                  <Sliders className="w-4 h-4 text-[#0EA5E9]" />
                   <span>Графика, Среда и Звук</span>
                 </h3>
 
@@ -1302,10 +1329,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   <button
                     type="button"
                     onClick={onToggleLowLightMode}
-                    className={`px-3 py-2 rounded-xl border flex items-center gap-2 cursor-pointer ${
+                    className={`px-3 py-2 rounded-[10px] border flex items-center gap-2 cursor-pointer ${
                       isLowLightMode
-                        ? 'bg-sky-500/20 border-sky-400/60 text-sky-200 font-semibold'
-                        : 'bg-slate-950 border-slate-800 text-slate-300'
+                        ? 'bg-[#0EA5E9]/15 border-[#0EA5E9]/50 text-[#0EA5E9] font-semibold'
+                        : 'bg-[#0B1117] border-slate-400/20 text-[#94A3B8]'
                     }`}
                   >
                     <Moon className="w-4 h-4" />
@@ -1315,10 +1342,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   <button
                     type="button"
                     onClick={onToggleRadiationField}
-                    className={`px-3 py-2 rounded-xl border flex items-center gap-2 cursor-pointer ${
+                    className={`px-3 py-2 rounded-[10px] border flex items-center gap-2 cursor-pointer ${
                       isRadiationFieldVisible
-                        ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200 font-semibold'
-                        : 'bg-slate-950 border-slate-800 text-slate-300'
+                        ? 'bg-[#10B981]/15 border-[#10B981]/50 text-[#10B981] font-semibold'
+                        : 'bg-[#0B1117] border-slate-400/20 text-[#94A3B8]'
                     }`}
                   >
                     <Radio className="w-4 h-4" />
@@ -1328,19 +1355,19 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   <button
                     type="button"
                     onClick={onToggleAudio}
-                    className={`px-3 py-2 rounded-xl border flex items-center gap-2 cursor-pointer ${
+                    className={`px-3 py-2 rounded-[10px] border flex items-center gap-2 cursor-pointer ${
                       !isAudioMuted
-                        ? 'bg-amber-500/15 border-amber-400/50 text-amber-200 font-semibold'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                        ? 'bg-[#F59E0B]/15 border-[#F59E0B]/50 text-[#F59E0B] font-semibold'
+                        : 'bg-[#0B1117] border-slate-400/20 text-[#64748B]'
                     }`}
                   >
                     {isAudioMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                     <span>Звук: {isAudioMuted ? 'Выкл' : 'Вкл'}</span>
                   </button>
 
-                  <div className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2">
-                    <span className="text-slate-300 flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-sky-400" /> Тени:
+                  <div className="px-3 py-2 rounded-[10px] bg-[#0B1117] border border-slate-400/20 flex items-center justify-between gap-2">
+                    <span className="text-[#94A3B8] flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-[#0EA5E9]" /> Тени:
                     </span>
                     <div className="flex gap-1">
                       {(['low', 'medium'] as ShadowQualitySetting[]).map(q => (
@@ -1350,8 +1377,8 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                           onClick={() => onChangeShadowQuality(q)}
                           className={`px-2 py-0.5 rounded font-mono text-[11px] cursor-pointer ${
                             shadowQuality === q
-                              ? 'bg-sky-500 text-slate-950 font-bold'
-                              : 'bg-slate-800 text-slate-300'
+                              ? 'bg-[#0EA5E9] text-[#0B1117] font-semibold'
+                              : 'bg-slate-800 text-[#94A3B8]'
                           }`}
                         >
                           {q === 'low' ? '512' : '1024'}
@@ -1361,10 +1388,12 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-300">Виброотклик контроллеров VR:</span>
+                <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-[10px] bg-[#0B1117] border border-slate-400/20">
+                  <span className="text-[#94A3B8]">Виброотклик контроллеров VR:</span>
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sky-300">{Math.round(hapticStrength * 100)}%</span>
+                    <span className="font-mono alara-tabular text-[#0EA5E9]">
+                      {Math.round(hapticStrength * 100)}%
+                    </span>
                     <input
                       type="range"
                       min={0}
@@ -1372,45 +1401,44 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                       step={5}
                       value={Math.round(hapticStrength * 100)}
                       onChange={e => onChangeHapticStrength(Number(e.target.value) / 100)}
-                      className="w-28 h-1.5 bg-slate-700 rounded-lg cursor-pointer accent-sky-400"
+                      className="w-28 h-1.5 bg-slate-700 rounded-lg cursor-pointer accent-[#0EA5E9]"
                     />
                   </div>
                 </div>
 
-                <label className="flex items-center gap-3 cursor-pointer p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                <label className="flex items-center gap-3 cursor-pointer p-2.5 rounded-[10px] bg-[#0B1117] border border-slate-400/20">
                   <input
                     type="checkbox"
                     checked={hideStartupModal}
                     onChange={e => onToggleHideStartupModal(e.target.checked)}
-                    className="w-4 h-4 rounded text-sky-500 cursor-pointer"
+                    className="w-4 h-4 rounded text-[#0EA5E9] cursor-pointer"
                   />
                   <div>
-                    <span className="font-bold text-slate-200">
+                    <span className="font-semibold text-[#F1F5F9]">
                       Не открывать планшет автоматически при старте
                     </span>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[11px] text-[#94A3B8]">
                       Всегда можно открыть клавишей [Tab] или [Esc].
                     </p>
                   </div>
                 </label>
 
-                <div className="grid grid-cols-2 gap-2 font-mono text-[11px] pt-1">
-                  <div className="p-2 rounded-lg bg-slate-950 border border-slate-800">
-                    <span className="text-slate-500">Т₀ / Р₀: </span>
-                    <strong className="text-cyan-300">
+                <div className="grid grid-cols-2 gap-2 font-mono alara-tabular text-[11px] pt-1">
+                  <div className="p-2 rounded-[10px] bg-[#0B1117] border border-slate-400/15">
+                    <span className="text-[#64748B]">Т₀ / Р₀: </span>
+                    <strong className="text-[#14B8A6]">
                       {NORMAL_CONDITIONS.temperatureC}°C / {NORMAL_CONDITIONS.pressureKpa} кПа
                     </strong>
                   </div>
-                  <div className="p-2 rounded-lg bg-slate-950 border border-slate-800">
-                    <span className="text-slate-500">Стандарт: </span>
-                    <strong className="text-emerald-300">ГОСТ Р 8.804-2012</strong>
+                  <div className="p-2 rounded-[10px] bg-[#0B1117] border border-slate-400/15">
+                    <span className="text-[#64748B]">Стандарт: </span>
+                    <strong className="text-[#10B981]">ГОСТ Р 8.804-2012</strong>
                   </div>
                 </div>
               </div>
 
-              {/* Справочник горячих клавиш */}
-              <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-2.5">
-                <h3 className="font-bold text-sm text-white">Управление и Горячие клавиши</h3>
+              <div className="p-4 rounded-xl alara-surface space-y-2.5">
+                <h3 className="font-semibold text-sm text-[#F1F5F9]">Управление и Горячие клавиши</h3>
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
                   {[
                     ['WASD', 'Перемещение оператора'],
@@ -1422,7 +1450,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                     ['3 — Ствол / ОУ-5', 'Пожарный ствол / ОУ-5'],
                     ['4 — Руки / Ключ', 'Захват и стыковка'],
                     ['5 / 6', 'Лопата БСЛ / Щипцы ЦМ'],
-                    ['Q', 'Струя (Распыл/Сплошная) / Манифольд'],
+                    ['Q', 'Струя / Манифольд'],
                     ['C / R', 'Присесть / Вытянуть руку'],
                     ['T / V', 'Телепорт / Голос PTT'],
                     ['H', 'Показать / скрыть 2D HUD'],
@@ -1430,10 +1458,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   ].map(([key, desc]) => (
                     <div
                       key={key}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between gap-2"
+                      className="px-2.5 py-1.5 rounded-[10px] bg-[#0B1117] border border-slate-400/15 flex items-center justify-between gap-2"
                     >
-                      <kbd className="font-mono text-sky-300 font-bold shrink-0">{key}</kbd>
-                      <span className="text-slate-400 text-right truncate">{desc}</span>
+                      <kbd className="font-mono text-[#0EA5E9] font-semibold shrink-0">{key}</kbd>
+                      <span className="text-[#94A3B8] text-right truncate">{desc}</span>
                     </div>
                   ))}
                 </div>
@@ -1443,18 +1471,15 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
         </div>
 
         {/* Нижний колонтитул */}
-        <footer className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-t border-slate-800 bg-slate-900 shrink-0 text-xs">
-          <div className="flex items-center gap-2 text-slate-400">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span>
-              Активен: <strong className="text-white">{scenario.titleRu}</strong>
-            </span>
+        <footer className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-t border-slate-400/15 shrink-0 text-xs">
+          <div className="text-[#94A3B8]">
+            Активный сценарий: <strong className="text-[#F1F5F9]">{scenario.titleRu}</strong>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold rounded-xl transition flex items-center gap-2 cursor-pointer"
+            className="px-5 py-2 bg-[#0EA5E9] hover:bg-sky-400 text-[#0B1117] font-semibold rounded-[10px] transition flex items-center gap-2 cursor-pointer whitespace-nowrap"
           >
             <Play className="w-4 h-4 fill-current" />
             <span>Вернуться на 3D-сцену</span>

@@ -209,9 +209,9 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
             {
               label: `Защищенная D(t), ${rateUnitLabel}`,
               data: protectedSeries,
-              borderColor: '#eab308',
-              backgroundColor: 'rgba(234, 179, 8, 0.18)',
-              borderWidth: 2.2,
+              borderColor: '#F59E0B',
+              backgroundColor: 'rgba(245, 158, 11, 0.16)',
+              borderWidth: 2,
               pointRadius: 1.5,
               fill: true,
               tension: 0.25
@@ -219,7 +219,7 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
             {
               label: `Без защиты D₀(t), ${rateUnitLabel}`,
               data: unshieldedSeries,
-              borderColor: 'rgba(248, 113, 113, 0.65)',
+              borderColor: 'rgba(239, 68, 68, 0.7)',
               borderDash: [4, 4],
               borderWidth: 1.5,
               pointRadius: 0,
@@ -235,19 +235,19 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
           interaction: { mode: 'index', intersect: false },
           scales: {
             x: {
-              ticks: { color: '#94a3b8', font: { size: 10 }, maxTicksLimit: 7 },
-              grid: { color: 'rgba(255,255,255,0.05)' }
+              ticks: { color: '#94A3B8', font: { size: 10 }, maxTicksLimit: 7 },
+              grid: { color: 'rgba(148, 163, 184, 0.08)' }
             },
             y: {
               beginAtZero: true,
               title: {
                 display: true,
                 text: rateUnitLabel,
-                color: '#eab308',
+                color: '#F59E0B',
                 font: { size: 10 }
               },
-              ticks: { color: '#eab308', font: { size: 10 } },
-              grid: { color: 'rgba(234, 179, 8, 0.08)' }
+              ticks: { color: '#F59E0B', font: { size: 10 } },
+              grid: { color: 'rgba(245, 158, 11, 0.08)' }
             }
           },
           plugins: {
@@ -316,9 +316,9 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
             {
               label: 'Интеграл H(t) (Трапеций/Симпсон), мЗв',
               data: cumulativeSeries,
-              borderColor: '#38bdf8',
-              backgroundColor: 'rgba(56, 189, 248, 0.16)',
-              borderWidth: 2.2,
+              borderColor: '#0EA5E9',
+              backgroundColor: 'rgba(14, 165, 233, 0.16)',
+              borderWidth: 2,
               pointRadius: 1.5,
               fill: true,
               tension: 0.2
@@ -326,7 +326,7 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
             {
               label: `Лимит H_limit (${safePermitLimitMsv.toFixed(2)} мЗв)`,
               data: limitSeries,
-              borderColor: '#ef4444',
+              borderColor: '#EF4444',
               borderDash: [6, 4],
               borderWidth: 1.8,
               pointRadius: 0,
@@ -341,19 +341,19 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
           interaction: { mode: 'index', intersect: false },
           scales: {
             x: {
-              ticks: { color: '#94a3b8', font: { size: 10 }, maxTicksLimit: 7 },
-              grid: { color: 'rgba(255,255,255,0.05)' }
+              ticks: { color: '#94A3B8', font: { size: 10 }, maxTicksLimit: 7 },
+              grid: { color: 'rgba(148, 163, 184, 0.08)' }
             },
             y: {
               beginAtZero: true,
               title: {
                 display: true,
                 text: 'мЗв',
-                color: '#38bdf8',
+                color: '#0EA5E9',
                 font: { size: 10 }
               },
-              ticks: { color: '#38bdf8', font: { size: 10 } },
-              grid: { color: 'rgba(56, 189, 248, 0.08)' }
+              ticks: { color: '#0EA5E9', font: { size: 10 } },
+              grid: { color: 'rgba(14, 165, 233, 0.08)' }
             }
           },
           plugins: {
@@ -687,17 +687,17 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
 
   if (isMinimized) {
     return (
-      <div className="fixed bottom-16 left-4 z-40 pointer-events-auto bg-slate-950/75 backdrop-blur-md border border-white/10 rounded-xl px-3.5 py-2 shadow-2xl flex items-center gap-3">
-        <Activity className="w-4 h-4 text-yellow-400 shrink-0" />
-        <div className="text-[11px] font-mono tabular-nums text-slate-200 whitespace-nowrap">
-          K_prot <strong className="text-emerald-400">{currentAnalysis.kProtTotal}×</strong> · T_rem{' '}
-          <strong className={safeStay.isLimitExceeded ? 'text-red-400' : 'text-amber-300'}>
+      <div className="fixed bottom-16 left-4 z-40 pointer-events-auto alara-glass rounded-xl px-3.5 py-2 flex items-center gap-3">
+        <Activity className="w-4 h-4 text-[#0EA5E9] shrink-0" />
+        <div className="text-[11px] font-mono alara-tabular text-[#F1F5F9] whitespace-nowrap">
+          K_prot <strong className="text-[#10B981]">{currentAnalysis.kProtTotal}×</strong> · T_rem{' '}
+          <strong className={safeStay.isLimitExceeded ? 'text-[#EF4444]' : 'text-[#F59E0B]'}>
             {safeStay.textRu}
           </strong>
         </div>
         <button
           onClick={() => setMinimizedState(false)}
-          className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-100 text-[11px] font-semibold flex items-center gap-1 transition whitespace-nowrap shrink-0 cursor-pointer"
+          className="px-2.5 py-1 rounded-[10px] alara-surface hover:bg-slate-800/80 text-[#F1F5F9] text-[11px] font-medium flex items-center gap-1 transition whitespace-nowrap shrink-0 cursor-pointer"
           title="Развернуть окно аналитики"
         >
           <Maximize2 className="w-3 h-3" />
@@ -708,41 +708,41 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
   }
 
   return (
-    <div className="fixed inset-x-3 bottom-16 md:inset-x-auto md:left-4 md:bottom-16 z-40 pointer-events-auto w-auto md:w-[min(840px,94vw)] max-h-[72vh] overflow-y-auto bg-slate-950/80 backdrop-blur-md border border-white/12 rounded-2xl shadow-2xl p-3.5 text-slate-100">
+    <div className="fixed inset-x-3 bottom-16 md:inset-x-auto md:left-4 md:bottom-16 z-40 pointer-events-auto w-auto md:w-[min(840px,94vw)] max-h-[72vh] overflow-y-auto alara-glass-elevated rounded-xl p-4 text-[#F1F5F9]">
       {/* Компактная шапка аналитического окна */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-white/10">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-400/15">
         <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4 text-yellow-400 shrink-0" />
+          <Activity className="w-4 h-4 text-[#0EA5E9] shrink-0" />
           <div>
-            <h2 className="text-xs font-bold text-white tracking-wide">
+            <h2 className="text-xs font-semibold text-[#F1F5F9]">
               Дозиметрический анализ ALARA
             </h2>
-            <p className="text-[11px] text-slate-400 font-mono truncate max-w-md">{scenarioTitle}</p>
+            <p className="text-[11px] text-[#94A3B8] font-mono truncate max-w-md">{scenarioTitle}</p>
           </div>
         </div>
 
-        {/* Вложенные вкладки (Графики / Защита и органы / Голосовой лог) */}
-        <div className="flex items-center gap-1 bg-slate-900/80 p-0.5 rounded-lg border border-white/10">
+        {/* Вложенные вкладки */}
+        <div className="flex items-center gap-1 alara-surface p-0.5 rounded-[10px]">
           <button
             onClick={() => setActiveTab('charts')}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition whitespace-nowrap cursor-pointer ${
-              activeTab === 'charts' ? 'bg-amber-400 text-slate-950' : 'text-slate-300 hover:text-white'
+            className={`px-2.5 py-1 rounded-[8px] text-[11px] font-medium transition whitespace-nowrap cursor-pointer ${
+              activeTab === 'charts' ? 'bg-[#0EA5E9] text-[#0B1117] font-semibold' : 'text-[#94A3B8] hover:text-[#F1F5F9]'
             }`}
           >
             Графики (3)
           </button>
           <button
             onClick={() => setActiveTab('protection')}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition whitespace-nowrap cursor-pointer ${
-              activeTab === 'protection' ? 'bg-amber-400 text-slate-950' : 'text-slate-300 hover:text-white'
+            className={`px-2.5 py-1 rounded-[8px] text-[11px] font-medium transition whitespace-nowrap cursor-pointer ${
+              activeTab === 'protection' ? 'bg-[#0EA5E9] text-[#0B1117] font-semibold' : 'text-[#94A3B8] hover:text-[#F1F5F9]'
             }`}
           >
             Защита и органы
           </button>
           <button
             onClick={() => setActiveTab('voice')}
-            className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition whitespace-nowrap cursor-pointer ${
-              activeTab === 'voice' ? 'bg-amber-400 text-slate-950' : 'text-slate-300 hover:text-white'
+            className={`px-2.5 py-1 rounded-[8px] text-[11px] font-medium transition whitespace-nowrap cursor-pointer ${
+              activeTab === 'voice' ? 'bg-[#0EA5E9] text-[#0B1117] font-semibold' : 'text-[#94A3B8] hover:text-[#F1F5F9]'
             }`}
           >
             Лог ({voiceLogs.length})
@@ -752,7 +752,7 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
         <div className="flex items-center gap-1">
           <button
             onClick={handleExportCsv}
-            className="px-2 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold flex items-center gap-1 transition whitespace-nowrap cursor-pointer"
+            className="px-2.5 py-1 rounded-[10px] bg-[#10B981]/15 hover:bg-[#10B981]/25 text-[#10B981] border border-[#10B981]/35 text-[11px] font-medium flex items-center gap-1 transition whitespace-nowrap cursor-pointer"
             title="Экспорт CSV телеметрии"
           >
             <Download className="w-3 h-3" />
@@ -762,8 +762,8 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
           <button
             onClick={handleExportPdf}
             disabled={isExportingPdf}
-            className="px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 disabled:opacity-60 text-sky-300 border border-sky-500/30 text-[11px] font-semibold flex items-center gap-1 transition whitespace-nowrap cursor-pointer"
-            title="Экспорт структурированного PDF-отчета по телеметрии дозы и пределам"
+            className="px-2.5 py-1 rounded-[10px] bg-[#0EA5E9]/15 hover:bg-[#0EA5E9]/25 disabled:opacity-60 text-[#0EA5E9] border border-[#0EA5E9]/35 text-[11px] font-medium flex items-center gap-1 transition whitespace-nowrap cursor-pointer"
+            title="Экспорт PDF-отчета по телеметрии дозы и пределам"
           >
             {isExportingPdf ? (
               <Loader2 className="w-3 h-3 animate-spin" />
@@ -775,16 +775,16 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
 
           <button
             onClick={onResetCharts}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 transition cursor-pointer"
+            className="p-1.5 rounded-[10px] alara-surface hover:bg-slate-800/80 text-[#F59E0B] transition cursor-pointer"
             title="Очистить графики"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-yellow-400" />
+            <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
           {onResetScenario && (
             <button
               onClick={onResetScenario}
-              className="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-[11px] font-semibold transition whitespace-nowrap cursor-pointer"
+              className="px-2.5 py-1 rounded-[10px] bg-[#EF4444]/15 hover:bg-[#EF4444]/25 text-[#EF4444] border border-[#EF4444]/35 text-[11px] font-medium transition whitespace-nowrap cursor-pointer"
               title="Полный сброс сценария"
             >
               Сброс
@@ -793,7 +793,7 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
 
           <button
             onClick={() => setMinimizedState(true)}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition cursor-pointer"
+            className="p-1.5 rounded-[10px] alara-surface hover:bg-slate-800/80 text-[#94A3B8] hover:text-[#F1F5F9] transition cursor-pointer"
             title="Свернуть"
           >
             <Minimize2 className="w-3.5 h-3.5" />
@@ -801,7 +801,7 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 border border-white/10 transition cursor-pointer"
+            className="p-1.5 rounded-[10px] alara-surface hover:bg-[#EF4444]/20 text-[#94A3B8] hover:text-[#EF4444] transition cursor-pointer"
             title="Закрыть окно"
           >
             <X className="w-3.5 h-3.5" />
@@ -809,21 +809,21 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
         </div>
       </div>
 
-      {/* ВКЛАДКА 1: 3 ЖИВЫХ ГРАФИКА + КОМПАКТНЫЕ РЕГУЛЯТОРЫ ЗАЩИТЫ */}
+      {/* ВКЛАДКА 1: 3 ЖИВЫХ ГРАФИКА */}
       {activeTab === 'charts' && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 my-2.5">
-            <div className="bg-slate-900/75 border border-white/10 rounded-xl p-2">
-              <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                <span className="font-semibold flex items-center gap-1 text-emerald-400">
+            <div className="alara-surface rounded-xl p-2.5">
+              <div className="flex items-center justify-between text-[11px] text-[#94A3B8] mb-1">
+                <span className="font-medium flex items-center gap-1 text-[#10B981]">
                   <UserCheck className="w-3.5 h-3.5" /> СИЗ
                 </span>
-                <span className="font-mono tabular-nums text-white">K={currentAnalysis.kPpe.toFixed(2)}×</span>
+                <span className="font-mono alara-tabular text-[#F1F5F9]">K={currentAnalysis.kPpe.toFixed(2)}×</span>
               </div>
               <select
                 value={selectedPpeId}
                 onChange={e => onChangePpeId(e.target.value as PPELoadoutId)}
-                className="w-full bg-slate-950/90 text-xs text-white border border-white/10 rounded-lg px-2 py-1 focus:outline-none focus:border-emerald-400"
+                className="w-full bg-[#0B1117] text-xs text-[#F1F5F9] border border-slate-400/20 rounded-[10px] px-2 py-1 focus:outline-none focus:border-[#10B981]"
               >
                 {Object.values(PPE_LOADOUTS).map(ppe => (
                   <option key={ppe.id} value={ppe.id}>
@@ -833,17 +833,17 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
               </select>
             </div>
 
-            <div className="bg-slate-900/75 border border-white/10 rounded-xl p-2">
-              <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                <span className="font-semibold flex items-center gap-1 text-sky-400">
+            <div className="alara-surface rounded-xl p-2.5">
+              <div className="flex items-center justify-between text-[11px] text-[#94A3B8] mb-1">
+                <span className="font-medium flex items-center gap-1 text-[#0EA5E9]">
                   <Ruler className="w-3.5 h-3.5" /> Дистанция (1/r²)
                 </span>
-                <span className="font-mono tabular-nums text-white">K={currentAnalysis.kDist.toFixed(2)}×</span>
+                <span className="font-mono alara-tabular text-[#F1F5F9]">K={currentAnalysis.kDist.toFixed(2)}×</span>
               </div>
               <select
                 value={selectedRemoteToolId}
                 onChange={e => onChangeRemoteToolId(e.target.value as RemoteToolId)}
-                className="w-full bg-slate-950/90 text-xs text-white border border-white/10 rounded-lg px-2 py-1 focus:outline-none focus:border-sky-400"
+                className="w-full bg-[#0B1117] text-xs text-[#F1F5F9] border border-slate-400/20 rounded-[10px] px-2 py-1 focus:outline-none focus:border-[#0EA5E9]"
               >
                 {Object.values(REMOTE_TOOLS).map(tool => (
                   <option key={tool.id} value={tool.id}>
@@ -853,19 +853,19 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
               </select>
             </div>
 
-            <div className="bg-slate-900/75 border border-white/10 rounded-xl p-2">
-              <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                <span className="font-semibold flex items-center gap-1 text-amber-400">
+            <div className="alara-surface rounded-xl p-2.5">
+              <div className="flex items-center justify-between text-[11px] text-[#94A3B8] mb-1">
+                <span className="font-medium flex items-center gap-1 text-[#F59E0B]">
                   <Clock className="w-3.5 h-3.5" /> Лимит H_limit
                 </span>
-                <span className={`font-mono tabular-nums font-bold ${safeStay.isLimitExceeded ? 'text-red-400' : 'text-emerald-400'}`}>
+                <span className={`font-mono alara-tabular font-semibold ${safeStay.isLimitExceeded ? 'text-[#EF4444]' : 'text-[#10B981]'}`}>
                   {safeStay.textRu}
                 </span>
               </div>
               <select
                 value={permitLimitMsv}
                 onChange={e => onChangePermitLimitMsv(Number(e.target.value))}
-                className="w-full bg-slate-950/90 text-xs text-white border border-white/10 rounded-lg px-2 py-1 focus:outline-none focus:border-amber-400"
+                className="w-full bg-[#0B1117] text-xs text-[#F1F5F9] border border-slate-400/20 rounded-[10px] px-2 py-1 focus:outline-none focus:border-[#F59E0B]"
               >
                 <option value={0.01}>0.01 мЗв (10 мкЗв)</option>
                 <option value={0.05}>0.05 мЗв (50 мкЗв)</option>
@@ -878,10 +878,10 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 my-2">
-            <div className="bg-slate-950/80 border border-white/10 rounded-xl p-2 flex flex-col h-48">
-              <div className="flex items-center justify-between text-[11px] font-bold text-yellow-400 mb-1">
+            <div className="alara-surface rounded-xl p-2.5 flex flex-col h-48">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-[#F59E0B] mb-1">
                 <span>D(t) Мощность дозы</span>
-                <span className="font-mono tabular-nums text-white">
+                <span className="font-mono alara-tabular text-[#F1F5F9]">
                   {(currentProtectedRate * rateScaleFactor).toFixed(2)} {rateUnitLabel}
                 </span>
               </div>
@@ -890,10 +890,10 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
               </div>
             </div>
 
-            <div className="bg-slate-950/80 border border-white/10 rounded-xl p-2 flex flex-col h-48">
-              <div className="flex items-center justify-between text-[11px] font-bold text-sky-400 mb-1">
+            <div className="alara-surface rounded-xl p-2.5 flex flex-col h-48">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-[#0EA5E9] mb-1">
                 <span>H(t) Интеграл (±{latestConvergenceErr.toFixed(2)}%)</span>
-                <span className="font-mono tabular-nums text-white">
+                <span className="font-mono alara-tabular text-[#F1F5F9]">
                   {safeAccumDoseMsv.toFixed(4)} / {safePermitLimitMsv.toFixed(2)} мЗв
                 </span>
               </div>
@@ -902,19 +902,19 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
               </div>
             </div>
 
-            <div className="bg-slate-950/80 border border-white/10 rounded-xl p-2 flex flex-col h-48">
-              <div className="flex items-center justify-between text-[11px] font-bold text-purple-400 mb-1">
+            <div className="alara-surface rounded-xl p-2.5 flex flex-col h-48">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-[#14B8A6] mb-1">
                 <span>Спектр (α, β, γ, n)</span>
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setSpectralChartMode('bar')}
-                    className={`p-1 rounded ${spectralChartMode === 'bar' ? 'bg-purple-500/30 text-purple-300' : 'text-slate-400 hover:text-white'}`}
+                    className={`p-1 rounded cursor-pointer ${spectralChartMode === 'bar' ? 'bg-[#0EA5E9]/20 text-[#0EA5E9]' : 'text-[#94A3B8] hover:text-[#F1F5F9]'}`}
                   >
                     <BarChart3 className="w-3 h-3" />
                   </button>
                   <button
                     onClick={() => setSpectralChartMode('doughnut')}
-                    className={`p-1 rounded ${spectralChartMode === 'doughnut' ? 'bg-purple-500/30 text-purple-300' : 'text-slate-400 hover:text-white'}`}
+                    className={`p-1 rounded cursor-pointer ${spectralChartMode === 'doughnut' ? 'bg-[#0EA5E9]/20 text-[#0EA5E9]' : 'text-[#94A3B8] hover:text-[#F1F5F9]'}`}
                   >
                     <PieChart className="w-3 h-3" />
                   </button>
@@ -927,7 +927,7 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
           </div>
 
           {safeStay.isLimitExceeded && (
-            <div className="mt-1 text-[11px] text-red-400 font-semibold flex items-center gap-1.5">
+            <div className="mt-1 text-[11px] text-[#EF4444] font-medium flex items-center gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
               <span>Превышен контрольный предел дозы по наряду-допуску.</span>
             </div>
@@ -939,299 +939,290 @@ export const FloatingAnalyticsWindow: React.FC<FloatingAnalyticsWindowProps> = (
       {activeTab === 'protection' && (
         <div className="mt-2.5 space-y-2.5">
           {scenarioConfig && (
-            <div className="rounded-xl px-3 py-2 border border-white/10 bg-slate-900/70 text-[11px] flex flex-wrap items-center justify-between gap-2 text-slate-300 font-mono">
-              <span>Сценарий #{scenarioConfig.scenarioId} · H_limit: <strong className="text-white">{scenarioConfig.hLimitMsv.toFixed(3)} мЗв</strong> · Изотопы: <strong className="text-emerald-300">{scenarioConfig.isotopes.join(', ')}</strong></span>
-              <span className="text-rose-300 font-sans">{scenarioConfig.failMessagesRu.ppeViolation}</span>
+            <div className="rounded-xl px-3 py-2 alara-surface text-[11px] flex flex-wrap items-center justify-between gap-2 text-[#94A3B8] font-mono alara-tabular">
+              <span>
+                Сценарий #{scenarioConfig.scenarioId} · H_limit:{' '}
+                <strong className="text-[#F1F5F9]">{scenarioConfig.hLimitMsv.toFixed(3)} мЗв</strong> · Изотопы:{' '}
+                <strong className="text-[#10B981]">{scenarioConfig.isotopes.join(', ')}</strong>
+              </span>
+              <span className="text-[#EF4444] font-sans">{scenarioConfig.failMessagesRu.ppeViolation}</span>
             </div>
           )}
-      <div className="bg-slate-950/75 border border-white/10 rounded-xl p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-white">
-            <Shield className="w-4 h-4 text-emerald-400" />
-            <span>Факторы ослабления:</span>
-            <span className="font-mono text-emerald-400">
-              K_prot = K_dist × K_shield × K_ppe = {currentAnalysis.kDist.toFixed(2)} ×{' '}
-              {currentAnalysis.kShield.toFixed(2)} × {currentAnalysis.kPpe.toFixed(2)} ={' '}
-              {currentAnalysis.kProtTotal.toFixed(2)}×
-            </span>
-          </div>
-          <div className="text-[11px] font-mono text-slate-400">
-            I = I₀ · B(E, μd) · exp(-μd) • D(r) = (Γ_γ · A) / r²
-          </div>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs font-mono">
-            <thead>
-              <tr className="border-b border-slate-800 text-slate-400 text-[11px]">
-                <th className="py-1.5 pr-3">Фактор защиты (НРБ-99/2009)</th>
-                <th className="py-1.5 px-3">Текущий режим / Параметры среды</th>
-                <th className="py-1.5 px-3">Коэффициент ослабления</th>
-                <th className="py-1.5 pl-3 text-right">Эффективность снижения</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 text-[11px]">
-              <tr>
-                <td className="py-1.5 pr-3 font-sans font-semibold text-sky-400">
-                  Защита расстоянием (K_dist)
-                </td>
-                <td className="py-1.5 px-3 text-slate-300">
-                  {REMOTE_TOOLS[selectedRemoteToolId].shortNameRu} • r = {currentAnalysis.effectiveDistanceM.toFixed(2)} м
-                </td>
-                <td className="py-1.5 px-3 font-bold text-white">{currentAnalysis.kDist.toFixed(2)}×</td>
-                <td className="py-1.5 pl-3 text-right text-emerald-400">
-                  -{((1 - 1 / Math.max(1, currentAnalysis.kDist)) * 100).toFixed(1)}%
-                </td>
-              </tr>
-              <tr>
-                <td className="py-1.5 pr-3 font-sans font-semibold text-yellow-400">
-                  Защита экранированием (K_shield)
-                </td>
-                <td className="py-1.5 px-3 text-slate-300">
-                  {currentAnalysis.activeShieldMaterialRu} (d = {currentAnalysis.activeShieldThicknessCm.toFixed(1)} см, μ ={' '}
-                  {currentAnalysis.activeMu.toFixed(3)} см⁻¹, B = {currentAnalysis.activeBuildupB.toFixed(2)})
-                </td>
-                <td className="py-1.5 px-3 font-bold text-white">{currentAnalysis.kShield.toFixed(2)}×</td>
-                <td className="py-1.5 pl-3 text-right text-emerald-400">
-                  -{((1 - 1 / Math.max(1, currentAnalysis.kShield)) * 100).toFixed(1)}%
-                </td>
-              </tr>
-              <tr>
-                <td className="py-1.5 pr-3 font-sans font-semibold text-emerald-400">
-                  Средства инд. защиты СИЗ (K_ppe)
-                </td>
-                <td className="py-1.5 px-3 text-slate-300">
-                  {PPE_LOADOUTS[selectedPpeId].shortNameRu} (задержка α: {PPE_LOADOUTS[selectedPpeId].alphaAttenuationPercent}
-                  %, β: {PPE_LOADOUTS[selectedPpeId].betaAttenuationPercent}%)
-                </td>
-                <td className="py-1.5 px-3 font-bold text-white">{currentAnalysis.kPpe.toFixed(2)}×</td>
-                <td className="py-1.5 pl-3 text-right text-emerald-400">
-                  -{((1 - 1 / Math.max(1, currentAnalysis.kPpe)) * 100).toFixed(1)}%
-                </td>
-              </tr>
-              <tr className="bg-slate-900/70">
-                <td className="py-1.5 pr-3 font-sans font-bold text-white">
-                  ИТОГОВЫЙ КОЭФФИЦИЕНТ ЗАЩИТЫ (K_prot)
-                </td>
-                <td className="py-1.5 px-3 text-slate-300">
-                  D₀ = {currentUnshieldedRate.toFixed(2)} мкЗв/ч → D(t) = {currentProtectedRate.toFixed(2)} мкЗв/ч
-                </td>
-                <td className="py-1.5 px-3 font-extrabold text-emerald-400">
+          <div className="alara-surface rounded-xl p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[#F1F5F9]">
+                <Shield className="w-4 h-4 text-[#10B981]" />
+                <span>Факторы ослабления:</span>
+                <span className="font-mono alara-tabular text-[#10B981]">
+                  K_prot = K_dist × K_shield × K_ppe = {currentAnalysis.kDist.toFixed(2)} ×{' '}
+                  {currentAnalysis.kShield.toFixed(2)} × {currentAnalysis.kPpe.toFixed(2)} ={' '}
                   {currentAnalysis.kProtTotal.toFixed(2)}×
-                </td>
-                <td className="py-1.5 pl-3 text-right font-bold text-emerald-400">
-                  -{((1 - 1 / Math.max(1, currentAnalysis.kProtTotal)) * 100).toFixed(2)}%
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Расширенная физика радиационных сценариев и критические органы (НРБ-99/2009 / ОСПОРБ-99/2010) */}
-      <div className="mt-3 bg-slate-950/95 border border-sky-500/30 rounded-xl p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-          <div className="flex items-center gap-2 text-xs font-bold text-sky-400">
-            <Layers className="w-4 h-4 text-sky-400" />
-            <span>Расширенная радиационная физика и критические органы (НРБ-99/2009)</span>
-          </div>
-          <div className="text-[11px] font-mono text-slate-400">
-            Дифференциация по органам • Альбедо стен • Тормозное излучение (Bremsstrahlung)
-          </div>
-        </div>
-
-        {/* 1. Дозовые мощности по критическим органам */}
-        {(() => {
-          const critOrgans = currentAnalysis.criticalOrgans ?? {
-            skinMicroSvPerHour: 0,
-            eyeLensMicroSvPerHour: 0,
-            bloodMarrowMicroSvPerHour: 0
-          };
-          const advPhys = currentAnalysis.advancedPhysics ?? {
-            albedoGammaScatterMicroSv: 0,
-            bremsstrahlungDoseRateMicroSv: 0,
-            isBremsstrahlungHigh: false,
-            twoLayerShieldRecommended: false,
-            aerosolInhalationRateMicroSv: 0
-          };
-
-          return (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
-                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
-                  <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span className="font-semibold text-amber-300">1. Кожные покровы (H_skin)</span>
-                    <span className="font-mono text-[10px]">w_T = 0.01</span>
-                  </div>
-                  <div className="text-sm font-mono font-bold text-white mt-1">
-                    {(critOrgans.skinMicroSvPerHour * rateScaleFactor).toFixed(2)} {rateUnitLabel}
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
-                    Вклад: β-спектр + мягкий рентген • Задержка СИЗ k_PPE
-                  </div>
-                </div>
-
-                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
-                  <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span className="font-semibold text-cyan-300">2. Хрусталик глаза (H_lens)</span>
-                    <span className="font-mono text-[10px]">w_T = 0.12</span>
-                  </div>
-                  <div className="text-sm font-mono font-bold text-white mt-1">
-                    {(critOrgans.eyeLensMicroSvPerHour * rateScaleFactor).toFixed(2)} {rateUnitLabel}
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
-                    {selectedPpeId !== 'none' ? 'Защищен поликарбонатом/маской СИЗОД' : '⚠️ Открытый хрусталик (высокий риск катаракты)'}
-                  </div>
-                </div>
-
-                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
-                  <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span className="font-semibold text-rose-300">3. Кроветворные органы (H_marrow)</span>
-                    <span className="font-mono text-[10px]">d = 10 мм</span>
-                  </div>
-                  <div className="text-sm font-mono font-bold text-white mt-1">
-                    {(critOrgans.bloodMarrowMicroSvPerHour * rateScaleFactor).toFixed(2)} {rateUnitLabel}
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
-                    {PPE_LOADOUTS[selectedPpeId].leadEquivalentMm > 0
-                      ? `Экранирован Pb (${PPE_LOADOUTS[selectedPpeId].leadEquivalentMm} мм)`
-                      : 'Без свинцового фартука (проникающее γ/n)'}
-                  </div>
-                </div>
+                </span>
               </div>
-
-              {/* 2. Факторы физического рассеяния и тормозного излучения */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs font-mono">
-                <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
-                  <span className="text-[11px] text-slate-400 block font-sans font-semibold">
-                    Альбедо рассеяния (Стены/Пол):
-                  </span>
-                  <span className="text-sky-300 font-bold block mt-1">
-                    +{(advPhys.albedoGammaScatterMicroSv * rateScaleFactor).toFixed(2)} {rateUnitLabel}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5 font-sans">
-                    Диффузное отражение фотонов от бетона помещения (~7.8%).
-                  </span>
-                </div>
-
-                <div className={`p-2.5 rounded-xl border ${
-                  advPhys.twoLayerShieldRecommended
-                    ? 'bg-amber-950/30 border-amber-500/50 text-amber-200'
-                    : 'bg-slate-900/60 border-slate-800/80'
-                }`}>
-                  <span className="text-[11px] text-slate-400 block font-sans font-semibold">
-                    Тормозное излучение (Bremsstrahlung):
-                  </span>
-                  <span className="font-bold block mt-1 text-white">
-                    {(advPhys.bremsstrahlungDoseRateMicroSv * rateScaleFactor).toFixed(2)} {rateUnitLabel}
-                  </span>
-                  <span className="text-[10px] block mt-0.5 font-sans">
-                    {advPhys.twoLayerShieldRecommended
-                      ? '⚠️ Рекомендована двухслойная защита (Al + Pb) для подавления выхода квантов!'
-                      : 'Экранирование оптимально (тормозной спектр подавлен).'}
-                  </span>
-                </div>
-
-                <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
-                  <span className="text-[11px] text-slate-400 block font-sans font-semibold">
-                    Ингаляционный приток аэрозолей:
-                  </span>
-                  <span className="text-emerald-400 font-bold block mt-1">
-                    {(advPhys.aerosolInhalationRateMicroSv * rateScaleFactor).toFixed(2)} {rateUnitLabel}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5 font-sans">
-                    Учитывает легочную вентиляцию спасателя при физической нагрузке и беге.
-                  </span>
-                </div>
+              <div className="text-[11px] font-mono text-[#64748B]">
+                I = I₀ · B(E, μd) · exp(-μd) · D(r) = (Γ_γ · A) / r²
               </div>
-            </>
-          );
-        })()}
-      </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs font-mono alara-tabular">
+                <thead>
+                  <tr className="border-b border-slate-400/15 text-[#94A3B8] text-[11px]">
+                    <th className="py-1.5 pr-3 font-sans">Фактор защиты (НРБ-99/2009)</th>
+                    <th className="py-1.5 px-3 font-sans">Текущий режим / Параметры среды</th>
+                    <th className="py-1.5 px-3 font-sans">Коэффициент</th>
+                    <th className="py-1.5 pl-3 text-right font-sans">Снижение</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-400/10 text-[11px]">
+                  <tr>
+                    <td className="py-1.5 pr-3 font-sans font-medium text-[#0EA5E9]">
+                      Защита расстоянием (K_dist)
+                    </td>
+                    <td className="py-1.5 px-3 text-[#94A3B8]">
+                      {REMOTE_TOOLS[selectedRemoteToolId].shortNameRu} · r = {currentAnalysis.effectiveDistanceM.toFixed(2)} м
+                    </td>
+                    <td className="py-1.5 px-3 font-semibold text-[#F1F5F9]">{currentAnalysis.kDist.toFixed(2)}×</td>
+                    <td className="py-1.5 pl-3 text-right text-[#10B981]">
+                      -{((1 - 1 / Math.max(1, currentAnalysis.kDist)) * 100).toFixed(1)}%
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-1.5 pr-3 font-sans font-medium text-[#F59E0B]">
+                      Защита экранированием (K_shield)
+                    </td>
+                    <td className="py-1.5 px-3 text-[#94A3B8]">
+                      {currentAnalysis.activeShieldMaterialRu} (d = {currentAnalysis.activeShieldThicknessCm.toFixed(1)} см, μ ={' '}
+                      {currentAnalysis.activeMu.toFixed(3)} см⁻¹, B = {currentAnalysis.activeBuildupB.toFixed(2)})
+                    </td>
+                    <td className="py-1.5 px-3 font-semibold text-[#F1F5F9]">{currentAnalysis.kShield.toFixed(2)}×</td>
+                    <td className="py-1.5 pl-3 text-right text-[#10B981]">
+                      -{((1 - 1 / Math.max(1, currentAnalysis.kShield)) * 100).toFixed(1)}%
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="py-1.5 pr-3 font-sans font-medium text-[#10B981]">
+                      Средства инд. защиты СИЗ (K_ppe)
+                    </td>
+                    <td className="py-1.5 px-3 text-[#94A3B8]">
+                      {PPE_LOADOUTS[selectedPpeId].shortNameRu} (α: {PPE_LOADOUTS[selectedPpeId].alphaAttenuationPercent}
+                      %, β: {PPE_LOADOUTS[selectedPpeId].betaAttenuationPercent}%)
+                    </td>
+                    <td className="py-1.5 px-3 font-semibold text-[#F1F5F9]">{currentAnalysis.kPpe.toFixed(2)}×</td>
+                    <td className="py-1.5 pl-3 text-right text-[#10B981]">
+                      -{((1 - 1 / Math.max(1, currentAnalysis.kPpe)) * 100).toFixed(1)}%
+                    </td>
+                  </tr>
+                  <tr className="bg-[#0B1117]/60">
+                    <td className="py-1.5 pr-3 font-sans font-semibold text-[#F1F5F9]">
+                      Итоговый коэффициент защиты (K_prot)
+                    </td>
+                    <td className="py-1.5 px-3 text-[#94A3B8]">
+                      D₀ = {currentUnshieldedRate.toFixed(2)} мкЗв/ч → D(t) = {currentProtectedRate.toFixed(2)} мкЗв/ч
+                    </td>
+                    <td className="py-1.5 px-3 font-bold text-[#10B981]">
+                      {currentAnalysis.kProtTotal.toFixed(2)}×
+                    </td>
+                    <td className="py-1.5 pl-3 text-right font-semibold text-[#10B981]">
+                      -{((1 - 1 / Math.max(1, currentAnalysis.kProtTotal)) * 100).toFixed(2)}%
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="alara-surface rounded-xl p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[#0EA5E9]">
+                <Layers className="w-4 h-4" />
+                <span>Расширенная радиационная физика и критические органы (НРБ-99/2009)</span>
+              </div>
+              <div className="text-[11px] font-mono text-[#64748B]">
+                Органы · Альбедо стен · Тормозное излучение
+              </div>
+            </div>
+
+            {(() => {
+              const critOrgans = currentAnalysis.criticalOrgans ?? {
+                skinMicroSvPerHour: 0,
+                eyeLensMicroSvPerHour: 0,
+                bloodMarrowMicroSvPerHour: 0
+              };
+              const advPhys = currentAnalysis.advancedPhysics ?? {
+                albedoGammaScatterMicroSv: 0,
+                bremsstrahlungDoseRateMicroSv: 0,
+                isBremsstrahlungHigh: false,
+                twoLayerShieldRecommended: false,
+                aerosolInhalationRateMicroSv: 0
+              };
+
+              return (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-2.5">
+                    <div className="p-2.5 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15">
+                      <div className="flex items-center justify-between text-[11px] text-[#94A3B8]">
+                        <span className="font-medium text-[#F59E0B]">1. Кожные покровы</span>
+                        <span className="font-mono text-[10px]">w_T = 0.01</span>
+                      </div>
+                      <div className="text-sm font-mono alara-tabular font-semibold text-[#F1F5F9] mt-1">
+                        {(critOrgans.skinMicroSvPerHour * rateScaleFactor).toFixed(2)} {rateUnitLabel}
+                      </div>
+                      <div className="text-[11px] text-[#64748B] mt-0.5">
+                        β-спектр + мягкий рентген · Задержка СИЗ
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15">
+                      <div className="flex items-center justify-between text-[11px] text-[#94A3B8]">
+                        <span className="font-medium text-[#14B8A6]">2. Хрусталик глаза</span>
+                        <span className="font-mono text-[10px]">w_T = 0.12</span>
+                      </div>
+                      <div className="text-sm font-mono alara-tabular font-semibold text-[#F1F5F9] mt-1">
+                        {(critOrgans.eyeLensMicroSvPerHour * rateScaleFactor).toFixed(2)} {rateUnitLabel}
+                      </div>
+                      <div className="text-[11px] text-[#64748B] mt-0.5">
+                        {selectedPpeId !== 'none' ? 'Защищён маской СИЗОД' : 'Открытый хрусталик (риск)'}
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15">
+                      <div className="flex items-center justify-between text-[11px] text-[#94A3B8]">
+                        <span className="font-medium text-[#EF4444]">3. Кроветворные органы</span>
+                        <span className="font-mono text-[10px]">d = 10 мм</span>
+                      </div>
+                      <div className="text-sm font-mono alara-tabular font-semibold text-[#F1F5F9] mt-1">
+                        {(critOrgans.bloodMarrowMicroSvPerHour * rateScaleFactor).toFixed(2)} {rateUnitLabel}
+                      </div>
+                      <div className="text-[11px] text-[#64748B] mt-0.5">
+                        {PPE_LOADOUTS[selectedPpeId].leadEquivalentMm > 0
+                          ? `Экранирован Pb (${PPE_LOADOUTS[selectedPpeId].leadEquivalentMm} мм)`
+                          : 'Без свинцового фартука'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs font-mono alara-tabular">
+                    <div className="p-2.5 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15">
+                      <span className="text-[11px] text-[#94A3B8] block font-sans font-medium">
+                        Альбедо рассеяния (Стены/Пол):
+                      </span>
+                      <span className="text-[#0EA5E9] font-semibold block mt-1">
+                        +{(advPhys.albedoGammaScatterMicroSv * rateScaleFactor).toFixed(2)} {rateUnitLabel}
+                      </span>
+                    </div>
+
+                    <div
+                      className={`p-2.5 rounded-[10px] border ${
+                        advPhys.twoLayerShieldRecommended
+                          ? 'bg-[#F59E0B]/12 border-[#F59E0B]/45 text-[#F59E0B]'
+                          : 'bg-[#0B1117]/75 border-slate-400/15 text-[#F1F5F9]'
+                      }`}
+                    >
+                      <span className="text-[11px] text-[#94A3B8] block font-sans font-medium">
+                        Тормозное излучение:
+                      </span>
+                      <span className="font-semibold block mt-1">
+                        {(advPhys.bremsstrahlungDoseRateMicroSv * rateScaleFactor).toFixed(2)} {rateUnitLabel}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-[10px] bg-[#0B1117]/75 border border-slate-400/15">
+                      <span className="text-[11px] text-[#94A3B8] block font-sans font-medium">
+                        Ингаляция аэрозолей:
+                      </span>
+                      <span className="text-[#10B981] font-semibold block mt-1">
+                        {(advPhys.aerosolInhalationRateMicroSv * rateScaleFactor).toFixed(2)} {rateUnitLabel}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
         </div>
       )}
 
-      {/* ВКЛАДКА 3: ГОЛОСОВОЙ ПРОТОКОЛ (VoiceTaskLogger) */}
+      {/* ВКЛАДКА 3: ГОЛОСОВОЙ ПРОТОКОЛ */}
       {activeTab === 'voice' && (
-      <div className="mt-2.5 bg-slate-950/75 border border-emerald-500/25 rounded-xl p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
-            <Mic className="w-4 h-4" />
-            <span>Голосовой протокол замеров и команд (VoiceTaskLogger • ru-RU)</span>
-            <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 font-mono text-[10px] text-emerald-300">
-              Записей в CSV (VoiceProtocolNotes): {voiceLogs.length}
-            </span>
+        <div className="mt-2.5 alara-surface rounded-xl p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#10B981]">
+              <Mic className="w-4 h-4" />
+              <span>Голосовой протокол (VoiceTaskLogger · ru-RU)</span>
+              <span className="font-mono alara-tabular text-[11px] text-[#94A3B8]">
+                · Записей: {voiceLogs.length}
+              </span>
+            </div>
+            <div className="text-[11px] font-mono text-[#64748B]">
+              VR: [Y / Стик] лев. · ПК: [V]
+            </div>
           </div>
-          <div className="text-[11px] font-mono text-slate-400">
-            VR: удерживайте [Y / Стик] лев. руки • ПК: удерживайте клавишу [V]
-          </div>
-        </div>
 
-        {/* Поле текстового фоллбэка и быстрые кнопки проверки NLU/команд */}
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <input
-            type="text"
-            value={fallbackInputText}
-            onChange={e => setFallbackInputText(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && fallbackInputText.trim()) {
-                onSubmitVoiceFallbackText?.(fallbackInputText.trim());
-                setFallbackInputText('');
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <input
+              type="text"
+              value={fallbackInputText}
+              onChange={e => setFallbackInputText(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && fallbackInputText.trim()) {
+                  onSubmitVoiceFallbackText?.(fallbackInputText.trim());
+                  setFallbackInputText('');
+                }
+              }}
+              placeholder="Запись замера или команда (напр.: Точка А-1, 45 мкЗв/ч)..."
+              className="flex-1 min-w-[240px] bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-1.5 text-xs text-[#F1F5F9] placeholder-[#64748B] focus:outline-none focus:border-[#0EA5E9]"
+            />
+            <button
+              onClick={() => {
+                if (fallbackInputText.trim()) {
+                  onSubmitVoiceFallbackText?.(fallbackInputText.trim());
+                  setFallbackInputText('');
+                }
+              }}
+              className="px-3 py-1.5 rounded-[10px] bg-[#10B981] hover:bg-emerald-400 text-[#0B1117] font-semibold text-xs flex items-center gap-1 transition cursor-pointer"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Протоколировать</span>
+            </button>
+            <button
+              onClick={() =>
+                onSubmitVoiceFallbackText?.(
+                  `Точка А-1, мощность дозы ${currentProtectedRate.toFixed(1)} мкЗв/ч, установлен свинцовый экран ${currentAnalysis.activeShieldThicknessCm.toFixed(1)} см`,
+                  'dictation'
+                )
               }
-            }}
-            placeholder="Фоллбэк/тест NLU: «Точка А-1, мощность дозы 45 мкЗв/ч, установлен свинцовый экран 2 см» или команда..."
-            className="flex-1 min-w-[240px] bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400"
-          />
-          <button
-            onClick={() => {
-              if (fallbackInputText.trim()) {
-                onSubmitVoiceFallbackText?.(fallbackInputText.trim());
-                setFallbackInputText('');
-              }
-            }}
-            className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs flex items-center gap-1 transition"
-          >
-            <Send className="w-3.5 h-3.5" />
-            <span>Протоколировать</span>
-          </button>
-          <button
-            onClick={() =>
-              onSubmitVoiceFallbackText?.(
-                `Точка А-1, мощность дозы ${currentProtectedRate.toFixed(1)} мкЗв/ч, установлен свинцовый экран ${currentAnalysis.activeShieldThicknessCm.toFixed(1)} см`,
-                'dictation'
-              )
-            }
-            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 text-[11px] font-semibold transition"
-            title="Быстрая вставка примера протоколирования замера"
-          >
-            + Пример замера А-1
-          </button>
-        </div>
-
-        {voiceLogs.length > 0 && (
-          <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
-            {voiceLogs
-              .slice()
-              .reverse()
-              .map(entry => (
-                <div
-                  key={entry.id}
-                  className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px]"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-amber-400">[{entry.location}]</span>
-                    <span className="text-slate-200">«{entry.textNote}»</span>
-                  </div>
-                  <div className="flex items-center gap-3 font-mono text-[10px]">
-                    <span className="text-emerald-400">H = {entry.currentDoseRate.toFixed(1)} мкЗв/ч</span>
-                    <span className="text-sky-300">Экран: {entry.activeShielding}</span>
-                    <span className="text-slate-400">t = {entry.elapsedSec.toFixed(1)}с</span>
-                  </div>
-                </div>
-              ))}
+              className="px-2.5 py-1.5 rounded-[10px] bg-[#0B1117] hover:bg-slate-800/80 text-[#F59E0B] border border-[#F59E0B]/35 text-[11px] font-medium transition cursor-pointer"
+            >
+              + Пример замера А-1
+            </button>
           </div>
-        )}
-      </div>
+
+          {voiceLogs.length > 0 && (
+            <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+              {voiceLogs
+                .slice()
+                .reverse()
+                .map(entry => (
+                  <div
+                    key={entry.id}
+                    className="flex flex-wrap items-center justify-between gap-2 bg-[#0B1117]/75 border border-slate-400/15 rounded-[10px] px-2.5 py-1.5 text-[11px]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold text-[#F59E0B]">[{entry.location}]</span>
+                      <span className="text-[#F1F5F9]">«{entry.textNote}»</span>
+                    </div>
+                    <div className="flex items-center gap-3 font-mono alara-tabular text-[11px]">
+                      <span className="text-[#10B981]">H = {entry.currentDoseRate.toFixed(1)} мкЗв/ч</span>
+                      <span className="text-[#0EA5E9]">Экран: {entry.activeShielding}</span>
+                      <span className="text-[#64748B]">t = {entry.elapsedSec.toFixed(1)}с</span>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

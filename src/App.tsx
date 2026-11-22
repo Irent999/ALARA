@@ -102,6 +102,7 @@ import {
 import { Scenario4Controller } from './scenarios/scenario4-npp-rescue/Scenario4Controller';
 import { Scenario4Hud } from './scenarios/scenario4-npp-rescue/Scenario4Hud';
 import { SCENARIO_4_CONFIG, type Scenario4HudSnapshot } from './scenarios/scenario4-npp-rescue/config';
+import { AC40_CAB_CONFIG } from './npp/nppNodeConfig';
 
 const DEFAULT_PROTECTION_ANALYSIS: ComprehensiveProtectionAnalysis = {
   unshieldedBaseDoseRateMicroSv: 0.1,
@@ -1476,6 +1477,10 @@ export default function App() {
         }
         return;
       }
+      if (e.code === 'KeyL' && !e.repeat && !modalOpenRef.current && activeScenarioIdRef.current === 4) {
+        scenario4ControllerRef.current?.toggleVehicleBeacons();
+        return;
+      }
       if (e.code === 'KeyV' && !e.repeat) {
         voiceLoggerRef.current?.startPushToTalk();
       }
@@ -1530,6 +1535,7 @@ export default function App() {
     const s4SeatPosScratch = new THREE.Vector3();
     let prevS4VehicleSeated = false;
     let prevS4VehicleYaw = 0;
+    let vrSeatedRefEyeY: number | null = null;
     const loopSourceInputs: Array<{
       activityMBq: number;
       isotopeId: string;
@@ -1808,13 +1814,18 @@ export default function App() {
             prevS4VehicleYaw = seatInfo.yaw;
             if (!isVR) {
               playerRotY = seatInfo.yaw + Math.PI;
-              cameraPitch = -0.04;
+              cameraPitch = AC40_CAB_CONFIG.desktopInitialPitchRad;
               playerGroupRef.current.rotation.set(0, playerRotY, 0);
               cameraRef.current.rotation.set(cameraPitch, 0, 0);
               handRigRef.current?.setDesktopCameraPitch(cameraPitch);
               leftHandRigDesktopRef.current?.setDesktopCameraPitch(cameraPitch);
             } else {
               playerGroupRef.current.rotation.set(0, seatInfo.yaw + Math.PI, 0);
+              vrSeatedRefEyeY = THREE.MathUtils.clamp(
+                cameraRef.current.position.y || SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT,
+                AC40_CAB_CONFIG.vrMinEyeY,
+                AC40_CAB_CONFIG.vrMaxEyeY
+              );
             }
           } else {
             let dYaw = seatInfo.yaw - prevS4VehicleYaw;
@@ -1829,17 +1840,28 @@ export default function App() {
             }
           }
 
+          if (!isVR) {
+            // За рулём в Desktop убираем навесные руки от камеры, чтобы приборы, руль и пульт МЧС не перекрывались
+            if (handRigRef.current) handRigRef.current.rootGroup.visible = false;
+            if (leftHandRigDesktopRef.current) leftHandRigDesktopRef.current.rootGroup.visible = false;
+          }
+
           if (isVR) {
+            const refEyeY = vrSeatedRefEyeY ?? SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT;
             const vrSeatY =
               xrManagerRef.current?.activeReferenceSpaceType === 'local-floor'
-                ? s4SeatPosScratch.y - SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT
+                ? s4SeatPosScratch.y - refEyeY
                 : s4SeatPosScratch.y;
             playerGroupRef.current.position.set(s4SeatPosScratch.x, vrSeatY, s4SeatPosScratch.z);
           } else {
             playerGroupRef.current.position.copy(s4SeatPosScratch);
           }
         } else if (prevS4VehicleSeated && !seatInfo.seated && playerGroupRef.current) {
-          if (isVR && xrManagerRef.current?.activeReferenceSpaceType === 'local-floor') {
+          vrSeatedRefEyeY = null;
+          if (!isVR) {
+            if (handRigRef.current) handRigRef.current.rootGroup.visible = true;
+            if (leftHandRigDesktopRef.current) leftHandRigDesktopRef.current.rootGroup.visible = true;
+          } else if (xrManagerRef.current?.activeReferenceSpaceType === 'local-floor') {
             playerGroupRef.current.position.y = scenario4GroundYRef.current;
           }
         }
@@ -1872,6 +1894,7 @@ export default function App() {
           s4Snap.vehicle.autopilotTargetName ?? '',
           Math.round(s4Snap.vehicle.hoseLengthM),
           s4Snap.vehicle.hoseOverstretched ? 1 : 0,
+          s4Snap.vehicle.beaconsOn ? 1 : 0,
           s4Snap.emergencyOps.radReconDone ? 1 : 0,
           Math.round(s4Snap.emergencyOps.radReconProgress01 * 10),
           s4Snap.emergencyOps.loopIsolated ? 1 : 0,
@@ -1887,6 +1910,11 @@ export default function App() {
           setScenario4Snapshot(s4Snap);
         }
       } else {
+        if (prevS4VehicleSeated && !isVR) {
+          if (handRigRef.current) handRigRef.current.rootGroup.visible = true;
+          if (leftHandRigDesktopRef.current) leftHandRigDesktopRef.current.rootGroup.visible = true;
+        }
+        vrSeatedRefEyeY = null;
         prevS4VehicleSeated = false;
       }
 
@@ -4975,6 +5003,9 @@ export default function App() {
             onCancelAutopilot={() => {
               scenario4ControllerRef.current?.cancelVehicleAutopilot();
             }}
+            onToggleBeacons={() => {
+              scenario4ControllerRef.current?.toggleVehicleBeacons();
+            }}
           />
         )}
 
@@ -4985,6 +5016,9 @@ export default function App() {
             setIsMainMenuOpen(false);
             syncLoadoutTo3DScene();
           }}
+          isVRSupported={isVRSupported}
+          isInVR={isInVR}
+          onToggleVR={toggleVR}
           activeScenarioId={activeScenarioId}
           scenario={currentScenario}
           scenarioStep={scenarioStep}

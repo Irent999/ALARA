@@ -9,6 +9,7 @@
  */
 
 import React, { useMemo } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { PPEChecklistResult, ProtectionCoefficientsResult } from './PPECheckModule';
 import { PhysiologicalTelemetry } from './PhysiologicalStress';
 import type { MchsMissionMetrics } from '../scene/EvacuationManager';
@@ -115,24 +116,20 @@ export function evaluateAARSummary(params: {
   const avgDoseRate = sumDoseRate / count;
   const avgShieldFactor = sumShieldFactor / count;
 
-  // 1. Оценка защиты временем (0 - 25 баллов)
   const timeRatio = missionDurationSec / Math.max(30, targetDurationSec);
   const timeEfficiencyScore = Number(
     Math.max(0, Math.min(25, timeRatio <= 1.0 ? 25 : 25 * Math.exp(-(timeRatio - 1.0) * 1.2))).toFixed(1)
   );
 
-  // 2. Оценка защиты расстоянием и соблюдения лимита дозы (0 - 25 баллов)
   const doseRatio = finalAccumulatedDoseMsv / Math.max(0.01, doseLimitMsv);
   const distanceOptimizationScore = Number(
     Math.max(0, Math.min(25, doseRatio <= 1.0 ? 25 * (1.0 - doseRatio * 0.45) : 0)).toFixed(1)
   );
 
-  // 3. Оценка применения защитных экранов (0 - 25 баллов)
   const shieldingUsageScore = Number(
     Math.max(5, Math.min(25, 12 + Math.log10(Math.max(1.0, avgShieldFactor)) * 13.0)).toFixed(1)
   );
 
-  // 4. Оценка соблюдения регламента СИЗ (0 - 25 баллов)
   let ppeComplianceScore = ppeChecklist.isReadyForDirtyZone ? 25 : 5;
   for (const v of violations) {
     ppeComplianceScore = Math.max(0, ppeComplianceScore - v.penaltyPoints * 0.5);
@@ -240,12 +237,11 @@ export const AARAnalytics: React.FC<AARAnalyticsModalProps> = ({ isOpen, onClose
     if (report.trajectorySamples.length === 0) return [];
     const maxRate = Math.max(0.01, report.peakDoseRateMsvPerHour);
     return report.trajectorySamples.map(sample => {
-      // Нормализация координат X, Z из диапазона [-12..12] в [10..290] для 2D SVG карты
       const svgX = Math.max(12, Math.min(288, 150 + sample.position[0] * 11));
       const svgY = Math.max(12, Math.min(188, 100 + sample.position[2] * 8));
       const ratio = Math.min(1.0, sample.doseRateMsvPerHour / maxRate);
       const color =
-        ratio > 0.66 ? '#ef4444' : ratio > 0.25 ? '#f59e0b' : '#10b981';
+        ratio > 0.66 ? '#EF4444' : ratio > 0.25 ? '#F59E0B' : '#10B981';
       return {
         svgX,
         svgY,
@@ -280,150 +276,147 @@ export const AARAnalytics: React.FC<AARAnalyticsModalProps> = ({ isOpen, onClose
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 pointer-events-auto">
-      <div className="w-full max-w-4xl bg-slate-900 border border-cyan-500/40 rounded-lg shadow-2xl overflow-hidden text-slate-100 font-sans">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B1117]/80 backdrop-blur-md p-4 pointer-events-auto">
+      <div className="w-full max-w-4xl alara-glass-elevated rounded-xl overflow-hidden text-[#F1F5F9] font-sans">
         {/* Шапка AAR */}
-        <div className="flex items-center justify-between px-5 py-3.5 bg-slate-950 border-b border-slate-800">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-[rgba(148,163,184,0.16)]">
           <div>
-            <div className="text-[11px] font-mono uppercase tracking-widest text-cyan-400">
-              ПРОТОКОЛ РАЗБОРА ДЕЙСТВИЙ (AFTER ACTION REVIEW — ГОСТ / ОСПОРБ-99)
+            <div className="text-[11px] font-mono uppercase tracking-wider text-[#0EA5E9]">
+              Разбор действий (After Action Review · ГОСТ / ОСПОРБ-99)
             </div>
-            <h2 className="text-lg font-bold text-white mt-0.5">{report.scenarioTitle}</h2>
+            <h2 className="text-lg font-bold text-[#F1F5F9] mt-0.5">{report.scenarioTitle}</h2>
           </div>
           <div className="flex items-center gap-2">
             {onExportPdf && (
               <button
                 onClick={onExportPdf}
-                className="px-3 py-1.5 text-xs font-mono bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 rounded transition cursor-pointer"
+                className="px-3 py-1.5 text-xs font-mono bg-[#0EA5E9]/15 hover:bg-[#0EA5E9]/25 text-[#0EA5E9] border border-[#0EA5E9]/35 rounded-[10px] transition cursor-pointer"
               >
-                ЭКСПОРТ PDF
+                PDF
               </button>
             )}
             <button
               onClick={handleDownloadCsv}
-              className="px-3 py-1.5 text-xs font-mono bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded transition cursor-pointer"
+              className="px-3 py-1.5 text-xs font-mono bg-[#10B981]/15 hover:bg-[#10B981]/25 text-[#10B981] border border-[#10B981]/35 rounded-[10px] transition cursor-pointer"
             >
-              ЭКСПОРТ CSV
+              CSV
             </button>
             <button
               onClick={handleDownloadJson}
-              className="px-3 py-1.5 text-xs font-mono bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 rounded transition cursor-pointer"
+              className="px-3 py-1.5 text-xs font-mono bg-[#14B8A6]/15 hover:bg-[#14B8A6]/25 text-[#14B8A6] border border-[#14B8A6]/35 rounded-[10px] transition cursor-pointer"
             >
-              ЭКСПОРТ JSON
+              JSON
             </button>
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300 rounded transition cursor-pointer"
+              className="px-3 py-1.5 text-xs font-mono bg-white/10 hover:bg-white/15 text-[#F1F5F9] rounded-[10px] transition cursor-pointer"
             >
-              ЗАКРЫТЬ [ESC]
+              Закрыть [ESC]
             </button>
           </div>
         </div>
 
         <div className="p-5 grid grid-cols-1 md:grid-cols-12 gap-4 max-h-[80vh] overflow-y-auto">
-          {/* Левая колонка: Итоговый рейтинг и 4 критерия ALARA */}
+          {/* Левая колонка */}
           <div className="md:col-span-7 space-y-4">
-            <div className="p-4 rounded bg-slate-950/90 border border-slate-800 flex items-center justify-between">
+            <div className="p-4 rounded-xl alara-surface flex items-center justify-between">
               <div>
-                <div className="text-xs text-slate-400">ИТОГОВАЯ АТТЕСТАЦИЯ КУРСАНТА</div>
+                <div className="text-xs text-[#94A3B8]">Итоговая аттестация курсанта</div>
                 <div
                   className={`text-sm font-bold mt-1 ${
-                    report.scoreBreakdown.passedCertification ? 'text-emerald-400' : 'text-rose-400'
+                    report.scoreBreakdown.passedCertification ? 'text-[#10B981]' : 'text-[#EF4444]'
                   }`}
                 >
                   {report.scoreBreakdown.gradeRu}
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-3xl font-mono font-bold text-cyan-400">
+                <div className="text-3xl font-mono alara-tabular font-bold text-[#0EA5E9]">
                   {report.scoreBreakdown.totalScore}
-                  <span className="text-sm text-slate-500">/100</span>
+                  <span className="text-sm text-[#64748B]">/100</span>
                 </div>
-                <div className="text-[10px] font-mono text-slate-400">ИНДЕКС ALARA</div>
+                <div className="text-[10px] font-mono text-[#94A3B8]">ИНДЕКС ALARA</div>
               </div>
             </div>
 
-            {/* Детализация баллов */}
-            <div className="grid grid-cols-2 gap-2.5 text-xs font-mono">
-              <div className="p-3 rounded bg-slate-950/70 border border-slate-800">
-                <div className="text-slate-400">1. ЗАЩИТА ВРЕМЕНЕМ</div>
-                <div className="text-base font-bold text-white mt-1">
+            <div className="grid grid-cols-2 gap-2.5 text-xs font-mono alara-tabular">
+              <div className="p-3 rounded-[10px] alara-surface">
+                <div className="text-[#94A3B8]">1. ЗАЩИТА ВРЕМЕНЕМ</div>
+                <div className="text-base font-bold text-[#F1F5F9] mt-1">
                   {report.scoreBreakdown.timeEfficiencyScore} / 25
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Экспозиция: <span className="text-cyan-300 font-bold">{report.missionDurationSec} с</span> / норма {report.targetDurationSec} с ({Math.round((report.missionDurationSec / Math.max(1, report.targetDurationSec)) * 100)}%)
+                <div className="text-[11px] text-[#94A3B8] mt-0.5">
+                  <span className="text-[#0EA5E9] font-bold">{report.missionDurationSec} с</span> / норма {report.targetDurationSec} с
                 </div>
               </div>
-              <div className="p-3 rounded bg-slate-950/70 border border-slate-800">
-                <div className="text-slate-400">2. ЗАЩИТА РАССТОЯНИЕМ</div>
-                <div className="text-base font-bold text-white mt-1">
+              <div className="p-3 rounded-[10px] alara-surface">
+                <div className="text-[#94A3B8]">2. ЗАЩИТА РАССТОЯНИЕМ</div>
+                <div className="text-base font-bold text-[#F1F5F9] mt-1">
                   {report.scoreBreakdown.distanceOptimizationScore} / 25
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
+                <div className="text-[11px] text-[#94A3B8] mt-0.5">
                   Доза: {report.finalAccumulatedDoseMsv.toFixed(3)} / {report.doseLimitMsv.toFixed(2)} мЗв
                 </div>
                 {report.doseResetCount > 0 && (
-                  <div className="text-[10px] text-rose-400 font-bold mt-0.5">
+                  <div className="text-[10px] text-[#EF4444] font-bold mt-0.5">
                     Сбросов по переоблучению: {report.doseResetCount}
                   </div>
                 )}
               </div>
-              <div className="p-3 rounded bg-slate-950/70 border border-slate-800">
-                <div className="text-slate-400">3. ЭКРАНИРОВАНИЕ B(μx)</div>
-                <div className="text-base font-bold text-white mt-1">
+              <div className="p-3 rounded-[10px] alara-surface">
+                <div className="text-[#94A3B8]">3. ЭКРАНИРОВАНИЕ B(μx)</div>
+                <div className="text-base font-bold text-[#F1F5F9] mt-1">
                   {report.scoreBreakdown.shieldingUsageScore} / 25
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
+                <div className="text-[11px] text-[#94A3B8] mt-0.5">
                   Пик МЭД: {report.peakDoseRateMsvPerHour.toFixed(2)} мЗв/ч
                 </div>
               </div>
-              <div className="p-3 rounded bg-slate-950/70 border border-slate-800">
-                <div className="text-slate-400">4. РЕГЛАМЕНТ СИЗ И ТБ</div>
-                <div className="text-base font-bold text-white mt-1">
+              <div className="p-3 rounded-[10px] alara-surface">
+                <div className="text-[#94A3B8]">4. РЕГЛАМЕНТ СИЗ И ТБ</div>
+                <div className="text-base font-bold text-[#F1F5F9] mt-1">
                   {report.scoreBreakdown.ppeComplianceScore} / 25
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
+                <div className="text-[11px] text-[#94A3B8] mt-0.5">
                   Допуск СИЗ: {report.ppeChecklistPassedAtEntry ? 'ПРОЙДЕН' : 'НАРУШЕН'}
                 </div>
               </div>
             </div>
 
-            {/* Баннер аварийных сбросов по переоблучению */}
             {report.doseResetCount > 0 && (
-              <div className="p-3 rounded bg-rose-950/60 border border-rose-500/50 text-rose-200 text-xs font-mono flex items-start gap-2.5">
-                <span className="text-base">⚠️</span>
+              <div className="p-3 rounded-[10px] bg-[#EF4444]/12 border border-[#EF4444]/35 text-[#F1F5F9] text-xs font-mono flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-[#EF4444] shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-bold text-rose-300 uppercase">
-                    Аварийный сброс по переоблучению (Dose Limit Fail-Safe)
+                  <div className="font-bold text-[#EF4444] uppercase">
+                    Аварийный сброс по переоблучению
                   </div>
-                  <div className="mt-0.5 text-[11px] text-rose-200 leading-relaxed">
-                    Зафиксировано <strong>{report.doseResetCount}</strong> сброс(ов) по превышению контрольного предела дозы (НРБ-99/2009). Студент обязан заново отработать принципы ALARA: защиту расстоянием (D ∝ 1/r²), временем (D ∝ t) и экранированием!
+                  <div className="mt-0.5 text-[11px] text-[#94A3B8] leading-relaxed font-sans">
+                    Зафиксировано <strong className="text-[#F1F5F9]">{report.doseResetCount}</strong> сброс(ов) по превышению предела дозы (НРБ-99/2009).
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Журнал нарушений регламента */}
-            <div className="p-3.5 rounded bg-slate-950/80 border border-slate-800">
-              <div className="text-xs font-mono uppercase text-slate-400 mb-2">
-                Журнал контроля регламента безопасности ({report.violations.length})
+            <div className="p-3.5 rounded-xl alara-surface">
+              <div className="text-xs font-mono uppercase text-[#94A3B8] mb-2">
+                Журнал регламента безопасности ({report.violations.length})
               </div>
               {report.violations.length === 0 ? (
-                <div className="text-xs text-emerald-400 font-mono">
-                  Нарушений регламента ОСПОРБ-99/2010 за время выполнения операции не зафиксировано.
+                <div className="text-xs text-[#10B981] font-mono">
+                  Нарушений регламента ОСПОРБ-99/2010 не зафиксировано.
                 </div>
               ) : (
                 <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                   {report.violations.map(v => (
                     <div
                       key={v.id}
-                      className="text-xs p-2 rounded bg-rose-950/40 border border-rose-500/30 flex items-start justify-between gap-2"
+                      className="text-xs p-2 rounded-[10px] bg-[#EF4444]/10 border border-[#EF4444]/30 flex items-start justify-between gap-2"
                     >
                       <div>
-                        <span className="font-mono text-rose-300 font-semibold">[{v.code}]</span>{' '}
-                        <span className="text-slate-200">{v.descriptionRu}</span>
+                        <span className="font-mono text-[#EF4444] font-semibold">[{v.code}]</span>{' '}
+                        <span className="text-[#F1F5F9]">{v.descriptionRu}</span>
                       </div>
-                      <span className="font-mono text-rose-400 shrink-0">-{v.penaltyPoints} б.</span>
+                      <span className="font-mono alara-tabular text-[#EF4444] shrink-0">-{v.penaltyPoints} б.</span>
                     </div>
                   ))}
                 </div>
@@ -431,34 +424,33 @@ export const AARAnalytics: React.FC<AARAnalyticsModalProps> = ({ isOpen, onClose
             </div>
           </div>
 
-          {/* Правая колонка: 2D Тепловая карта маршрута и биометрия */}
+          {/* Правая колонка */}
           <div className="md:col-span-5 flex flex-col justify-between space-y-4">
-            <div className="p-3.5 rounded bg-slate-950/90 border border-slate-800">
-              <div className="flex items-center justify-between text-xs font-mono text-slate-400 mb-2">
-                <span>ТЕПЛОВАЯ КАРТА ТРАЕКТОРИИ H(r)</span>
+            <div className="p-3.5 rounded-xl alara-surface">
+              <div className="flex items-center justify-between text-xs font-mono alara-tabular text-[#94A3B8] mb-2">
+                <span>ТЕПЛОВАЯ КАРТА H(r)</span>
                 <span>{report.trajectorySamples.length} точек</span>
               </div>
               <svg
                 viewBox="0 0 300 200"
-                className="w-full h-44 bg-slate-900 rounded border border-slate-800"
+                className="w-full h-44 bg-[#0B1117] rounded-[10px] border border-[rgba(148,163,184,0.16)]"
               >
-                {/* Координатная сетка */}
-                <line x1="150" y1="0" x2="150" y2="200" stroke="#1e293b" strokeWidth="1" />
-                <line x1="0" y1="100" x2="300" y2="100" stroke="#1e293b" strokeWidth="1" />
+                <line x1="150" y1="0" x2="150" y2="200" stroke="rgba(148,163,184,0.15)" strokeWidth="1" />
+                <line x1="0" y1="100" x2="300" y2="100" stroke="rgba(148,163,184,0.15)" strokeWidth="1" />
                 <circle
                   cx="150"
                   cy="65"
                   r="22"
                   fill="rgba(239,68,68,0.12)"
-                  stroke="rgba(239,68,68,0.4)"
+                  stroke="rgba(239,68,68,0.45)"
                   strokeDasharray="3 3"
                 />
                 {heatmapPoints.length > 1 && (
                   <polyline
                     fill="none"
-                    stroke="#38bdf8"
+                    stroke="#0EA5E9"
                     strokeWidth="1.5"
-                    strokeOpacity="0.6"
+                    strokeOpacity="0.65"
                     points={heatmapPoints.map(p => `${p.svgX},${p.svgY}`).join(' ')}
                   />
                 )}
@@ -472,26 +464,26 @@ export const AARAnalytics: React.FC<AARAnalyticsModalProps> = ({ isOpen, onClose
                   />
                 ))}
               </svg>
-              <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mt-2">
-                <span className="text-emerald-400">● НОРМА (&lt;25% пика)</span>
-                <span className="text-amber-400">● ПОВЫШЕННЫЙ ФОН</span>
-                <span className="text-rose-400">● ОЧАГ ИИИ</span>
+              <div className="flex items-center justify-between text-[10px] font-mono text-[#94A3B8] mt-2">
+                <span className="text-[#10B981]">НОРМА (&lt;25%)</span>
+                <span className="text-[#F59E0B]">ПОВЫШЕННЫЙ ФОН</span>
+                <span className="text-[#EF4444]">ОЧАГ ИИИ</span>
               </div>
             </div>
 
-            <div className="p-3.5 rounded bg-slate-950/90 border border-slate-800 space-y-2 text-xs font-mono">
-              <div className="text-slate-400 uppercase">Биометрический итог смены</div>
+            <div className="p-3.5 rounded-xl alara-surface space-y-2 text-xs font-mono alara-tabular">
+              <div className="text-[#94A3B8] uppercase">Биометрический итог</div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Пиковая ЧСС в скафандре:</span>
-                <span className="text-amber-300 font-bold">{report.peakHeartRateBpm} уд/мин</span>
+                <span className="text-[#94A3B8]">Пиковая ЧСС:</span>
+                <span className="text-[#F59E0B] font-bold">{report.peakHeartRateBpm} уд/мин</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Остаток дыхательной смеси АСВ-2:</span>
-                <span className="text-cyan-300 font-bold">{report.minOxygenReservePercent}%</span>
+                <span className="text-[#94A3B8]">Остаток воздуха АСВ-2:</span>
+                <span className="text-[#0EA5E9] font-bold">{report.minOxygenReservePercent}%</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Средняя МЭД по маршруту:</span>
-                <span className="text-slate-200">{report.averageDoseRateMsvPerHour.toFixed(3)} мЗв/ч</span>
+                <span className="text-[#94A3B8]">Средняя МЭД:</span>
+                <span className="text-[#F1F5F9]">{report.averageDoseRateMsvPerHour.toFixed(3)} мЗв/ч</span>
               </div>
             </div>
 
@@ -499,33 +491,33 @@ export const AARAnalytics: React.FC<AARAnalyticsModalProps> = ({ isOpen, onClose
               (report.mchsMetrics.operationsCompleted > 0 ||
                 report.mchsMetrics.totalExtractable > 0 ||
                 report.mchsMetrics.bareHandViolations > 0) && (
-                <div className="p-3.5 rounded bg-slate-950/90 border border-cyan-500/30 space-y-1.5 text-xs font-mono">
-                  <div className="text-cyan-300 uppercase font-bold">
-                    Операции МЧС и эвакуация (САР)
+                <div className="p-3.5 rounded-xl alara-surface space-y-1.5 text-xs font-mono alara-tabular">
+                  <div className="text-[#0EA5E9] uppercase font-bold">
+                    Операции МЧС и САР
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Технологических операций:</span>
-                    <span className="text-white font-bold">{report.mchsMetrics.operationsCompleted}</span>
+                    <span className="text-[#94A3B8]">Технологических операций:</span>
+                    <span className="text-[#F1F5F9] font-bold">{report.mchsMetrics.operationsCompleted}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Изолировано в САР:</span>
-                    <span className="text-emerald-300 font-bold">
+                    <span className="text-[#94A3B8]">Изолировано в САР:</span>
+                    <span className="text-[#10B981] font-bold">
                       {report.mchsMetrics.extractedCount} / {report.mchsMetrics.totalExtractable}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Захват щипцами ЦМ-1.5:</span>
-                    <span className="text-sky-300 font-bold">
+                    <span className="text-[#94A3B8]">Захват щипцами ЦМ-1.5:</span>
+                    <span className="text-[#0EA5E9] font-bold">
                       {report.mchsMetrics.tongsCompliantExtractions}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Хват ИИИ без щипцов:</span>
+                    <span className="text-[#94A3B8]">Хват ИИИ без щипцов:</span>
                     <span
                       className={
                         report.mchsMetrics.bareHandViolations > 0
-                          ? 'text-rose-400 font-bold'
-                          : 'text-emerald-400'
+                          ? 'text-[#EF4444] font-bold'
+                          : 'text-[#10B981]'
                       }
                     >
                       {report.mchsMetrics.bareHandViolations}

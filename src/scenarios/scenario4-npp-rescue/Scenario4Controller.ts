@@ -71,6 +71,7 @@ const EMPTY_VEHICLE_SNAPSHOT: MchsVehicleSnapshot = {
   hoseLengthM: 0,
   maxHoseLengthM: SCENARIO_4_CONFIG.HOSE.maxLengthM,
   hoseOverstretched: false,
+  beaconsOn: true,
   targets: []
 };
 
@@ -493,6 +494,17 @@ export class Scenario4Controller {
     this.vehicleSys?.cancelAutopilot();
   }
 
+  public toggleVehicleBeacons(): boolean {
+    if (!this.vehicleSys || this.isDisposed || this.isLoadingGlb) return false;
+    const next = this.vehicleSys.toggleBeacons();
+    this.onToast(
+      'info',
+      next ? 'ПРОБЛЕСКОВЫЕ МАЯКИ ВКЛЮЧЕНЫ' : 'ПРОБЛЕСКОВЫЕ МАЯКИ ВЫКЛЮЧЕНЫ',
+      next ? 'Сигнально-громкоговорящая установка АЦ-40 активна.' : 'Световые маяки переведены в дежурный режим.'
+    );
+    return next;
+  }
+
   public cycleNextVehicleAutopilot(): boolean {
     if (!this.vehicleSys || !this.inspectionReport) return false;
     const count = this.inspectionReport.markers.buildingDriveTargets.length;
@@ -753,7 +765,7 @@ export class Scenario4Controller {
   }): Scenario4HudSnapshot {
     const sample = this.viveAdapter.sampleAim(params.viveInput);
     this.activeInputLabelRu = this.vehicleSys?.isSeated
-      ? 'АЦ-40 МЧС • [WASD]/Л.Стик: движение • [B]: автопилот • [Enter]/Наж. стика: выйти'
+      ? 'АЦ-40 МЧС • [WASD]/Л.Стик: движение • [L]: маяки • [B]: автопилот • [Enter]/Наж. стика: выйти'
       : sample.inputHintLabelRu;
 
     if (params.isSprayingInput && !params.isMovementFrozen && !this.vehicleSys?.isSeated) {
@@ -817,6 +829,10 @@ export class Scenario4Controller {
       hasVrHandQuat,
       manualThrottle: vehicleThrottle,
       manualSteer: vehicleSteer,
+      isSpraying: this.fireMgr.isSpraying,
+      hasAlert: Boolean(
+        this.fsm.getWarningBanner() || this.cumulativeDoseMsv >= this.doseLimitMsv * 0.8
+      ),
       extraColliders: this.wallColliders
     });
     if (vehRes.arrivedBuildingName) {
@@ -976,8 +992,8 @@ export class Scenario4Controller {
       this.evacMgr.setTargetHighlight(null);
       this.evacMgr.updateGuidePath(null);
       prompt = this.vehicleSys.autopilotTargetIndex !== null
-        ? 'Автопилот АЦ-40 ведёт машину к корпусу • [Enter] — выйти из кабины'
-        : 'За рулём АЦ-40 МЧС • [WASD]/Стик — ехать • [B] — автопилот • [Enter] — выйти';
+        ? 'Автопилот АЦ-40 ведёт машину к корпусу • [L] — маяки • [Enter] — выйти из кабины'
+        : 'За рулём АЦ-40 МЧС • [WASD]/Стик — ехать • [L] — маяки • [B] — автопилот • [Enter] — выйти';
       this.targetPromptRu = prompt;
       return;
     }

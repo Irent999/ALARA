@@ -246,41 +246,40 @@ export const Equipment3DInspector: React.FC<Equipment3DInspectorProps> = ({
   return (
     <div className="flex flex-col gap-3">
       {/* Верхняя панель переключения объектов и макро-ракурсов */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+      <div className="flex flex-wrap items-center justify-between gap-2 alara-surface p-3 rounded-xl">
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={() => setInspectTarget('hand_rig')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-[10px] text-xs font-semibold transition whitespace-nowrap cursor-pointer ${
               inspectTarget === 'hand_rig'
-                ? 'bg-yellow-500 text-black'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                ? 'bg-[#0EA5E9] text-[#0B1117]'
+                : 'bg-[#0B1117] text-[#94A3B8] hover:text-[#F1F5F9] border border-slate-400/15'
             }`}
           >
             Перчатка СИЗ + Дозиметр ГОСТ
           </button>
           <button
             onClick={() => setInspectTarget('tk6_container')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-[10px] text-xs font-semibold transition whitespace-nowrap cursor-pointer ${
               inspectTarget === 'tk6_container'
-                ? 'bg-yellow-500 text-black'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                ? 'bg-[#0EA5E9] text-[#0B1117]'
+                : 'bg-[#0B1117] text-[#94A3B8] hover:text-[#F1F5F9] border border-slate-400/15'
             }`}
           >
             Контейнер ТК-6 (60 мм Pb)
           </button>
           <button
             onClick={() => setInspectTarget('vver_valve')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-[10px] text-xs font-semibold transition whitespace-nowrap cursor-pointer ${
               inspectTarget === 'vver_valve'
-                ? 'bg-yellow-500 text-black'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                ? 'bg-[#0EA5E9] text-[#0B1117]'
+                : 'bg-[#0B1117] text-[#94A3B8] hover:text-[#F1F5F9] border border-slate-400/15'
             }`}
           >
             Клапан ВВЭР + Манометр ГОСТ 2405
           </button>
         </div>
 
-        {/* Макро-ракурсы для проверки геометрической и оптической точности */}
         {inspectTarget === 'hand_rig' && (
           <div className="flex flex-wrap items-center gap-1">
             {(
@@ -294,10 +293,10 @@ export const Equipment3DInspector: React.FC<Equipment3DInspectorProps> = ({
               <button
                 key={preset}
                 onClick={() => setCameraPreset(preset)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition whitespace-nowrap ${
+                className={`px-2.5 py-1 rounded-[10px] text-[11px] font-medium transition whitespace-nowrap cursor-pointer ${
                   cameraPreset === preset
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                    : 'bg-slate-800/70 text-slate-400 hover:text-white'
+                    ? 'bg-[#14B8A6]/15 text-[#14B8A6] border border-[#14B8A6]/40'
+                    : 'bg-[#0B1117] text-[#94A3B8] hover:text-[#F1F5F9]'
                 }`}
               >
                 {label}
@@ -307,34 +306,32 @@ export const Equipment3DInspector: React.FC<Equipment3DInspectorProps> = ({
         )}
       </div>
 
-      {/* Основной 3D-вьюпорт с интерактивным вращением */}
-      <div className="relative w-full h-[320px] rounded-xl overflow-hidden border border-slate-800 bg-slate-950">
+      {/* Основной 3D-вьюпорт */}
+      <div className="relative w-full h-[320px] rounded-xl overflow-hidden border border-slate-400/15 bg-[#0B1117]">
         <div
           ref={mountRef}
           className="w-full h-full cursor-grab active:cursor-grabbing"
           title="Зажмите ЛКМ для вращения 3D-модели на 360°, колесико мыши — масштаб"
         />
 
-        {/* Спецификация физического рендеринга (чистая типографика без капсул) */}
-        <div className="absolute top-3 left-3 pointer-events-none bg-slate-950/75 backdrop-blur-sm px-3 py-2 rounded-lg border border-white/10 text-[11px] text-slate-300 space-y-0.5 font-mono tabular-nums">
-          <div className="text-yellow-400 font-semibold">
-            PBR & CAD Телеметрия · ACESFilmic (Exp 1.0) · sRGB · PCFSoftShadow
+        <div className="absolute top-3 left-3 pointer-events-none alara-glass px-3 py-2 rounded-[10px] text-[11px] text-[#94A3B8] space-y-0.5 font-mono alara-tabular">
+          <div className="text-[#F59E0B] font-semibold">
+            PBR & CAD Телеметрия · ACESFilmic · sRGB · PCFSoftShadow
           </div>
           <div>
-            Фаски R = 1.0–3.0 мм · Корпус Roughness = 0.45 · Контакты Metalness = 0.9 / Roughness = 0.2
+            Фаски R = 1.0–3.0 мм · Roughness = 0.45 · Контакты Metalness = 0.9 / Roughness = 0.2
           </div>
           <div>
-            Оптика: Стекло IOR 1.52 · AR Iridescence 1.38 · Глубина LCD 2.2 мм · Кабель y = a·cosh(x/a)
+            Оптика: Стекло IOR 1.52 · AR 1.38 · LCD 2.2 мм · Кабель y = a·cosh(x/a)
           </div>
         </div>
 
-        {/* Кнопка переключения каркасной сетки фасок */}
         <button
           onClick={() => setWireframeOverlay(w => !w)}
-          className={`absolute top-3 right-3 px-3 py-1.5 rounded-lg text-xs font-semibold border transition flex items-center gap-1.5 ${
+          className={`absolute top-3 right-3 px-3 py-1.5 rounded-[10px] text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
             wireframeOverlay
-              ? 'bg-emerald-500 text-black border-emerald-400'
-              : 'bg-slate-900/85 text-slate-200 border-slate-700 hover:bg-slate-800'
+              ? 'bg-[#10B981] text-[#0B1117]'
+              : 'alara-glass hover:bg-slate-800/80 text-[#F1F5F9]'
           }`}
         >
           <Eye className="w-3.5 h-3.5" />
@@ -342,21 +339,21 @@ export const Equipment3DInspector: React.FC<Equipment3DInspectorProps> = ({
         </button>
       </div>
 
-      {/* Нижняя панель интерактивного тестирования зондов, хвата перчатки и ЖК-экрана */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-900/80 p-3 rounded-xl border border-slate-800 text-xs">
+      {/* Нижняя панель интерактивного тестирования */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 alara-surface p-3 rounded-xl text-xs">
         <div>
-          <label className="text-slate-400 block mb-1 font-medium">
-            Сменный первичный детектор (ГОСТ 27451-87):
+          <label className="text-[#94A3B8] block mb-1.5 font-medium">
+            Сменный детектор (ГОСТ 27451-87):
           </label>
           <div className="flex gap-1">
             {(['dp5', 'ion', 'nai', 'neutron'] as InstrumentId[]).map(id => (
               <button
                 key={id}
                 onClick={() => onSelectInstrument(id)}
-                className={`px-2.5 py-1.5 rounded-lg font-bold transition flex-1 whitespace-nowrap ${
+                className={`px-2.5 py-1.5 rounded-[10px] font-semibold transition flex-1 whitespace-nowrap cursor-pointer ${
                   selectedInstrumentId === id
-                    ? 'bg-yellow-500 text-black'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    ? 'bg-[#0EA5E9] text-[#0B1117]'
+                    : 'bg-[#0B1117] text-[#94A3B8] hover:text-[#F1F5F9] border border-slate-400/15'
                 }`}
               >
                 {id === 'dp5' && 'СБМ-20'}
@@ -369,9 +366,9 @@ export const Equipment3DInspector: React.FC<Equipment3DInspectorProps> = ({
         </div>
 
         <div>
-          <div className="flex justify-between text-slate-400 mb-1">
-            <span>Анатомический сгиб пальцев СИЗ:</span>
-            <span className="font-mono text-white tabular-nums">{Math.round(gripCurl * 100)}%</span>
+          <div className="flex justify-between text-[#94A3B8] mb-1.5">
+            <span>Сгиб пальцев СИЗ:</span>
+            <span className="font-mono text-[#F1F5F9] alara-tabular">{Math.round(gripCurl * 100)}%</span>
           </div>
           <input
             type="range"
@@ -379,15 +376,15 @@ export const Equipment3DInspector: React.FC<Equipment3DInspectorProps> = ({
             max={1}
             step={0.02}
             value={gripCurl}
-            onChange={e => setGripCurl( parseFloat(e.target.value) )}
-            className="w-full accent-yellow-500 cursor-pointer"
+            onChange={e => setGripCurl(parseFloat(e.target.value))}
+            className="w-full accent-[#0EA5E9] cursor-pointer"
           />
         </div>
 
         <div>
-          <div className="flex justify-between text-slate-400 mb-1">
-            <span>Тест индикации ЖК-матрицы:</span>
-            <span className="font-mono text-emerald-400 tabular-nums">{simulatedDose.toFixed(1)} мкЗв/ч</span>
+          <div className="flex justify-between text-[#94A3B8] mb-1.5">
+            <span>Тест ЖК-матрицы:</span>
+            <span className="font-mono text-[#10B981] alara-tabular">{simulatedDose.toFixed(1)} мкЗв/ч</span>
           </div>
           <input
             type="range"
@@ -395,8 +392,8 @@ export const Equipment3DInspector: React.FC<Equipment3DInspectorProps> = ({
             max={2500}
             step={0.5}
             value={simulatedDose}
-            onChange={e => setSimulatedDose( parseFloat(e.target.value) )}
-            className="w-full accent-emerald-500 cursor-pointer"
+            onChange={e => setSimulatedDose(parseFloat(e.target.value))}
+            className="w-full accent-[#10B981] cursor-pointer"
           />
         </div>
       </div>

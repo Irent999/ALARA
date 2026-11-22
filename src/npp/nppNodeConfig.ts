@@ -321,8 +321,9 @@ export const SCENARIO_4_CONFIG = {
     boardRadiusM: 4.5,
     autopilotArrivalDistM: 3.2,
     autopilotSpeedMps: 8.8,
-    seatLocalOffset: [-0.52, 1.52, 1.35] as readonly [number, number, number],
-    exitSideOffset: [-2.35, 0, 1.35] as readonly [number, number, number],
+    // Леворульная посадка (+X в системе машины, смотрящей вперёд по +Z)
+    seatLocalOffset: [0.50, 1.78, 1.54] as readonly [number, number, number],
+    exitSideOffset: [2.35, 0, 1.54] as readonly [number, number, number],
     pumpLocalOffset: [0, 0.95, -2.85] as readonly [number, number, number],
     collisionRadiusM: 2.1
   },
@@ -505,3 +506,114 @@ export const NPP_NODE_CONFIG: NppAssemblyConfig = {
 
   wallColliders: []
 };
+
+/**
+ * Конфигурация габаритов кабины, лобового стекла, рулевого колеса,
+ * приборной панели водителя, пульта управления пожарным насосом
+ * и точки посадки камеры/VR-рига автомобиля АЦ-40 МЧС Узбекистана.
+ * Локальные координаты относительно vehicleGroup (вперёд +Z, вверх +Y, влево +X).
+ */
+export interface Ac40CabConfig {
+  readonly cabWidthM: number;
+  readonly cabFrontZ: number;
+  readonly cabRearZ: number;
+  readonly cabFloorY: number;
+  readonly cabRoofY: number;
+  readonly cowlTopY: number;
+  readonly doorHaloLocalOffset: readonly [number, number, number];
+  readonly desktopInitialPitchRad: number;
+  readonly vrMinEyeY: number;
+  readonly vrMaxEyeY: number;
+  readonly windshield: {
+    readonly widthM: number;
+    readonly heightM: number;
+    readonly centerY: number;
+    readonly centerZ: number;
+    readonly tiltXRad: number;
+    readonly opacity: number;
+    readonly tintHex: number;
+  };
+  readonly dashboard: {
+    readonly centerX: number;
+    readonly baseY: number;
+    readonly centerZ: number;
+    readonly widthM: number;
+    readonly depthM: number;
+    readonly clusterOffsetX: number;
+    readonly clusterOffsetY: number;
+    readonly clusterOffsetZ: number;
+    readonly clusterTiltXRad: number;
+    readonly screenWidthM: number;
+    readonly screenHeightM: number;
+  };
+  readonly steeringWheel: {
+    readonly pivotPos: readonly [number, number, number];
+    readonly tiltXRad: number;
+    readonly radiusM: number;
+    readonly tubeRadiusM: number;
+    readonly maxVisualTurnRad: number;
+  };
+  readonly pumpConsole: {
+    readonly pos: readonly [number, number, number];
+    readonly yawRad: number;
+    readonly tiltXRad: number;
+    readonly widthM: number;
+    readonly heightM: number;
+    readonly screenWidthM: number;
+    readonly screenHeightM: number;
+  };
+  readonly canvasRefreshMinIntervalMs: number;
+}
+
+export const AC40_CAB_CONFIG: Ac40CabConfig = {
+  cabWidthM: 2.28,
+  cabFrontZ: 2.96,
+  cabRearZ: 0.96,
+  cabFloorY: 0.88,
+  cabRoofY: 2.26,
+  cowlTopY: 1.46,
+  doorHaloLocalOffset: [1.94, 0.03, 1.85],
+  desktopInitialPitchRad: -0.1,
+  vrMinEyeY: 0.95,
+  vrMaxEyeY: 1.95,
+  windshield: {
+    widthM: 2.02,
+    heightM: 0.76,
+    centerY: 1.83,
+    centerZ: 2.79,
+    tiltXRad: -0.22,
+    opacity: 0.14,
+    tintHex: 0xdbeafe
+  },
+  dashboard: {
+    centerX: 0,
+    baseY: 1.24,
+    centerZ: 2.48,
+    widthM: 2.08,
+    depthM: 0.44,
+    clusterOffsetX: 0.50,
+    clusterOffsetY: 1.44,
+    clusterOffsetZ: 2.38,
+    clusterTiltXRad: -0.28,
+    screenWidthM: 0.50,
+    screenHeightM: 0.21
+  },
+  steeringWheel: {
+    pivotPos: [0.50, 1.41, 2.07],
+    tiltXRad: 0.46,
+    radiusM: 0.215,
+    tubeRadiusM: 0.021,
+    maxVisualTurnRad: 2.45
+  },
+  pumpConsole: {
+    pos: [-0.04, 1.37, 2.24],
+    yawRad: 0.28,
+    tiltXRad: -0.48,
+    widthM: 0.46,
+    heightM: 0.34,
+    screenWidthM: 0.36,
+    screenHeightM: 0.19
+  },
+  canvasRefreshMinIntervalMs: 80
+};
+
