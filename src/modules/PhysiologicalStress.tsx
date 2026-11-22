@@ -50,6 +50,10 @@ export interface PhysiologicalStressProps {
   isPhysicalExertion: boolean;
   /** Температура окружающей среды в помещении ЧС (°C, по умолчанию 24 °C, в реакторном зале до 45 °C) */
   ambientTemperatureC?: number;
+  /** Коэффициент снижения стресса от роли звена РХБЗ (по умолчанию 1.0) */
+  stressDampingFactor?: number;
+  /** Задымление среды (0..1), снижающее SpO2 при отсутствии изолирующего СИЗОД */
+  smokeExposure01?: number;
   /** Коллбэк обновления биометрической телеметрии */
   onUpdateTelemetry?: (telemetry: PhysiologicalTelemetry) => void;
   /** Коллбэк обновления остатка кислорода в состоянии СИЗ */
@@ -66,29 +70,39 @@ export function stepPhysiologicalModel(
   accumulatedDoseMsv: number,
   isPhysicalExertion: boolean,
   ambientTemperatureC: number,
-  dtSec: number
+  dtSec: number,
+  stressDampingFactor: number = 1.0,
+  smokeExposure01: number = 0.0
 ): PhysiologicalTelemetry {
-  const suitSpec = SUIT_SPECIFICATIONS[ppeState.suitType];
-  const respSpec = RESPIRATOR_SPECIFICATIONS[ppeState.respiratorType];
+  const suitSpec = SUIT_SPECIFICATIONS[ppeState.suitType] || SUIT_SPECIFICATIONS.NONE;
+  const respSpec = RESPIRATOR_SPECIFICATIONS[ppeState.respiratorType] || RESPIRATOR_SPECIFICATIONS.NONE;
+  const isAmbientOpenAir = ppeState.respiratorType === 'NONE';
 
   // 1. Расчет психоэмоционального стресса от радиационной обстановки и нехватки воздуха
   const doseRateStress = Math.min(45.0, Math.log10(1.0 + currentDoseRateMsvPerHour * 12.0) * 18.0);
   const accumulatedDoseStress = Math.min(25.0, accumulatedDoseMsv * 0.8);
   const hypoxiaStress =
-    prev.remainingOxygenPercent < 25.0
+    !isAmbientOpenAir && prev.remainingOxygenPercent < 25.0
       ? ((25.0 - prev.remainingOxygenPercent) / 25.0) * 40.0
+      : smokeExposure01 * (1.0 / Math.max(1.0, respSpec.inhalationProtectionFactor * 0.02)) * 28.0;
+  const breachStress =
+    ppeState.suitType !== 'NONE' && ppeState.suitIntegrity < 0.9
+      ? (1.0 - ppeState.suitIntegrity) * 60.0
       : 0.0;
-  const breachStress = ppeState.suitIntegrity < 0.9 ? (1.0 - ppeState.suitIntegrity) * 60.0 : 0.0;
 
   const targetStress = Math.min(
     100.0,
-    Math.max(5.0, doseRateStress + accumulatedDoseStress + hypoxiaStress + breachStress)
+    Math.max(
+      5.0,
+      (doseRateStress + accumulatedDoseStress + hypoxiaStress + breachStress) *
+        Math.max(0.5, Math.min(1.2, stressDampingFactor))
+    )
   );
   const stressIndexPercent = prev.stressIndexPercent + (targetStress - prev.stressIndexPercent) * Math.min(1.0, dtSec * 0.8);
 
   // 2. Внутренняя температура тела (эндогенное теплообразование в герметичном скафандре)
   const metabolicHeatRate = isPhysicalExertion ? 0.0014 : 0.00045;
-  const ambientDelta = Math.max(0.0, (ambientTemperatureC - 22.0) * 0.00012);
+  const ambientDelta = Math.max(0.0, (ambientTemperatureC - 22.0) * 0.00018);
   const coolingRate = (prev.coreBodyTempC - 36.65) * (0.015 / suitSpec.thermalInsulationFactor);
 
   const nextCoreTemp = Math.min(
@@ -120,20 +134,25 @@ export function stepPhysiologicalModel(
   // Легочная вентиляция (л/мин): от 18 л/мин в покое до 75 л/мин при тяжелой работе
   const airConsumptionLitersPerMin = Number((respirationRatePerMin * 1.45).toFixed(1));
 
-  // Списание запаса кислорода / ресурса фильтра
-  const nominalSeconds = respSpec.nominalDurationMinutes * 60.0;
+  // Списание запаса кислорода / ресурса фильтра (без СИЗОД — неограниченный атмосферный воздух)
+  const nominalSeconds = Math.max(60.0, respSpec.nominalDurationMinutes * 60.0);
   const workloadMultiplier = airConsumptionLitersPerMin / 30.0;
-  const depletionPerSec = (100.0 / nominalSeconds) * workloadMultiplier;
-  const remainingOxygenPercent = Math.max(
-    0.0,
-    prev.remainingOxygenPercent - depletionPerSec * dtSec
-  );
+  const depletionPerSec = isAmbientOpenAir ? 0.0 : (100.0 / nominalSeconds) * workloadMultiplier;
+  const remainingOxygenPercent = isAmbientOpenAir
+    ? 100.0
+    : Math.max(0.0, prev.remainingOxygenPercent - depletionPerSec * dtSec);
 
-  // 5. Сатурация SpO2 (%)
+  // 5. Сатурация SpO2 (%) — учитывает как остаток баллона, так и дым без СИЗОД
+  const smokeHypoxiaDrop =
+    ppeState.respiratorType === 'NONE'
+      ? smokeExposure01 * 11.0
+      : ppeState.respiratorType === 'DP_5_RESP'
+      ? smokeExposure01 * 4.5
+      : 0.0;
   const targetSpO2 =
     remainingOxygenPercent > 15.0
-      ? 98.5 - Math.max(0.0, (heartRateBpm - 140.0) * 0.05)
-      : 82.0 + (remainingOxygenPercent / 15.0) * 14.0;
+      ? 98.5 - Math.max(0.0, (heartRateBpm - 140.0) * 0.05) - smokeHypoxiaDrop
+      : 82.0 + (remainingOxygenPercent / 15.0) * 14.0 - smokeHypoxiaDrop;
   const spO2Percent = prev.spO2Percent + (targetSpO2 - prev.spO2Percent) * Math.min(1.0, dtSec * 0.5);
 
   // 6. Запотевание панорамного стекла маски, тремор рук и туннельное зрение
@@ -204,6 +223,8 @@ export const PhysiologicalStress: React.FC<PhysiologicalStressProps> = ({
   accumulatedDoseMsv,
   isPhysicalExertion,
   ambientTemperatureC = 25.0,
+  stressDampingFactor = 1.0,
+  smokeExposure01 = 0.0,
   onUpdateTelemetry,
   onOxygenDepletion
 }) => {
@@ -221,12 +242,12 @@ export const PhysiologicalStress: React.FC<PhysiologicalStressProps> = ({
     clinicalStatus: 'OPTIMAL'
   });
 
-  // Синхронизация при внешней перезарядке баллона АСВ-2
+  // Синхронизация при внешней перезарядке баллона АСВ-2 или смене СИЗОД
   useEffect(() => {
     if (Math.abs(ppeState.oxygenOrFilterReservePercent - telemetryRef.current.remainingOxygenPercent) > 3.0) {
       telemetryRef.current.remainingOxygenPercent = ppeState.oxygenOrFilterReservePercent;
     }
-  }, [ppeState.oxygenOrFilterReservePercent]);
+  }, [ppeState.oxygenOrFilterReservePercent, ppeState.respiratorType]);
 
   const latestPropsRef = useRef({
     ppeState,
@@ -234,6 +255,8 @@ export const PhysiologicalStress: React.FC<PhysiologicalStressProps> = ({
     accumulatedDoseMsv,
     isPhysicalExertion,
     ambientTemperatureC,
+    stressDampingFactor,
+    smokeExposure01,
     onUpdateTelemetry,
     onOxygenDepletion
   });
@@ -243,6 +266,8 @@ export const PhysiologicalStress: React.FC<PhysiologicalStressProps> = ({
     accumulatedDoseMsv,
     isPhysicalExertion,
     ambientTemperatureC,
+    stressDampingFactor,
+    smokeExposure01,
     onUpdateTelemetry,
     onOxygenDepletion
   };
@@ -257,7 +282,9 @@ export const PhysiologicalStress: React.FC<PhysiologicalStressProps> = ({
         props.accumulatedDoseMsv,
         props.isPhysicalExertion,
         props.ambientTemperatureC,
-        0.5
+        0.5,
+        props.stressDampingFactor,
+        props.smokeExposure01
       );
       telemetryRef.current = next;
 
@@ -265,7 +292,12 @@ export const PhysiologicalStress: React.FC<PhysiologicalStressProps> = ({
         props.onUpdateTelemetry(next);
       }
       if (props.onOxygenDepletion) {
-        const nextPressureMpa = Number(((next.remainingOxygenPercent / 100.0) * 29.4).toFixed(2));
+        const nextPressureMpa =
+          props.ppeState.respiratorType === 'ASV_2'
+            ? Number(((next.remainingOxygenPercent / 100.0) * 29.4).toFixed(2))
+            : props.ppeState.respiratorType === 'NONE'
+            ? 0.0
+            : 1.0;
         props.onOxygenDepletion(next.remainingOxygenPercent, nextPressureMpa);
       }
     }, 500);

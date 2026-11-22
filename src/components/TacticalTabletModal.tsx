@@ -50,7 +50,16 @@ import {
   REMOTE_TOOLS,
   calculateSafeStayTime
 } from '../physics/gostPhysics';
-import { CharacterCustomizer3D, CharacterPPEState } from './CharacterCustomizer3D';
+import {
+  COOP_ROLE_SPECIFICATIONS,
+  type CoopSquadRole
+} from '../network/MultiplayerManager';
+import {
+  CharacterCustomizer3D,
+  CharacterPPEState,
+  RESPIRATOR_DEFINITIONS,
+  SUIT_DEFINITIONS
+} from './CharacterCustomizer3D';
 import type { TelemetryHistoryPoint } from './FloatingAnalyticsWindow';
 import type { VoiceLogEntry, VoiceLoggerMode } from '../vr/voiceTaskLogger';
 import type { IScenarioConfig } from '../scene/scenarioConfigRegistry';
@@ -105,9 +114,12 @@ export interface TacticalTabletModalProps {
   oxygenPercent: number;
   spO2Percent: number;
   coreBodyTempC: number;
+  coopRole?: CoopSquadRole;
   coopRoleCallsign: string;
   coopPeersCount: number;
   onCycleCoopRole: () => void;
+  onSelectCoopRole?: (role: CoopSquadRole) => void;
+  effectiveReachM?: number;
 
   currentDoseRateMicroSv: number;
   cumulativeDoseMsv: number;
@@ -189,9 +201,12 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
   oxygenPercent,
   spO2Percent,
   coreBodyTempC,
+  coopRole = 'RECON_DOSIMETRIST',
   coopRoleCallsign,
   coopPeersCount,
   onCycleCoopRole,
+  onSelectCoopRole,
+  effectiveReachM,
   currentDoseRateMicroSv,
   cumulativeDoseMsv,
   missionTimeSec,
@@ -716,7 +731,17 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
           {/* ===================================================================== */}
           {/* ВКЛАДКА 2: ЭКИПИРОВКА И СИЗ */}
           {/* ===================================================================== */}
-          {activeTab === 'ppe' && (
+          {activeTab === 'ppe' && (() => {
+            const activeRoleSpec =
+              COOP_ROLE_SPECIFICATIONS[coopRole] || COOP_ROLE_SPECIFICATIONS.RECON_DOSIMETRIST;
+            const activeToolSpec = REMOTE_TOOLS[selectedRemoteToolId] || REMOTE_TOOLS.hand;
+            const activeSuitDef = SUIT_DEFINITIONS[ppeState.suitId];
+            const activeRespDef = RESPIRATOR_DEFINITIONS[ppeState.respiratorId];
+            const computedReachM =
+              effectiveReachM ??
+              3.2 + activeToolSpec.addedDistanceM + activeRoleSpec.modifiers.interactionReachBonusM;
+
+            return (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                 <button
@@ -724,6 +749,13 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   onClick={() => {
                     onSelectInstrument('dp5');
                     onChangePPE({ suitId: 'bop_suit', respiratorId: 'ppm88_mask', instrumentId: 'dp5' });
+                    onSelectRemoteTool('hand');
+                    onSelectCoopRole?.('LIQUIDATOR_OPERATOR');
+                    onToast?.(
+                      'success',
+                      'РАСЧЁТ БОП-1 АКТИВИРОВАН',
+                      'Термостойкость 350°C · ППМ-88 (99.99%) · Роль: АТОМ-2 (тушение ×1.30, задвижки ×1.35).'
+                    );
                   }}
                   className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
                     ppeState.suitId === 'bop_suit'
@@ -738,7 +770,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                     <span className="text-[11px] font-mono alara-tabular">350°C · 10 кВ</span>
                   </div>
                   <div className="text-[11px] text-[#94A3B8] mt-1">
-                    БОП-1 термостойкий + Маска ППМ-88 + ДП-5В
+                    БОП-1 + Маска ППМ-88 + АТОМ-2 (тушение ×1.30)
                   </div>
                 </button>
 
@@ -747,6 +779,13 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   onClick={() => {
                     onSelectInstrument('dp5');
                     onChangePPE({ suitId: 'kih4_suit', respiratorId: 'gp7vm_gasmask', instrumentId: 'dp5' });
+                    onSelectRemoteTool('manipulator_15m');
+                    onSelectCoopRole?.('LIQUIDATOR_OPERATOR');
+                    onToast?.(
+                      'success',
+                      'РХБ-ЗАЩИТА КИХ-4 АКТИВИРОВАНА',
+                      'Манипулятор 1.5 м (+1.5 м к 1/r²) · ГП-7ВМ (99.99%) · Роль: АТОМ-2.'
+                    );
                   }}
                   className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
                     ppeState.suitId === 'kih4_suit'
@@ -758,10 +797,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                     <span className="flex items-center gap-1.5">
                       <Shield className="w-3.5 h-3.5" /> РХБ-защита КИХ-4
                     </span>
-                    <span className="text-[11px] font-mono alara-tabular">α/β 100%</span>
+                    <span className="text-[11px] font-mono alara-tabular">α/β 100% · +1.5 м</span>
                   </div>
                   <div className="text-[11px] text-[#94A3B8] mt-1">
-                    Изолирующий КИХ-4 + ГП-7ВМ + ДП-5В
+                    КИХ-4 + ГП-7ВМ + Манипулятор 1.5 м + АТОМ-2
                   </div>
                 </button>
 
@@ -770,6 +809,13 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                   onClick={() => {
                     onSelectInstrument('dp5');
                     onChangePPE({ suitId: 'l1_suit', respiratorId: 'asv2_scba', instrumentId: 'dp5' });
+                    onSelectRemoteTool('telescopic_rod_3m');
+                    onSelectCoopRole?.('RECON_DOSIMETRIST');
+                    onToast?.(
+                      'success',
+                      'РАЗВЕДКА Л-1 + АСВ-2 АКТИВИРОВАНА',
+                      'Штанга 2.8 м (+2.8 м к 1/r²) · АСВ-2 (100% дым) · Роль: АТОМ-1 (отклик +35%).'
+                    );
                   }}
                   className={`p-3.5 rounded-xl border text-left transition cursor-pointer ${
                     ppeState.suitId === 'l1_suit'
@@ -781,10 +827,10 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                     <span className="flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5" /> Разведка Л-1 + АСВ-2
                     </span>
-                    <span className="text-[11px] font-mono alara-tabular">300 бар</span>
+                    <span className="text-[11px] font-mono alara-tabular">300 бар · +2.8 м</span>
                   </div>
                   <div className="text-[11px] text-[#94A3B8] mt-1">
-                    Костюм Л-1 + Дыхательный аппарат АСВ-2 + ДП-5В
+                    Л-1 + АСВ-2 + Штанга 2.8 м + АТОМ-1
                   </div>
                 </button>
               </div>
@@ -834,19 +880,54 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                       {spO2Percent.toFixed(0)}% · {coreBodyTempC.toFixed(1)}°C
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={onCycleCoopRole}
-                    className="mt-1.5 px-3 py-1.5 rounded-[10px] bg-[#0B1117] hover:bg-slate-800/80 border border-slate-400/20 text-[#0EA5E9] text-xs font-medium flex items-center justify-between cursor-pointer"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <UserCheck className="w-3.5 h-3.5" /> Роль звена РХБЗ:
-                    </span>
-                    <span className="font-mono alara-tabular">
-                      {coopRoleCallsign} ({coopPeersCount + 1}/3)
-                    </span>
-                  </button>
+                  {onSelectCoopRole ? (
+                    <div className="mt-1.5">
+                      <select
+                        value={coopRole}
+                        onChange={e => onSelectCoopRole(e.target.value as CoopSquadRole)}
+                        className="w-full bg-[#0B1117] text-[#0EA5E9] text-xs font-mono border border-slate-400/20 rounded-[10px] px-2.5 py-1.5 focus:outline-none focus:border-[#0EA5E9]"
+                        title="Роль звена РХБЗ"
+                      >
+                        {Object.values(COOP_ROLE_SPECIFICATIONS).map(spec => (
+                          <option key={spec.role} value={spec.role}>
+                            {spec.callsignRu} ({coopPeersCount + 1}/3)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={onCycleCoopRole}
+                      className="mt-1.5 px-3 py-1.5 rounded-[10px] bg-[#0B1117] hover:bg-slate-800/80 border border-slate-400/20 text-[#0EA5E9] text-xs font-medium flex items-center justify-between cursor-pointer"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <UserCheck className="w-3.5 h-3.5" /> Роль звена РХБЗ:
+                      </span>
+                      <span className="font-mono alara-tabular">
+                        {coopRoleCallsign} ({coopPeersCount + 1}/3)
+                      </span>
+                    </button>
+                  )}
                 </div>
+              </div>
+
+              {/* Прозрачная сводка активного влияния выбранной конфигурации на симуляцию */}
+              <div className="px-3.5 py-2.5 rounded-xl bg-[#0EA5E9]/8 border border-[#0EA5E9]/25 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono alara-tabular">
+                <span className="text-[#F1F5F9]">
+                  Дальность: <strong className="text-[#0EA5E9]">{computedReachM.toFixed(2)} м</strong>
+                  <span className="text-[#64748B] mx-1.5">·</span>
+                  Термо: <strong className="text-[#F59E0B]">{activeSuitDef.thermalRatingC}°C</strong>
+                  <span className="text-[#64748B] mx-1.5">·</span>
+                  α/β/γ/дым:{' '}
+                  <strong className="text-[#10B981]">
+                    {activeSuitDef.alphaBlockingPercent}% / ×{activeSuitDef.betaAttenuationFactor} / ×
+                    {activeSuitDef.gammaAttenuationFactor} / {activeRespDef.filtrationEfficiencyPercent}%
+                  </strong>
+                </span>
+                <span style={{ color: activeRoleSpec.primaryColorHex }} className="font-semibold">
+                  {activeRoleSpec.badgeCodeRu}: {activeRoleSpec.prioritySummaryRu}
+                </span>
               </div>
 
               <CharacterCustomizer3D
@@ -854,9 +935,12 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
                 onChangePPE={onChangePPE}
                 selectedRemoteToolId={selectedRemoteToolId}
                 onChangeRemoteTool={onSelectRemoteTool}
+                coopRole={coopRole}
+                onChangeCoopRole={onSelectCoopRole}
               />
             </div>
-          )}
+            );
+          })()}
 
           {/* ===================================================================== */}
           {/* ВКЛАДКА 3: ПРИБОРЫ И ИЗОТОПЫ */}

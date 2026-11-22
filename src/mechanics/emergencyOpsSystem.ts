@@ -44,6 +44,13 @@ export class EmergencyOpsSystem {
 
   private readonly disposables: Array<{ dispose: () => void }> = [];
   private animClockSec = 0;
+  private reachBonusM = 0;
+  private radReconSpeedMultiplier = 1.0;
+
+  public setRoleModifiers(reachBonusM: number, radReconSpeedMultiplier: number): void {
+    this.reachBonusM = Math.max(0, reachBonusM);
+    this.radReconSpeedMultiplier = Math.max(0.5, radReconSpeedMultiplier);
+  }
 
   constructor(params: {
     radReconPos: THREE.Vector3;
@@ -302,8 +309,9 @@ export class EmergencyOpsSystem {
     messageRu: string | null;
   } {
     const cfg = SCENARIO_4_CONFIG.EMERGENCY_OPS;
+    const bonus = this.reachBonusM;
 
-    if (!this.radReconDone && playerPos.distanceTo(this.radReconPos) <= cfg.radReconRadiusM) {
+    if (!this.radReconDone && playerPos.distanceTo(this.radReconPos) <= cfg.radReconRadiusM + bonus) {
       this.completeRadRecon();
       return {
         handled: true,
@@ -315,7 +323,7 @@ export class EmergencyOpsSystem {
 
     if (
       !this.loopIsolated &&
-      playerPos.distanceTo(this.loopIsolationPos) <= cfg.loopIsolationRadiusM
+      playerPos.distanceTo(this.loopIsolationPos) <= cfg.loopIsolationRadiusM + bonus
     ) {
       this.loopIsolated = true;
       this.valveRingMat.color.setHex(0x22c55e);
@@ -331,7 +339,7 @@ export class EmergencyOpsSystem {
 
     if (
       !this.casualtyStabilized &&
-      playerPos.distanceTo(this.casualtyTriagePos) <= cfg.casualtyTriageRadiusM
+      playerPos.distanceTo(this.casualtyTriagePos) <= cfg.casualtyTriageRadiusM + bonus
     ) {
       this.casualtyStabilized = true;
       this.casualtyRingMat.color.setHex(0x22c55e);
@@ -362,11 +370,11 @@ export class EmergencyOpsSystem {
     this.animClockSec += dt;
     let justCompletedRadRecon = false;
 
-    // Автоматическая доразведка при нахождении возле входного поста ДП-5В 1.4 с
+    // Автоматическая доразведка при нахождении возле входного поста ДП-5В (ускоряется при роли Дозиметриста АТОМ-1 и штанге)
     if (!this.radReconDone) {
       const distRad = playerPos.distanceTo(this.radReconPos);
-      if (distRad <= SCENARIO_4_CONFIG.EMERGENCY_OPS.radReconRadiusM) {
-        this.radReconTimerSec += dt;
+      if (distRad <= SCENARIO_4_CONFIG.EMERGENCY_OPS.radReconRadiusM + this.reachBonusM) {
+        this.radReconTimerSec += dt * this.radReconSpeedMultiplier;
         if (this.radReconTimerSec >= SCENARIO_4_CONFIG.EMERGENCY_OPS.radReconDurationSec) {
           this.completeRadRecon();
           justCompletedRadRecon = true;
@@ -406,8 +414,9 @@ export class EmergencyOpsSystem {
     colorHex: number;
   } | null {
     const cfg = SCENARIO_4_CONFIG.EMERGENCY_OPS;
+    const bonus = this.reachBonusM;
 
-    if (!this.radReconDone && playerPos.distanceTo(this.radReconPos) <= cfg.radReconRadiusM) {
+    if (!this.radReconDone && playerPos.distanceTo(this.radReconPos) <= cfg.radReconRadiusM + bonus) {
       const pct = Math.min(100, Math.round((this.radReconTimerSec / cfg.radReconDurationSec) * 100));
       return {
         promptRu: `[E] — Завершить радиационную доразведку у входа (${pct}%)`,
@@ -416,7 +425,7 @@ export class EmergencyOpsSystem {
       };
     }
 
-    if (!this.loopIsolated && playerPos.distanceTo(this.loopIsolationPos) <= cfg.loopIsolationRadiusM) {
+    if (!this.loopIsolated && playerPos.distanceTo(this.loopIsolationPos) <= cfg.loopIsolationRadiusM + bonus) {
       return {
         promptRu: '[E] / Курок — Перекрыть задвижку аварийного контура и включить вытяжку',
         pos: this.loopIsolationPos,
@@ -426,7 +435,7 @@ export class EmergencyOpsSystem {
 
     if (
       !this.casualtyStabilized &&
-      playerPos.distanceTo(this.casualtyTriagePos) <= cfg.casualtyTriageRadiusM
+      playerPos.distanceTo(this.casualtyTriagePos) <= cfg.casualtyTriageRadiusM + bonus
     ) {
       return {
         promptRu: '[E] / Курок — Оказать медпомощь пострадавшему (кислород/сортировка)',

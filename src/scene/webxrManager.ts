@@ -28,6 +28,7 @@ import * as THREE from 'three';
 import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { RealisticHumanHandRig, HazmatHandRig, VRFlashlight } from './handModel';
 import type { InstrumentId } from '../instruments/gostInstruments';
+import type { RemoteToolId } from '../physics/gostPhysics';
 import { VRUISystem } from '../vr/vrUiSystem';
 import { VoiceTaskLogger } from '../vr/voiceTaskLogger';
 import {
@@ -337,6 +338,16 @@ export class WebXRManager {
   public setPpeSuit(suitId: string): void {
     this.rightHandRig?.setGloveSuitMaterial(suitId);
     this.leftHandRig?.setGloveSuitMaterial(suitId);
+  }
+
+  public setRemoteToolMode(toolId: RemoteToolId): void {
+    this.rightHandRig?.setRemoteToolMode(toolId);
+    this.leftHandRig?.setRemoteToolMode(toolId);
+  }
+
+  public setCoopRoleAccent(colorHex: number): void {
+    this.rightHandRig?.setCoopRoleAccent(colorHex);
+    this.leftHandRig?.setCoopRoleAccent(colorHex);
   }
   private laser1: THREE.Line | null = null;
 

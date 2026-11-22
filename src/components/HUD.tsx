@@ -235,8 +235,11 @@ interface HUDProps {
   onStepChange?: (step: number) => void;
   targetedObject?: TargetedObjectContext | null;
   coopRoleCallsign?: string;
+  coopRoleBadgeCode?: string;
+  coopRoleSummaryRu?: string;
   coopPeersCount?: number;
   onCycleCoopRole?: () => void;
+  effectiveReachM?: number;
   oxygenPercent?: number;
   spO2Percent?: number;
   coreBodyTempC?: number;
@@ -300,6 +303,11 @@ export const HUD: React.FC<HUDProps> = ({
   onOpenTablet,
   onStepChange,
   targetedObject = null,
+  coopRoleCallsign,
+  coopRoleBadgeCode,
+  coopRoleSummaryRu,
+  onCycleCoopRole,
+  effectiveReachM,
   doseResetCount = 0,
   getSessionLimitsSummary,
   activeToolId = 'dp5',
@@ -539,27 +547,46 @@ export const HUD: React.FC<HUDProps> = ({
 
       {/* ВЕРХНЯЯ ПАНЕЛЬ: единая компактная строка телеметрии слева + системные кнопки справа */}
       <div className="fixed top-3 left-3 right-3 z-40 flex items-center justify-between gap-2 pointer-events-none">
-        <button
-          type="button"
-          onClick={() => openTabletHandler?.()}
-          className="pointer-events-auto flex items-center gap-2.5 px-3 py-1.5 rounded-xl alara-glass hover:bg-slate-800/80 text-[12px] font-mono alara-tabular text-[#F1F5F9] cursor-pointer whitespace-nowrap transition"
-          title="Открыть Тактический Планшет [Tab]"
-        >
-          <span className="font-bold text-[#0EA5E9]">Сц. {scenario.id}</span>
-          <span className="text-[#64748B]">·</span>
-          <span className="text-[#94A3B8]">
-            Фаза {activeStepNumber}/{totalSteps}
-          </span>
-          <span className="text-[#64748B]">·</span>
-          <span className={`flex items-center gap-1 font-semibold ${threatTextColor}`}>
-            <Radiation className="w-3.5 h-3.5 shrink-0" />
-            {formattedDoseRate} {doseRateUnit}
-          </span>
-          <span className="text-[#94A3B8] hidden sm:inline">
-            · Доза {(cumulativeDoseMsv * 1000).toFixed(1)} мкЗв
-          </span>
-          <span className="text-[#64748B] hidden md:inline">· {countdownFormatted}</span>
-        </button>
+        <div className="pointer-events-auto flex items-center rounded-xl alara-glass overflow-hidden text-[12px] font-mono alara-tabular text-[#F1F5F9]">
+          <button
+            type="button"
+            onClick={() => openTabletHandler?.()}
+            className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-slate-800/80 cursor-pointer whitespace-nowrap transition"
+            title="Открыть Тактический Планшет [Tab]"
+          >
+            <span className="font-bold text-[#0EA5E9]">Сц. {scenario.id}</span>
+            <span className="text-[#64748B]">·</span>
+            <span className="text-[#94A3B8]">
+              Фаза {activeStepNumber}/{totalSteps}
+            </span>
+            <span className="text-[#64748B]">·</span>
+            <span className={`flex items-center gap-1 font-semibold ${threatTextColor}`}>
+              <Radiation className="w-3.5 h-3.5 shrink-0" />
+              {formattedDoseRate} {doseRateUnit}
+            </span>
+            <span className="text-[#94A3B8] hidden sm:inline">
+              · Доза {(cumulativeDoseMsv * 1000).toFixed(1)} мкЗв
+            </span>
+            <span className="text-[#64748B] hidden md:inline">· {countdownFormatted}</span>
+          </button>
+
+          {(coopRoleBadgeCode || coopRoleCallsign || effectiveReachM !== undefined) && (
+            <>
+              <div className="w-px h-4 bg-slate-400/20 hidden lg:block" />
+              <button
+                type="button"
+                onClick={() => onCycleCoopRole?.()}
+                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-slate-800/80 text-[#14B8A6] cursor-pointer whitespace-nowrap transition"
+                title={coopRoleSummaryRu ? `${coopRoleCallsign ?? coopRoleBadgeCode}: ${coopRoleSummaryRu} (нажмите для смены роли)` : 'Сменить роль звена РХБЗ'}
+              >
+                <span className="font-semibold">{coopRoleBadgeCode || coopRoleCallsign}</span>
+                {effectiveReachM !== undefined && (
+                  <span className="text-[#94A3B8]">· {effectiveReachM.toFixed(1)}м</span>
+                )}
+              </button>
+            </>
+          )}
+        </div>
 
         <div className="pointer-events-auto flex items-center gap-1.5">
           {openTabletHandler && (

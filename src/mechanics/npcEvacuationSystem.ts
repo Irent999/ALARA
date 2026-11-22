@@ -450,7 +450,8 @@ export class NpcEvacuationSystem {
    */
   public tryCommandNearestGroup(
     playerPos: THREE.Vector3,
-    fireMgr: ExtinguisherSystem
+    fireMgr: ExtinguisherSystem,
+    extraReachM = 0
   ): {
     found: boolean;
     groupNameRu?: string;
@@ -458,7 +459,7 @@ export class NpcEvacuationSystem {
     blockedByFireNameRu?: string;
   } {
     let best: NpcGroupRuntime | null = null;
-    let bestD = 7.0;
+    let bestD = 7.0 + Math.max(0, extraReachM);
     for (const grp of this.npcGroups) {
       if (grp.state === 'SAFE' || grp.state === 'EVACUATING') continue;
       const d = playerPos.distanceTo(grp.currentPos);

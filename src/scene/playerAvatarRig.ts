@@ -29,6 +29,7 @@ import {
   createMchsBackPatchTexture,
   createMchsChevronTexture
 } from './mchsTextures';
+import { COOP_ROLE_SPECIFICATIONS, type CoopSquadRole } from '../network/MultiplayerManager';
 
 export class PlayerAvatarRig {
   public rootGroup: THREE.Group;
@@ -65,11 +66,14 @@ export class PlayerAvatarRig {
   private ppm88MaskGroup: THREE.Group;
   private lepestokGroup: THREE.Group;
 
-  // Детали экипировки (нагрудный дозиметр и бейдж допуска)
+  // Детали экипировки (нагрудный дозиметр, бейдж допуска и нарукавная повязка роли)
   private chestAccessoriesGroup: THREE.Group;
+  private roleArmbandGroup: THREE.Group;
+  private roleAccentMats: THREE.MeshStandardMaterial[] = [];
 
   public currentSuitId: SuitTypeId = 'none';
   public currentRespiratorId: RespiratorTypeId = 'none';
+  public currentCoopRole: CoopSquadRole = 'RECON_DOSIMETRIST';
   public firstPersonHeadHidden = true;
   public isFirstPersonMode = false;
   private readonly tempCamEuler = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -236,6 +240,33 @@ export class PlayerAvatarRig {
     this.chestAccessoriesGroup.add(badgeMesh);
 
     this.rootGroup.add(this.chestAccessoriesGroup);
+
+    // Нарукавная повязка и плечевые метки роли звена РХБЗ
+    this.roleArmbandGroup = new THREE.Group();
+    const roleAccentMat = new THREE.MeshStandardMaterial({
+      color: COOP_ROLE_SPECIFICATIONS.RECON_DOSIMETRIST.accentHexNumber,
+      emissive: COOP_ROLE_SPECIFICATIONS.RECON_DOSIMETRIST.accentHexNumber,
+      emissiveIntensity: 0.42,
+      roughness: 0.3,
+      metalness: 0.35
+    });
+    this.roleAccentMats.push(roleAccentMat);
+
+    const leftBrassard = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.086, 0.082, 0.07, 18, 1, true),
+      roleAccentMat
+    );
+    leftBrassard.position.set(-0.305, 1.24, 0.01);
+    leftBrassard.rotation.set(0.2, 0, 0.15);
+    this.roleArmbandGroup.add(leftBrassard);
+
+    const chestStripe = new THREE.Mesh(
+      new THREE.BoxGeometry(0.16, 0.025, 0.012),
+      roleAccentMat
+    );
+    chestStripe.position.set(0, 1.38, 0.13);
+    this.roleArmbandGroup.add(chestStripe);
+    this.rootGroup.add(this.roleArmbandGroup);
 
     // ------------------------------------------------------------------------
     // 6. СВИНЦОВЫЙ ФАРТУК (0.5 мм Pb) С ВОРОТНИКОМ И ПЕРЕКРЕСТНЫМИ РЕМНЯМИ
@@ -577,6 +608,15 @@ export class PlayerAvatarRig {
       respiratorId: this.currentRespiratorId,
       instrumentId: 'dp5'
     });
+  }
+
+  public setCoopRole(role: CoopSquadRole): void {
+    this.currentCoopRole = role;
+    const spec = COOP_ROLE_SPECIFICATIONS[role] || COOP_ROLE_SPECIFICATIONS.RECON_DOSIMETRIST;
+    for (let i = 0; i < this.roleAccentMats.length; i++) {
+      this.roleAccentMats[i].color.setHex(spec.accentHexNumber);
+      this.roleAccentMats[i].emissive.setHex(spec.accentHexNumber);
+    }
   }
 
   /**

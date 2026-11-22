@@ -91,6 +91,13 @@ export class ExtinguisherSystem {
 
   private readonly effectScale: number;
   private elapsedAnimSec = 0;
+  private reachBonusM = 0;
+  private suppressionMultiplier = 1.0;
+
+  public setRoleModifiers(reachBonusM: number, suppressionMultiplier: number): void {
+    this.reachBonusM = Math.max(0, reachBonusM);
+    this.suppressionMultiplier = Math.max(0.5, suppressionMultiplier);
+  }
 
   constructor(
     fireSpecs: ReadonlyArray<FireZoneSpec>,
@@ -629,13 +636,13 @@ export class ExtinguisherSystem {
       aimOrigin,
       aimDir,
       dt,
-      6.5,
-      0.42
+      6.5 + this.reachBonusM,
+      0.42 * this.suppressionMultiplier
     );
   }
 
   /**
-   * Подача огнетушащей водяной/пенной струи от пожарного рукава МЧС (дальность ~9.8 м, повышенная мощность).
+   * Подача огнетушащей водяной/пенной струи от пожарного рукава МЧС (дальность ~9.8 м + бонус инструмента, повышенная мощность).
    */
   public applyHoseSpray(
     nozzleTipPos: THREE.Vector3,
@@ -651,8 +658,8 @@ export class ExtinguisherSystem {
       aimOrigin,
       aimDir,
       dt,
-      SCENARIO_4_CONFIG.HOSE.sprayRangeM,
-      0.42 * SCENARIO_4_CONFIG.HOSE.suppressionRateMultiplier
+      SCENARIO_4_CONFIG.HOSE.sprayRangeM + this.reachBonusM,
+      0.42 * SCENARIO_4_CONFIG.HOSE.suppressionRateMultiplier * this.suppressionMultiplier
     );
   }
 

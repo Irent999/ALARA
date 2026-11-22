@@ -16,12 +16,32 @@ import * as THREE from 'three';
 
 export type CoopSquadRole = 'RECON_DOSIMETRIST' | 'LIQUIDATOR_OPERATOR' | 'INCIDENT_COMMANDER';
 
+export interface RoleSimulationModifiers {
+  /** Множитель скорости выполнения операций с удержанием (задвижки, рубильники, дезактивация) */
+  holdActionSpeedMultiplier: number;
+  /** Дополнительная дальность взаимодействия и замеров (м) */
+  interactionReachBonusM: number;
+  /** Ускорение отклика дозиметра / радиационной доразведки */
+  detectorResponseBonus: number;
+  /** Множитель скорости тушения очагов возгорания (ОУ-5 / ГМ-70) */
+  fireSuppressionMultiplier: number;
+  /** Коэффициент снижения психофизиологического и теплового стресса (< 1 = выше устойчивость) */
+  stressDampingFactor: number;
+  /** Порог раннего предупреждения о приближении к лимиту наряда-допуска (доля от H_limit) */
+  earlyWarningRatio: number;
+}
+
 export interface RoleSpecification {
   role: CoopSquadRole;
   titleRu: string;
   callsignRu: string;
+  badgeCodeRu: string;
   responsibilitiesRu: string;
+  prioritySummaryRu: string;
   primaryColorHex: string;
+  accentHexNumber: number;
+  recommendedRemoteToolId: 'hand' | 'extended_arm' | 'manipulator_15m' | 'telescopic_rod_3m';
+  modifiers: RoleSimulationModifiers;
 }
 
 export const COOP_ROLE_SPECIFICATIONS: Readonly<Record<CoopSquadRole, RoleSpecification>> = {
@@ -29,22 +49,58 @@ export const COOP_ROLE_SPECIFICATIONS: Readonly<Record<CoopSquadRole, RoleSpecif
     role: 'RECON_DOSIMETRIST',
     titleRu: 'Разведчик-дозиметрист',
     callsignRu: 'АТОМ-1 (Разведка)',
+    badgeCodeRu: 'АТОМ-1',
     responsibilitiesRu: 'Поиск локальных очагов ИИИ, спектрометрия и триангуляция градиента МЭД',
-    primaryColorHex: '#38bdf8'
+    prioritySummaryRu: 'Доразведка ×1.35 · Отклик ДП-5В +35% · Дальность замера +0.35 м',
+    primaryColorHex: '#38bdf8',
+    accentHexNumber: 0x38bdf8,
+    recommendedRemoteToolId: 'telescopic_rod_3m',
+    modifiers: {
+      holdActionSpeedMultiplier: 1.05,
+      interactionReachBonusM: 0.35,
+      detectorResponseBonus: 1.35,
+      fireSuppressionMultiplier: 1.0,
+      stressDampingFactor: 0.9,
+      earlyWarningRatio: 0.8
+    }
   },
   LIQUIDATOR_OPERATOR: {
     role: 'LIQUIDATOR_OPERATOR',
     titleRu: 'Оператор-ликвидатор',
     callsignRu: 'АТОМ-2 (Ликвидатор)',
+    badgeCodeRu: 'АТОМ-2',
     responsibilitiesRu: 'Установка свинцовых экранов, перекрытие аварийных вентилей и сбор источников в КЗ',
-    primaryColorHex: '#f59e0b'
+    prioritySummaryRu: 'Работы и задвижки ×1.35 · Тушение ×1.30 · Дальность +0.25 м',
+    primaryColorHex: '#f59e0b',
+    accentHexNumber: 0xf59e0b,
+    recommendedRemoteToolId: 'manipulator_15m',
+    modifiers: {
+      holdActionSpeedMultiplier: 1.35,
+      interactionReachBonusM: 0.25,
+      detectorResponseBonus: 1.0,
+      fireSuppressionMultiplier: 1.3,
+      stressDampingFactor: 0.88,
+      earlyWarningRatio: 0.8
+    }
   },
   INCIDENT_COMMANDER: {
     role: 'INCIDENT_COMMANDER',
     titleRu: 'Командир расчета (ПУ ЧС)',
     callsignRu: 'ШТАБ-0 (Командир)',
+    badgeCodeRu: 'ШТАБ-0',
     responsibilitiesRu: 'Тактическое управление, контроль нарядов-допусков и телеметрии экипажа',
-    primaryColorHex: '#10b981'
+    prioritySummaryRu: 'Стресс −22% · Ранний контроль ALARA (70%) · Координация +0.60 м',
+    primaryColorHex: '#10b981',
+    accentHexNumber: 0x10b981,
+    recommendedRemoteToolId: 'extended_arm',
+    modifiers: {
+      holdActionSpeedMultiplier: 1.12,
+      interactionReachBonusM: 0.6,
+      detectorResponseBonus: 1.15,
+      fireSuppressionMultiplier: 1.1,
+      stressDampingFactor: 0.78,
+      earlyWarningRatio: 0.7
+    }
   }
 };
 

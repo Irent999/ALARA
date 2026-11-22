@@ -1040,18 +1040,25 @@ export function inspectNppSceneGraph(
     pos: casualtyTriagePos
   };
 
-  // 4. Пожарный автомобиль МЧС на подъездной площадке и точки подъезда у каждого корпуса
+  // 4. Пожарный автомобиль МЧС на подъездной площадке и точки подъезда по всей территории комплекса
   const vehOff = SCENARIO_4_CONFIG.VEHICLE.spawnOffsetFromPlayer;
-  const vehX = THREE.MathUtils.clamp(
-    spawnPlayer.x + vehOff[0],
-    sceneBounds.min.x - 16,
-    sceneBounds.max.x + 16
-  );
-  const vehZ = THREE.MathUtils.clamp(
-    spawnPlayer.z + vehOff[2],
-    sceneBounds.min.z - 16,
-    sceneBounds.max.z + 20
-  );
+  const driveCfg = SCENARIO_4_CONFIG.VEHICLE.driveBounds;
+  const siteHalfX = Math.max(0, sizeVec.x * 0.5);
+  const siteHalfZ = Math.max(0, sizeVec.z * 0.5);
+  const safeDriveMarginX = driveCfg.clampToSiteBox3
+    ? Math.min(driveCfg.edgeMarginM, Math.max(0, siteHalfX - 2.5))
+    : -16;
+  const safeDriveMarginZ = driveCfg.clampToSiteBox3
+    ? Math.min(driveCfg.edgeMarginM, Math.max(0, siteHalfZ - 2.5))
+    : -16;
+
+  const driveMinX = sceneBounds.min.x + safeDriveMarginX;
+  const driveMaxX = sceneBounds.max.x - safeDriveMarginX;
+  const driveMinZ = sceneBounds.min.z + safeDriveMarginZ;
+  const driveMaxZ = sceneBounds.max.z - safeDriveMarginZ;
+
+  const vehX = THREE.MathUtils.clamp(spawnPlayer.x + vehOff[0], driveMinX, driveMaxX);
+  const vehZ = THREE.MathUtils.clamp(spawnPlayer.z + vehOff[2], driveMinZ, driveMaxZ);
   const vehY = sampleInteriorFloorY(
     THREE.MathUtils.clamp(vehX, sceneBounds.min.x + 1, sceneBounds.max.x - 1),
     THREE.MathUtils.clamp(vehZ, sceneBounds.min.z + 1, sceneBounds.max.z - 1),
@@ -1064,10 +1071,27 @@ export function inspectNppSceneGraph(
     pos: new THREE.Vector3(vehX, vehY, vehZ)
   };
 
-  const drivePool = mainBuildings.length > 0 ? mainBuildings : allBuildingVolumes.slice(0, 3);
+  // Формируем точки автопилота по всей площади комплекса (главные блоки + периферийные корпуса)
+  const driveCandidates: BuildingVolumeInfo[] = [...mainBuildings];
+  for (let i = 0; i < allBuildingVolumes.length && driveCandidates.length < 6; i++) {
+    const cand = allBuildingVolumes[i];
+    const tooClose = driveCandidates.some(
+      existing =>
+        Math.hypot(cand.center[0] - existing.center[0], cand.center[2] - existing.center[2]) < 14
+    );
+    if (!tooClose) {
+      driveCandidates.push(cand);
+    }
+  }
+  const drivePool =
+    driveCandidates.length > 0 ? driveCandidates : allBuildingVolumes.slice(0, 4);
+
   const buildingDriveTargets: NamedWorldMarker[] = drivePool.map((bld, idx) => {
-    const driveZ = Math.min(sceneBounds.max.z + 10, bld.max[2] + 6.5);
-    const driveX = THREE.MathUtils.clamp(bld.center[0], sceneBounds.min.x - 10, sceneBounds.max.x + 10);
+    const southZ = bld.max[2] + 6.5;
+    const northZ = bld.min[2] - 6.5;
+    const preferredZ = southZ <= driveMaxZ - 1.0 ? southZ : northZ;
+    const driveZ = THREE.MathUtils.clamp(preferredZ, driveMinZ + 0.5, driveMaxZ - 0.5);
+    const driveX = THREE.MathUtils.clamp(bld.center[0], driveMinX + 0.5, driveMaxX - 0.5);
     const driveY = sampleInteriorFloorY(
       THREE.MathUtils.clamp(driveX, sceneBounds.min.x + 1, sceneBounds.max.x - 1),
       THREE.MathUtils.clamp(driveZ, sceneBounds.min.z + 1, sceneBounds.max.z - 1),

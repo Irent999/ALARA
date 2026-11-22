@@ -23,7 +23,7 @@
 
 export type RadiationType = 'gamma' | 'beta' | 'alpha' | 'fast_neutron' | 'thermal_neutron';
 
-import type { CharacterPPEState } from '../components/CharacterCustomizer3D';
+import type { CharacterPPEState, RespiratorTypeId, SuitTypeId } from '../components/CharacterCustomizer3D';
 import type { InstrumentId } from '../instruments/gostInstruments';
 
 export type ShieldMaterialType =
@@ -1003,6 +1003,8 @@ export function calculateComprehensiveProtection(params: {
   }>;
   ppeLoadoutId: PPELoadoutId;
   remoteToolId: RemoteToolId;
+  suitId?: SuitTypeId;
+  respiratorId?: RespiratorTypeId;
   isArmExtended?: boolean;
   ventilationRateLitersPerMin?: number;
   hasAirborneContamination?: boolean;
@@ -1012,9 +1014,57 @@ export function calculateComprehensiveProtection(params: {
   const extraArmDist = params.isArmExtended && params.remoteToolId === 'hand' ? 0.45 : 0.0;
   const addedDist = sanitizeNonNegativeFinite(tool.addedDistanceM + extraArmDist);
 
-  // 100% задержка альфа-излучения при любом СИЗ (alphaAttenuationPercent = 100 -> ppeTransAlpha = 0.0)
-  const ppeTransAlpha = Math.max(0.0, 1.0 - ppe.alphaAttenuationPercent / 100.0);
-  const ppeTransGamma = Math.max(0.0, 1.0 - ppe.gammaAttenuationPercent / 100.0);
+  // Точный учёт толщины свинца и полимерного слоя для детальных костюмов (вкл. тяжелый бронекомплект 2.5 мм Pb)
+  const suitLeadMap: Partial<Record<SuitTypeId, number>> = {
+    none: 0.0,
+    bop_suit: 0.05,
+    l1_suit: 0.08,
+    kih4_suit: 0.25,
+    lead_apron: 0.5,
+    heavy_lead_armor: 2.5
+  };
+  const suitGammaAttenMap: Partial<Record<SuitTypeId, number>> = {
+    none: 0,
+    bop_suit: 6,
+    l1_suit: 8,
+    kih4_suit: 22,
+    lead_apron: 32,
+    heavy_lead_armor: 72
+  };
+  const suitBetaAttenMap: Partial<Record<SuitTypeId, number>> = {
+    none: 0,
+    bop_suit: 94,
+    l1_suit: 90,
+    kih4_suit: 95,
+    lead_apron: 98,
+    heavy_lead_armor: 99.5
+  };
+  const suitArealMap: Partial<Record<SuitTypeId, number>> = {
+    none: 0.0,
+    bop_suit: 0.39,
+    l1_suit: 0.138,
+    kih4_suit: 0.325,
+    lead_apron: 0.56,
+    heavy_lead_armor: 1.45
+  };
+
+  const effectiveLeadMm =
+    params.suitId !== undefined ? suitLeadMap[params.suitId] ?? ppe.leadEquivalentMm : ppe.leadEquivalentMm;
+  const effectiveGammaAttenPct =
+    params.suitId !== undefined
+      ? suitGammaAttenMap[params.suitId] ?? ppe.gammaAttenuationPercent
+      : ppe.gammaAttenuationPercent;
+  const effectiveBetaAttenPct =
+    params.suitId !== undefined
+      ? suitBetaAttenMap[params.suitId] ?? ppe.betaAttenuationPercent
+      : ppe.betaAttenuationPercent;
+  const effectiveArealGcm2 =
+    params.suitId !== undefined ? suitArealMap[params.suitId] ?? ppe.arealDensityGcm2 : ppe.arealDensityGcm2;
+
+  // 100% задержка альфа-излучения при любом защитном костюме
+  const effectiveAlphaPct = params.suitId ? (params.suitId === 'none' ? 0 : 100) : ppe.alphaAttenuationPercent;
+  const ppeTransAlpha = Math.max(0.0, 1.0 - effectiveAlphaPct / 100.0);
+  const ppeTransGamma = Math.max(0.0, 1.0 - effectiveGammaAttenPct / 100.0);
   const ppeTransNeutron = Math.max(0.0, 1.0 - ppe.neutronAttenuationPercent / 100.0);
 
   let sumUnprotected = 0.0;
@@ -1159,14 +1209,14 @@ export function calculateComprehensiveProtection(params: {
     // Физический расчет пропускания бета-частиц через полимерный слой СИЗ с учетом пробега Физера R_max
     const ppeTransBetaForIso = calculateBetaTransmission(
       iso.maxBetaEnergyMev,
-      ppe.arealDensityGcm2,
-      ppe.betaAttenuationPercent
+      effectiveArealGcm2,
+      effectiveBetaAttenPct
     );
 
-    // Если надет просвинцованный фартук (0.5 мм Pb), учитываем реальное ослабление низкоэнергетического гамма/рентгена
+    // Если надет просвинцованный фартук (0.5 мм Pb) или тяжелый бронежилет (2.5 мм Pb), учитываем ослабление гамма/рентгена
     let ppeEffectiveGammaTrans = ppeTransGamma;
-    if (ppe.leadEquivalentMm > 0) {
-      const apronTrans = calculateShieldTransmission('lead', ppe.leadEquivalentMm * 0.1, iso.energyMev, false);
+    if (effectiveLeadMm > 0) {
+      const apronTrans = calculateShieldTransmission('lead', effectiveLeadMm * 0.1, iso.energyMev, false);
       ppeEffectiveGammaTrans = Math.min(ppeTransGamma, apronTrans.transmission);
     }
 
@@ -1187,12 +1237,25 @@ export function calculateComprehensiveProtection(params: {
     sumFinal += finalAlpha + finalBeta + finalGamma + finalNeutron;
   }
 
-  // 3. Ингаляционное поступление радиоактивных аэрозолей с учетом легочной вентиляции
+  // 3. Ингаляционное поступление радиоактивных аэрозолей с учетом легочной вентиляции и типа СИЗОД
   let aerosolInhalationRate = 0.0;
   if (params.hasAirborneContamination) {
     const ventLPerMin = Math.max(15.0, params.ventilationRateLitersPerMin || 22.0);
     const ventFactor = ventLPerMin / 20.0; // от 1.0 в покое до 3.5 при тяжелом беге
-    const respiratorFiltration = ppe.alphaAttenuationPercent === 100 ? 0.999 : 0.0;
+    const respFiltrationMap: Record<RespiratorTypeId, number> = {
+      none: 0.0,
+      lepestok_200: 0.999,
+      gp7_gasmask: 0.9998,
+      gp7vm_gasmask: 0.9999,
+      ppm88_mask: 0.9999,
+      asv2_scba: 1.0
+    };
+    const respiratorFiltration =
+      params.respiratorId !== undefined
+        ? respFiltrationMap[params.respiratorId] ?? 0.0
+        : effectiveAlphaPct === 100
+        ? 0.999
+        : 0.0;
     aerosolInhalationRate = 4.5 * ventFactor * (1.0 - respiratorFiltration);
     sumFinal += aerosolInhalationRate;
     alphaRate += aerosolInhalationRate * 0.6;
@@ -1227,12 +1290,12 @@ export function calculateComprehensiveProtection(params: {
   // Хрусталик глаза (H_lens, w_T = 0.12): подвержен жесткому бета и гамма; защищается очками/маской
   const isEyeProtected = params.ppeLoadoutId !== 'none';
   const lensBetaFactor = isEyeProtected ? 0.04 : 0.88;
-  const lensGammaFactor = ppe.leadEquivalentMm > 0 ? 0.45 : isEyeProtected ? 0.78 : 1.0;
+  const lensGammaFactor = effectiveLeadMm > 0 ? (effectiveLeadMm >= 2.0 ? 0.25 : 0.45) : isEyeProtected ? 0.78 : 1.0;
   const eyeLensDoseRate = gammaRate * lensGammaFactor + betaRate * lensBetaFactor;
 
   // Кроветворные органы / красный костный мозг (глубокая доза E, d = 10 мм):
   // Бета не проникает; защищается свинцовым фартуком 0.5 мм Pb или жилетом ликвидатора 2.5 мм Pb
-  const marrowApronFactor = ppe.leadEquivalentMm >= 2.0 ? 0.15 : ppe.leadEquivalentMm >= 0.5 ? 0.38 : 1.0;
+  const marrowApronFactor = effectiveLeadMm >= 2.0 ? 0.15 : effectiveLeadMm >= 0.5 ? 0.38 : 1.0;
   const bloodMarrowDoseRate = gammaRate * marrowApronFactor + neutronRate * 1.0;
 
   return {

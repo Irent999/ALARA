@@ -95,6 +95,8 @@ export class MchsVehicleSystem {
   private readonly driveTargets: NamedWorldMarker[];
   private readonly buildingBoxes: ReadonlyArray<BuildingVolumeInfo>;
   private readonly siteBounds: THREE.Box3;
+  private readonly deckSurfaceY: number;
+  private readonly groundMeshes: THREE.Object3D[];
 
   public isSeated = false;
   public nearDoor = false;
@@ -107,6 +109,9 @@ export class MchsVehicleSystem {
   public autopilotTargetIndex: number | null = null;
   public hoseLengthM = 0;
   public hoseOverstretched = false;
+  private targetGroundY: number;
+  private lastGroundSampleX: number;
+  private lastGroundSampleZ: number;
 
   private readonly disposables: Array<{ dispose: () => void }> = [];
 
@@ -119,6 +124,11 @@ export class MchsVehicleSystem {
   private readonly scratchQuat = new THREE.Quaternion();
   private readonly scratchMat = new THREE.Matrix4();
   private readonly upAxis = new THREE.Vector3(0, 1, 0);
+  private readonly groundRaycaster = new THREE.Raycaster();
+  private readonly groundRayOrigin = new THREE.Vector3();
+  private readonly groundRayDown = new THREE.Vector3(0, -1, 0);
+  private readonly groundNormalMat = new THREE.Matrix3();
+  private readonly groundWorldNormal = new THREE.Vector3();
 
   constructor(params: {
     spawnPos: THREE.Vector3;
@@ -126,12 +136,19 @@ export class MchsVehicleSystem {
     driveTargets: NamedWorldMarker[];
     buildingVolumes: ReadonlyArray<BuildingVolumeInfo>;
     siteBounds: THREE.Box3;
+    deckSurfaceY?: number;
+    groundMeshes?: ReadonlyArray<THREE.Mesh>;
   }) {
     this.rootGroup.name = 'mchs_vehicle_and_hose_root';
     this.vehiclePos.copy(params.spawnPos);
     this.driveTargets = params.driveTargets;
     this.buildingBoxes = params.buildingVolumes;
     this.siteBounds = params.siteBounds.clone();
+    this.deckSurfaceY = params.deckSurfaceY ?? params.spawnPos.y;
+    this.groundMeshes = params.groundMeshes ? [...params.groundMeshes] : [];
+    this.targetGroundY = params.spawnPos.y;
+    this.lastGroundSampleX = params.spawnPos.x;
+    this.lastGroundSampleZ = params.spawnPos.z;
 
     const dx = params.lookTarget.x - params.spawnPos.x;
     const dz = params.lookTarget.z - params.spawnPos.z;
@@ -596,7 +613,8 @@ export class MchsVehicleSystem {
           while (deltaYaw > Math.PI) deltaYaw -= Math.PI * 2;
           while (deltaYaw < -Math.PI) deltaYaw += Math.PI * 2;
           steer = THREE.MathUtils.clamp(deltaYaw * 1.4, -1, 1);
-          throttle = dist < 9.0 ? 0.45 : 0.8;
+          // При резком развороте снижаем тягу, чтобы машина не выносилась на край площадки
+          throttle = Math.abs(deltaYaw) > 1.05 ? 0.38 : dist < 9.0 ? 0.45 : 0.85;
         }
       } else {
         this.autopilotTargetIndex = null;
@@ -638,6 +656,7 @@ export class MchsVehicleSystem {
       this.vehiclePos.x += Math.sin(this.vehicleYaw) * this.currentSpeedMps * dt;
       this.vehiclePos.z += Math.cos(this.vehicleYaw) * this.currentSpeedMps * dt;
       this.clampVehicleBounds(params.extraColliders);
+      this.updateGroundElevation(dt);
     } else {
       this.currentSpeedMps = 0;
       this.currentThrottle = 0;
@@ -696,18 +715,87 @@ export class MchsVehicleSystem {
     return { arrivedBuildingName };
   }
 
+  /**
+   * Плавное отслеживание высоты дороги / плиты основания (Y) по всей площадке /assembly.glb
+   * с фильтрацией крыш корпусов и эстакад (без покадровых аллокаций).
+   */
+  private updateGroundElevation(dt: number): void {
+    const driveCfg = SCENARIO_4_CONFIG.VEHICLE.driveBounds;
+    if (this.groundMeshes.length > 0) {
+      const movedSq =
+        (this.vehiclePos.x - this.lastGroundSampleX) ** 2 +
+        (this.vehiclePos.z - this.lastGroundSampleZ) ** 2;
+      if (movedSq >= 0.09) {
+        this.lastGroundSampleX = this.vehiclePos.x;
+        this.lastGroundSampleZ = this.vehiclePos.z;
+
+        const maxStep = driveCfg.maxDeckStepHeightM;
+        this.groundRayOrigin.set(
+          this.vehiclePos.x,
+          this.deckSurfaceY + maxStep,
+          this.vehiclePos.z
+        );
+        this.groundRaycaster.set(this.groundRayOrigin, this.groundRayDown);
+        this.groundRaycaster.near = 0.05;
+        this.groundRaycaster.far = maxStep + 3.5;
+
+        const hits = this.groundRaycaster.intersectObjects(this.groundMeshes, false);
+        let sampledY = this.deckSurfaceY;
+        for (let i = 0; i < hits.length; i++) {
+          const hit = hits[i];
+          const hy = hit.point.y;
+          if (hy < this.deckSurfaceY - 1.5 || hy > this.deckSurfaceY + maxStep) {
+            continue;
+          }
+          if (hit.face) {
+            this.groundNormalMat.getNormalMatrix(hit.object.matrixWorld);
+            this.groundWorldNormal.copy(hit.face.normal).applyMatrix3(this.groundNormalMat).normalize();
+            if (Math.abs(this.groundWorldNormal.y) < 0.65) continue;
+          }
+          sampledY = hy;
+          break;
+        }
+        this.targetGroundY = sampledY;
+      }
+    } else {
+      this.targetGroundY = this.deckSurfaceY;
+    }
+
+    this.vehiclePos.y = THREE.MathUtils.lerp(
+      this.vehiclePos.y,
+      this.targetGroundY,
+      Math.min(1, dt * driveCfg.groundFollowSmoothRate)
+    );
+  }
+
   private clampVehicleBounds(extraColliders: ReadonlyArray<WallColliderBox>): void {
-    const pad = 22;
+    const driveCfg = SCENARIO_4_CONFIG.VEHICLE.driveBounds;
     const r = SCENARIO_4_CONFIG.VEHICLE.collisionRadiusM;
-    const minX = Math.min(-30, this.siteBounds.min.x - pad);
-    const maxX = Math.max(30, this.siteBounds.max.x + pad);
-    const minZ = Math.min(-30, this.siteBounds.min.z - pad);
-    const maxZ = Math.max(30, this.siteBounds.max.z + pad);
 
-    this.vehiclePos.x = THREE.MathUtils.clamp(this.vehiclePos.x, minX, maxX);
-    this.vehiclePos.z = THREE.MathUtils.clamp(this.vehiclePos.z, minZ, maxZ);
+    if (driveCfg.clampToSiteBox3 && !this.siteBounds.isEmpty()) {
+      const halfX = Math.max(0, (this.siteBounds.max.x - this.siteBounds.min.x) * 0.5);
+      const halfZ = Math.max(0, (this.siteBounds.max.z - this.siteBounds.min.z) * 0.5);
+      const marginX = Math.min(driveCfg.edgeMarginM, Math.max(0, halfX - 2.5));
+      const marginZ = Math.min(driveCfg.edgeMarginM, Math.max(0, halfZ - 2.5));
 
-    // Не въезжаем внутрь коробок корпусов АЭС (машина курсирует по проездам между зданиями)
+      const minX = this.siteBounds.min.x + marginX;
+      const maxX = this.siteBounds.max.x - marginX;
+      const minZ = this.siteBounds.min.z + marginZ;
+      const maxZ = this.siteBounds.max.z - marginZ;
+
+      this.vehiclePos.x = THREE.MathUtils.clamp(this.vehiclePos.x, minX, maxX);
+      this.vehiclePos.z = THREE.MathUtils.clamp(this.vehiclePos.z, minZ, maxZ);
+    }
+
+    // При freeRoamAcrossSite = true не стопорим машину о грубые AABB-коробки зданий и стеновых мешей
+    if (driveCfg.freeRoamAcrossSite) {
+      return;
+    }
+
+    const siteSpanX = Math.max(1, this.siteBounds.max.x - this.siteBounds.min.x);
+    const siteSpanZ = Math.max(1, this.siteBounds.max.z - this.siteBounds.min.z);
+    const maxFraction = driveCfg.maxColliderSiteFraction;
+
     const resolveBox = (bMinX: number, bMaxX: number, bMinZ: number, bMaxZ: number) => {
       const exMinX = bMinX - r;
       const exMaxX = bMaxX + r;
@@ -732,14 +820,27 @@ export class MchsVehicleSystem {
       }
     };
 
-    for (let i = 0; i < this.buildingBoxes.length; i++) {
-      const b = this.buildingBoxes[i];
-      if (Math.min(b.size[0], b.size[2]) < 5.0) continue;
-      resolveBox(b.min[0], b.max[0], b.min[2], b.max[2]);
+    if (driveCfg.enableBuildingBoxColliders) {
+      for (let i = 0; i < this.buildingBoxes.length; i++) {
+        const b = this.buildingBoxes[i];
+        if (Math.min(b.size[0], b.size[2]) < 5.0) continue;
+        if (b.size[0] > siteSpanX * maxFraction || b.size[2] > siteSpanZ * maxFraction) {
+          continue;
+        }
+        resolveBox(b.min[0], b.max[0], b.min[2], b.max[2]);
+      }
     }
-    for (let i = 0; i < extraColliders.length; i++) {
-      const c = extraColliders[i];
-      resolveBox(c.minX, c.maxX, c.minZ, c.maxZ);
+    if (driveCfg.enableExtraColliders) {
+      const vehBotY = this.vehiclePos.y + 0.25;
+      const vehTopY = this.vehiclePos.y + 2.6;
+      for (let i = 0; i < extraColliders.length; i++) {
+        const c = extraColliders[i];
+        if (c.maxY < vehBotY || c.minY > vehTopY) continue;
+        const cw = c.maxX - c.minX;
+        const cd = c.maxZ - c.minZ;
+        if (cw > siteSpanX * maxFraction || cd > siteSpanZ * maxFraction) continue;
+        resolveBox(c.minX, c.maxX, c.minZ, c.maxZ);
+      }
     }
   }
 

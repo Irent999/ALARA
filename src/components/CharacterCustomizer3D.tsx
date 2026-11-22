@@ -10,13 +10,13 @@ import {
   RotateCcw,
   Shield,
   Eye,
-  Check,
   Sparkles,
   Layers,
   UserCheck
 } from 'lucide-react';
 import { InstrumentId, GOST_INSTRUMENTS } from '../instruments/gostInstruments';
 import { RemoteToolId, REMOTE_TOOLS } from '../physics/gostPhysics';
+import { COOP_ROLE_SPECIFICATIONS, type CoopSquadRole } from '../network/MultiplayerManager';
 import {
   createBopReflectiveStripeTexture,
   createMchsBackPatchTexture,
@@ -50,6 +50,8 @@ interface CharacterCustomizer3DProps {
   onChangePPE: (newState: CharacterPPEState) => void;
   selectedRemoteToolId?: RemoteToolId;
   onChangeRemoteTool?: (toolId: RemoteToolId) => void;
+  coopRole?: CoopSquadRole;
+  onChangeCoopRole?: (role: CoopSquadRole) => void;
 }
 
 export const SUIT_DEFINITIONS: Record<SuitTypeId, {
@@ -196,14 +198,48 @@ export const RESPIRATOR_DEFINITIONS: Record<RespiratorTypeId, {
   }
 };
 
+function disposeMannequinGroup(group: THREE.Group): void {
+  const disposedMats = new Set<THREE.Material>();
+  group.traverse(obj => {
+    if ((obj as THREE.Mesh).isMesh) {
+      const mesh = obj as THREE.Mesh;
+      mesh.geometry?.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach(mat => {
+        if (!mat || disposedMats.has(mat)) return;
+        disposedMats.add(mat);
+        const std = mat as THREE.MeshStandardMaterial;
+        std.map?.dispose();
+        mat.dispose();
+      });
+    }
+  });
+  while (group.children.length > 0) {
+    group.remove(group.children[0]);
+  }
+}
+
 export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
   ppeState,
   onChangePPE,
-  selectedRemoteToolId,
-  onChangeRemoteTool
+  selectedRemoteToolId = 'hand',
+  onChangeRemoteTool,
+  coopRole = 'RECON_DOSIMETRIST',
+  onChangeCoopRole
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const mannequinGroupRef = useRef<THREE.Group | null>(null);
+  const ringMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
+  const targetZoomRef = useRef<number>(2.85);
+
+  useEffect(() => {
+    targetZoomRef.current =
+      selectedRemoteToolId === 'telescopic_rod_3m'
+        ? 3.75
+        : selectedRemoteToolId === 'manipulator_15m'
+        ? 3.25
+        : 2.85;
+  }, [selectedRemoteToolId]);
 
   useEffect(() => {
     const container = mountRef.current;
@@ -215,7 +251,7 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x070b14);
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 20);
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 25);
     camera.position.set(0, 1.35, 2.85);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -229,10 +265,10 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     container.appendChild(renderer.domElement);
 
     // Студийный свет для демонстрации материалов СИЗ
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.25);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xfffbeb, 2.5);
+    const dirLight = new THREE.DirectionalLight(0xfffbeb, 2.4);
     dirLight.position.set(2.0, 3.5, 2.5);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 1024;
@@ -255,9 +291,10 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     pedestal.receiveShadow = true;
     scene.add(pedestal);
 
-    // Световое кольцо на постаменте
-    const ringGeo = new THREE.RingGeometry(0.70, 0.73, 36);
+    // Световое кольцо роли на постаменте
+    const ringGeo = new THREE.RingGeometry(0.70, 0.74, 36);
     const ringMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide });
+    ringMatRef.current = ringMat;
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.082;
@@ -272,9 +309,9 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     let isDragging = false;
     let prevX = 0;
     let prevY = 0;
-    let rotY = 0.25;
-    let rotX = 0.05;
-    let zoom = 2.85;
+    let rotY = 0.35;
+    let rotX = 0.06;
+    let zoom = targetZoomRef.current;
 
     const onMouseDown = (e: MouseEvent) => {
       isDragging = true;
@@ -293,7 +330,7 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      zoom = Math.max(1.6, Math.min(4.5, zoom + e.deltaY * 0.002));
+      targetZoomRef.current = Math.max(1.6, Math.min(4.8, targetZoomRef.current + e.deltaY * 0.002));
     };
 
     const dom = renderer.domElement;
@@ -309,11 +346,12 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
       if (mannequinGroupRef.current) {
         mannequinGroupRef.current.rotation.y += (rotY - mannequinGroupRef.current.rotation.y) * 0.12;
       }
+      zoom += (targetZoomRef.current - zoom) * 0.1;
 
-      camera.position.x = Math.sin(rotX) * 0.3;
-      camera.position.y = 1.35 + Math.sin(rotX) * 0.6;
+      camera.position.x = Math.sin(rotX) * 0.35;
+      camera.position.y = 1.32 + Math.sin(rotX) * 0.6;
       camera.position.z = zoom;
-      camera.lookAt(0, 1.15, 0);
+      camera.lookAt(0, 1.15, 0.15);
 
       renderer.render(scene, camera);
     };
@@ -336,37 +374,51 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
       window.removeEventListener('mousemove', onMouseMove);
       dom.removeEventListener('wheel', onWheel);
       window.removeEventListener('resize', handleResize);
+      if (mannequinGroupRef.current) {
+        disposeMannequinGroup(mannequinGroupRef.current);
+      }
+      pedestalGeo.dispose();
+      pedestalMat.dispose();
+      ringGeo.dispose();
+      ringMat.dispose();
       renderer.dispose();
     };
   }, []);
 
-  // Перестроение геометрии манекена и экипировки при смене параметров
+  // Перестроение геометрии манекена и экипировки при смене СИЗ, инструмента и роли звена
   useEffect(() => {
     const group = mannequinGroupRef.current;
     if (!group) return;
 
-    while (group.children.length > 0) {
-      group.remove(group.children[0]);
-    }
+    disposeMannequinGroup(group);
 
     const suit = SUIT_DEFINITIONS[ppeState.suitId];
-    const resp = RESPIRATOR_DEFINITIONS[ppeState.respiratorId];
+    const roleSpec = COOP_ROLE_SPECIFICATIONS[coopRole] || COOP_ROLE_SPECIFICATIONS.RECON_DOSIMETRIST;
+    if (ringMatRef.current) {
+      ringMatRef.current.color.setHex(roleSpec.accentHexNumber);
+    }
 
-    // Материал костюма
     const suitMat = new THREE.MeshStandardMaterial({
       color: suit.colorHex,
       roughness: suit.roughness,
       metalness: suit.metalness
     });
 
-    // Материал открытой кожи / подкладки
     const skinMat = new THREE.MeshStandardMaterial({
       color: 0xfbbf24,
       roughness: 0.6,
       metalness: 0.05
     });
 
-    // 1. Ноги и сапоги
+    const roleMat = new THREE.MeshStandardMaterial({
+      color: roleSpec.accentHexNumber,
+      emissive: new THREE.Color(roleSpec.accentHexNumber),
+      emissiveIntensity: 0.38,
+      roughness: 0.35,
+      metalness: 0.25
+    });
+
+    // 1. Ноги и сапоги / бахилы Л-1
     const legGeo = new THREE.CylinderGeometry(0.09, 0.08, 0.85, 16);
     const leftLeg = new THREE.Mesh(legGeo, suitMat);
     leftLeg.position.set(-0.16, 0.52, 0);
@@ -378,8 +430,9 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     rightLeg.castShadow = true;
     group.add(rightLeg);
 
-    const bootMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4 });
-    const bootGeo = new THREE.BoxGeometry(0.14, 0.12, 0.26);
+    const bootColor = ppeState.suitId === 'l1_suit' ? 0x365314 : 0x0f172a;
+    const bootMat = new THREE.MeshStandardMaterial({ color: bootColor, roughness: 0.45 });
+    const bootGeo = new THREE.BoxGeometry(0.14, 0.14, 0.26);
     const leftBoot = new THREE.Mesh(bootGeo, bootMat);
     leftBoot.position.set(-0.16, 0.10, 0.04);
     group.add(leftBoot);
@@ -388,14 +441,19 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     rightBoot.position.set(0.16, 0.10, 0.04);
     group.add(rightBoot);
 
-    // 2. Торс / Тело
+    // 2. Торс / Тело + нагрудная идентификационная полоса роли звена РХБЗ
     const torsoGeo = new THREE.BoxGeometry(0.48, 0.68, 0.28);
     const torso = new THREE.Mesh(torsoGeo, suitMat);
     torso.position.set(0, 1.25, 0);
     torso.castShadow = true;
     group.add(torso);
 
+    const chestRoleStripe = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.04, 0.025), roleMat);
+    chestRoleStripe.position.set(-0.08, 1.46, 0.142);
+    group.add(chestRoleStripe);
+
     // 3. Руки и перчатки
+    const isExtendedVisual = selectedRemoteToolId === 'extended_arm';
     const armGeo = new THREE.CylinderGeometry(0.07, 0.065, 0.62, 16);
     const leftArm = new THREE.Mesh(armGeo, suitMat);
     leftArm.position.set(-0.33, 1.25, 0);
@@ -403,25 +461,46 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     leftArm.castShadow = true;
     group.add(leftArm);
 
+    // Нарукавная повязка роли звена (левый рукав)
+    const armband = new THREE.Mesh(new THREE.CylinderGeometry(0.076, 0.076, 0.08, 16), roleMat);
+    armband.position.set(-0.33, 1.36, 0);
+    armband.rotation.z = 0.15;
+    group.add(armband);
+
     const rightArm = new THREE.Mesh(armGeo, suitMat);
-    rightArm.position.set(0.33, 1.25, 0.12);
-    rightArm.rotation.x = -0.55;
-    rightArm.rotation.z = -0.15;
+    if (isExtendedVisual) {
+      rightArm.position.set(0.32, 1.34, 0.24);
+      rightArm.rotation.x = -1.18;
+      rightArm.rotation.z = -0.06;
+    } else {
+      rightArm.position.set(0.33, 1.25, 0.12);
+      rightArm.rotation.x = -0.55;
+      rightArm.rotation.z = -0.15;
+    }
     rightArm.castShadow = true;
     group.add(rightArm);
+
+    // Перчатки (у Л-1 и БОП-1 — выраженные защитные краги)
+    const gloveMat = new THREE.MeshStandardMaterial({
+      color: ppeState.suitId === 'none' ? 0xfbbf24 : ppeState.suitId === 'bop_suit' ? 0xb45309 : 0x1e293b,
+      roughness: 0.55
+    });
+    const glovePos = isExtendedVisual ? new THREE.Vector3(0.32, 1.22, 0.50) : new THREE.Vector3(0.33, 1.0, 0.26);
+    const rightGlove = new THREE.Mesh(new THREE.SphereGeometry(0.062, 14, 14), gloveMat);
+    rightGlove.position.copy(glovePos);
+    group.add(rightGlove);
 
     // 4. Голова и шея
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.12, 16), skinMat);
     neck.position.set(0, 1.62, 0);
     group.add(neck);
 
-    const headGeo = new THREE.SphereGeometry(0.14, 24, 24);
-    const head = new THREE.Mesh(headGeo, skinMat);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.14, 24, 24), skinMat);
     head.position.set(0, 1.76, 0);
     head.castShadow = true;
     group.add(head);
 
-    // Особенности костюма (БОП МЧС, Фартук, КИХ-4, Шевроны МЧС Узбекистана)
+    // Шевроны МЧС Узбекистана на рукавах и нашивка на спине
     if (ppeState.suitId !== 'none') {
       const chevronMat = new THREE.MeshBasicMaterial({
         map: createMchsChevronTexture(),
@@ -430,12 +509,12 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
       });
       const chevronGeo = new THREE.PlaneGeometry(0.085, 0.105);
       const leftChevron = new THREE.Mesh(chevronGeo, chevronMat);
-      leftChevron.position.set(-0.375, 1.40, 0.01);
+      leftChevron.position.set(-0.375, 1.44, 0.01);
       leftChevron.rotation.y = -Math.PI / 2;
       group.add(leftChevron);
 
       const rightChevron = new THREE.Mesh(chevronGeo, chevronMat);
-      rightChevron.position.set(0.375, 1.40, 0.06);
+      rightChevron.position.set(0.375, 1.44, 0.06);
       rightChevron.rotation.y = Math.PI / 2;
       group.add(rightChevron);
 
@@ -448,8 +527,8 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
       group.add(backPatch);
     }
 
+    // Особенности костюмов (БОП-1, Л-1, Фартук, Бронекомплект, КИХ-4)
     if (ppeState.suitId === 'bop_suit') {
-      // Световозвращающие лимонно-серебристые полосы БОП на груди, поясе, рукавах и ногах
       const stripeMat = new THREE.MeshStandardMaterial({
         map: createBopReflectiveStripeTexture(),
         roughness: 0.25,
@@ -473,7 +552,6 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
       legStripeR.position.x = 0.16;
       group.add(legStripeR);
 
-      // Пожарная каска МЧС ШПМ с золотистым термостойким щитком
       const bopHelmet = new THREE.Mesh(
         new THREE.SphereGeometry(0.165, 24, 18, 0, Math.PI * 2, 0, Math.PI * 0.62),
         new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.25, metalness: 0.2 })
@@ -501,31 +579,95 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
       );
       goldVisor.position.set(0, 1.75, 0.02);
       group.add(goldVisor);
+    } else if (ppeState.suitId === 'l1_suit') {
+      // Капюшон прорезиненного костюма Л-1 с шейной пелериной и фиксирующими ремешками
+      const hoodMat = new THREE.MeshStandardMaterial({ color: 0x4d7c0f, roughness: 0.68, metalness: 0.15 });
+      const hood = new THREE.Mesh(
+        new THREE.SphereGeometry(0.156, 20, 18, 0, Math.PI * 2, 0, Math.PI * 0.68),
+        hoodMat
+      );
+      hood.position.set(0, 1.78, -0.01);
+      group.add(hood);
+
+      const hoodCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.125, 0.165, 0.14, 18), hoodMat);
+      hoodCollar.position.set(0, 1.62, -0.01);
+      group.add(hoodCollar);
+
+      const beltMat = new THREE.MeshStandardMaterial({ color: 0x365314, roughness: 0.75 });
+      const belt = new THREE.Mesh(new THREE.BoxGeometry(0.50, 0.05, 0.30), beltMat);
+      belt.position.set(0, 0.98, 0);
+      group.add(belt);
     } else if (ppeState.suitId === 'lead_apron') {
-      const apronGeo = new THREE.BoxGeometry(0.44, 0.75, 0.06);
       const apronMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3, metalness: 0.4 });
-      const apron = new THREE.Mesh(apronGeo, apronMat);
-      apron.position.set(0, 1.15, 0.13);
+      const apron = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.78, 0.06), apronMat);
+      apron.position.set(0, 1.13, 0.13);
       group.add(apron);
+
+      const thyroidCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.12, 0.07, 16), apronMat);
+      thyroidCollar.position.set(0, 1.59, 0.02);
+      group.add(thyroidCollar);
+    } else if (ppeState.suitId === 'heavy_lead_armor') {
+      // Тяжёлый бронекомплект 2.5 мм Pb: бронепластина спереди/сзади, массивные наплечники, воротник и пояс
+      const armorMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.32, metalness: 0.85 });
+      const trimMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.25, metalness: 0.9 });
+
+      const chestArmor = new THREE.Mesh(new THREE.BoxGeometry(0.51, 0.62, 0.35), armorMat);
+      chestArmor.position.set(0, 1.27, 0.01);
+      group.add(chestArmor);
+
+      const plateTrim = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.365), trimMat);
+      plateTrim.position.set(0, 1.44, 0.01);
+      group.add(plateTrim);
+
+      const pauldronGeo = new THREE.BoxGeometry(0.17, 0.16, 0.24);
+      const leftPauldron = new THREE.Mesh(pauldronGeo, armorMat);
+      leftPauldron.position.set(-0.32, 1.52, 0);
+      leftPauldron.rotation.z = 0.22;
+      group.add(leftPauldron);
+
+      const rightPauldron = new THREE.Mesh(pauldronGeo, armorMat);
+      rightPauldron.position.set(0.32, 1.52, 0);
+      rightPauldron.rotation.z = -0.22;
+      group.add(rightPauldron);
+
+      const gorget = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.14, 0.10, 18), armorMat);
+      gorget.position.set(0, 1.61, 0);
+      group.add(gorget);
+
+      const heavyHelmet = new THREE.Mesh(
+        new THREE.SphereGeometry(0.165, 22, 16, 0, Math.PI * 2, 0, Math.PI * 0.62),
+        armorMat
+      );
+      heavyHelmet.position.set(0, 1.78, 0);
+      group.add(heavyHelmet);
     } else if (ppeState.suitId === 'kih4_suit') {
-      const helmetGeo = new THREE.SphereGeometry(0.24, 24, 24);
-      const helmetMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3 });
-      const helmet = new THREE.Mesh(helmetGeo, helmetMat);
+      const helmet = new THREE.Mesh(
+        new THREE.SphereGeometry(0.24, 24, 24),
+        new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3 })
+      );
       helmet.position.set(0, 1.76, 0);
       group.add(helmet);
 
-      const visorGeo = new THREE.BoxGeometry(0.26, 0.16, 0.12);
-      const visorMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.9, transparent: true, opacity: 0.75 });
-      const visor = new THREE.Mesh(visorGeo, visorMat);
+      const visor = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.16, 0.12),
+        new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          roughness: 0.1,
+          metalness: 0.9,
+          transparent: true,
+          opacity: 0.75
+        })
+      );
       visor.position.set(0, 1.78, 0.14);
       group.add(visor);
     }
 
     // 5. Защита дыхания (СИЗОД)
     if (ppeState.respiratorId === 'lepestok_200') {
-      const maskGeo = new THREE.ConeGeometry(0.10, 0.09, 16);
-      const maskMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 });
-      const mask = new THREE.Mesh(maskGeo, maskMat);
+      const mask = new THREE.Mesh(
+        new THREE.ConeGeometry(0.10, 0.09, 16),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 })
+      );
       mask.rotation.x = Math.PI / 2;
       mask.position.set(0, 1.73, 0.14);
       group.add(mask);
@@ -539,7 +681,14 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
 
       const panoVisor = new THREE.Mesh(
         new THREE.CylinderGeometry(0.14, 0.13, 0.14, 24, 1, true, -Math.PI * 0.4, Math.PI * 0.8),
-        new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.08, metalness: 0.85, transparent: true, opacity: 0.68, side: THREE.DoubleSide })
+        new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          roughness: 0.08,
+          metalness: 0.85,
+          transparent: true,
+          opacity: 0.68,
+          side: THREE.DoubleSide
+        })
       );
       panoVisor.position.set(0, 1.77, 0.045);
       group.add(panoVisor);
@@ -552,9 +701,10 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
       frontFilter.position.set(0, 1.66, 0.16);
       group.add(frontFilter);
     } else if (ppeState.respiratorId === 'gp7_gasmask' || ppeState.respiratorId === 'gp7vm_gasmask') {
-      const maskGeo = new THREE.SphereGeometry(0.15, 16, 16);
-      const maskMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.8 });
-      const mask = new THREE.Mesh(maskGeo, maskMat);
+      const mask = new THREE.Mesh(
+        new THREE.SphereGeometry(0.15, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.8 })
+      );
       mask.position.set(0, 1.76, 0.03);
       group.add(mask);
 
@@ -567,7 +717,6 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
       group.add(filterCanister);
 
       if (ppeState.respiratorId === 'gp7vm_gasmask') {
-        // Питьевая трубка и панорамные очки ГП-7ВМ
         const drinkTube = new THREE.Mesh(
           new THREE.CylinderGeometry(0.009, 0.009, 0.18, 10),
           new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.3 })
@@ -577,33 +726,133 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
         group.add(drinkTube);
       }
     } else if (ppeState.respiratorId === 'asv2_scba') {
-      const tankGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.55, 16);
-      const tankMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.8, roughness: 0.2 });
-      const tank = new THREE.Mesh(tankGeo, tankMat);
-      tank.position.set(0, 1.25, -0.22);
-      group.add(tank);
+      // Двухбаллонный изолирующий аппарат АСВ-2 с панорамной маской, редуктором, плечевыми лямками и манометром
+      const tankMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.65, roughness: 0.25 });
+      const yokeMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.8, roughness: 0.3 });
+      const tankGeo = new THREE.CylinderGeometry(0.072, 0.072, 0.54, 18);
+
+      const leftTank = new THREE.Mesh(tankGeo, tankMat);
+      leftTank.position.set(-0.085, 1.24, -0.22);
+      group.add(leftTank);
+
+      const rightTank = new THREE.Mesh(tankGeo, tankMat);
+      rightTank.position.set(0.085, 1.24, -0.22);
+      group.add(rightTank);
+
+      const manifold = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.06, 0.07), yokeMat);
+      manifold.position.set(0, 1.52, -0.22);
+      group.add(manifold);
+
+      const scbaMask = new THREE.Mesh(
+        new THREE.SphereGeometry(0.148, 20, 20),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.65 })
+      );
+      scbaMask.position.set(0, 1.76, 0.02);
+      group.add(scbaMask);
+
+      const scbaVisor = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.142, 0.132, 0.14, 24, 1, true, -Math.PI * 0.42, Math.PI * 0.84),
+        new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          roughness: 0.08,
+          metalness: 0.9,
+          transparent: true,
+          opacity: 0.72,
+          side: THREE.DoubleSide
+        })
+      );
+      scbaVisor.position.set(0, 1.77, 0.045);
+      group.add(scbaVisor);
+
+      const gauge = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.032, 0.032, 0.025, 14),
+        new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: new THREE.Color(0x059669), emissiveIntensity: 0.4 })
+      );
+      gauge.rotation.x = Math.PI / 2;
+      gauge.position.set(0.12, 1.38, 0.15);
+      group.add(gauge);
     }
 
-    // 6. Прибор в правой руке (ДП-5В / спектрометр)
+    // 6. Прибор + Дистанционный инструмент в правой руке
     const instProfile = GOST_INSTRUMENTS[ppeState.instrumentId];
+    const handOrigin = isExtendedVisual
+      ? new THREE.Vector3(0.32, 1.20, 0.50)
+      : new THREE.Vector3(0.33, 1.00, 0.28);
+
     const devBox = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.20, 0.07),
-      new THREE.MeshStandardMaterial({ color: instProfile.model3dDetails.color, metalness: 0.5 })
+      new THREE.BoxGeometry(0.11, 0.19, 0.065),
+      new THREE.MeshStandardMaterial({ color: instProfile.model3dDetails.color, metalness: 0.55, roughness: 0.35 })
     );
-    devBox.position.set(0.33, 1.0, 0.28);
-    devBox.rotation.x = -0.3;
+    devBox.position.copy(handOrigin);
+    devBox.rotation.x = -0.35;
     group.add(devBox);
 
-    if (ppeState.instrumentId === 'dp5') {
+    if (selectedRemoteToolId === 'telescopic_rod_3m') {
+      // Многосекционная карбоновая штанга 2.8 м + вынесенный блок детектирования на наконечнике
+      const carbonMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.45 });
+      const collarMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.25, metalness: 0.75 });
+      const s1 = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.021, 0.65, 14), carbonMat);
+      s1.rotation.x = Math.PI / 2.25;
+      s1.position.set(handOrigin.x, handOrigin.y + 0.08, handOrigin.z + 0.34);
+      group.add(s1);
+
+      const s2 = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.016, 0.65, 14), carbonMat);
+      s2.rotation.x = Math.PI / 2.25;
+      s2.position.set(handOrigin.x, handOrigin.y + 0.19, handOrigin.z + 0.88);
+      group.add(s2);
+
+      const s3 = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.012, 0.60, 14), carbonMat);
+      s3.rotation.x = Math.PI / 2.25;
+      s3.position.set(handOrigin.x, handOrigin.y + 0.30, handOrigin.z + 1.40);
+      group.add(s3);
+
+      const tipHead = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.024, 0.14, 16), collarMat);
+      tipHead.rotation.x = Math.PI / 2.25;
+      tipHead.position.set(handOrigin.x, handOrigin.y + 0.37, handOrigin.z + 1.72);
+      group.add(tipHead);
+    } else if (selectedRemoteToolId === 'manipulator_15m') {
+      // Захват-манипулятор ЦМ-1.5 со штангой и механическими челюстями на конце
+      const rodMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.82, roughness: 0.25 });
+      const jawMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.7, roughness: 0.3 });
+
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.018, 1.15, 14), rodMat);
+      shaft.rotation.x = Math.PI / 2.2;
+      shaft.position.set(handOrigin.x, handOrigin.y + 0.12, handOrigin.z + 0.58);
+      group.add(shaft);
+
+      const jawL = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.03, 0.14), jawMat);
+      jawL.position.set(handOrigin.x - 0.045, handOrigin.y + 0.22, handOrigin.z + 1.16);
+      jawL.rotation.y = 0.22;
+      group.add(jawL);
+
+      const jawR = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.03, 0.14), jawMat);
+      jawR.position.set(handOrigin.x + 0.045, handOrigin.y + 0.22, handOrigin.z + 1.16);
+      jawR.rotation.y = -0.22;
+      group.add(jawR);
+    } else if (selectedRemoteToolId === 'extended_arm') {
+      // Кольцевой маркер удлинения вытянутой руки (+0.45 м)
+      const reachRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.075, 0.008, 10, 24),
+        new THREE.MeshBasicMaterial({ color: 0x14b8a6 })
+      );
+      reachRing.position.set(handOrigin.x, handOrigin.y + 0.02, handOrigin.z + 0.14);
+      group.add(reachRing);
+    } else if (ppeState.instrumentId === 'dp5') {
       const probeRod = new THREE.Mesh(
         new THREE.CylinderGeometry(0.016, 0.016, 0.28, 16),
         new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.85, roughness: 0.2 })
       );
       probeRod.rotation.x = Math.PI / 2.4;
-      probeRod.position.set(0.33, 1.02, 0.44);
+      probeRod.position.set(handOrigin.x, handOrigin.y + 0.02, handOrigin.z + 0.16);
       group.add(probeRod);
     }
-  }, [ppeState]);
+  }, [ppeState, selectedRemoteToolId, coopRole]);
+
+  const currentSuit = SUIT_DEFINITIONS[ppeState.suitId];
+  const currentResp = RESPIRATOR_DEFINITIONS[ppeState.respiratorId];
+  const currentTool = REMOTE_TOOLS[selectedRemoteToolId] || REMOTE_TOOLS.hand;
+  const currentRoleSpec = COOP_ROLE_SPECIFICATIONS[coopRole] || COOP_ROLE_SPECIFICATIONS.RECON_DOSIMETRIST;
+  const effectiveReachM = 3.2 + currentTool.addedDistanceM + currentRoleSpec.modifiers.interactionReachBonusM;
 
   return (
     <div className="flex flex-col lg:flex-row gap-4 items-stretch w-full">
@@ -614,9 +863,18 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
           <RotateCcw className="w-3.5 h-3.5 text-[#0EA5E9]" />
           <span>Вращайте манекен мышью (360° CAD)</span>
         </div>
+        <div className="absolute bottom-3 left-3 right-3 alara-glass rounded-[10px] px-3 py-1.5 text-[11px] font-mono alara-tabular pointer-events-none flex flex-wrap items-center justify-between gap-2 text-[#F1F5F9]">
+          <span style={{ color: currentRoleSpec.primaryColorHex }} className="font-semibold">
+            {currentRoleSpec.callsignRu}
+          </span>
+          <span className="text-[#94A3B8]">
+            Инструмент: <strong className="text-[#0EA5E9]">{currentTool.shortNameRu}</strong> · Досягаемость{' '}
+            <strong className="text-[#10B981]">{effectiveReachM.toFixed(2)} м</strong>
+          </span>
+        </div>
       </div>
 
-      {/* Панель переключения СИЗ и прибора */}
+      {/* Панель переключения СИЗ, инструмента, роли и прибора */}
       <div className="w-full lg:w-96 flex flex-col gap-3 text-xs">
         <div className="p-3.5 rounded-xl alara-surface space-y-2">
           <label className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
@@ -635,7 +893,7 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
             ))}
           </select>
           <p className="text-[11px] text-[#94A3B8] leading-normal">
-            {SUIT_DEFINITIONS[ppeState.suitId].descRu}
+            {currentSuit.descRu}
           </p>
         </div>
 
@@ -656,7 +914,7 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
             ))}
           </select>
           <p className="text-[11px] text-[#94A3B8] leading-normal">
-            {RESPIRATOR_DEFINITIONS[ppeState.respiratorId].descRu}
+            {currentResp.descRu}
           </p>
         </div>
 
@@ -688,7 +946,7 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
               <span>Дистанционный инструмент</span>
             </label>
             <select
-              value={selectedRemoteToolId || 'hand'}
+              value={selectedRemoteToolId}
               onChange={e => onChangeRemoteTool(e.target.value as RemoteToolId)}
               className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-2 text-[#0EA5E9] font-mono font-medium focus:outline-none focus:border-[#0EA5E9]"
             >
@@ -699,30 +957,67 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
               ))}
             </select>
             <p className="text-[11px] text-[#94A3B8] leading-normal">
-              {REMOTE_TOOLS[selectedRemoteToolId || 'hand']?.descriptionRu}
+              {currentTool.descriptionRu}
+            </p>
+          </div>
+        )}
+
+        {onChangeCoopRole && (
+          <div className="p-3.5 rounded-xl alara-surface space-y-2">
+            <label className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
+              <UserCheck className="w-4 h-4 text-[#14B8A6]" />
+              <span>Роль звена РХБЗ</span>
+            </label>
+            <select
+              value={coopRole}
+              onChange={e => onChangeCoopRole(e.target.value as CoopSquadRole)}
+              className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-2 text-[#F1F5F9] font-mono font-medium focus:outline-none focus:border-[#14B8A6]"
+            >
+              {Object.values(COOP_ROLE_SPECIFICATIONS).map(spec => (
+                <option key={spec.role} value={spec.role}>
+                  {spec.callsignRu} — {spec.titleRu}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-[#94A3B8] leading-normal">
+              {currentRoleSpec.prioritySummaryRu}
             </p>
           </div>
         )}
 
         <div className="p-3 rounded-xl bg-[#0EA5E9]/8 border border-[#0EA5E9]/25 text-[11px] font-mono alara-tabular space-y-1">
           <div className="flex justify-between">
-            <span className="text-[#94A3B8]">Свинцовый эквивалент:</span>
-            <span className="text-[#0EA5E9] font-semibold">{SUIT_DEFINITIONS[ppeState.suitId].leadEquivalentMm} мм Pb</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[#94A3B8]">Задержка α / Коэф. β:</span>
-            <span className="text-[#10B981] font-semibold">
-              {SUIT_DEFINITIONS[ppeState.suitId].alphaBlockingPercent}% / ×{SUIT_DEFINITIONS[ppeState.suitId].betaAttenuationFactor}
+            <span className="text-[#94A3B8]">Дальность действий / замера:</span>
+            <span className="text-[#0EA5E9] font-semibold">
+              {effectiveReachM.toFixed(2)} м (+{(currentTool.addedDistanceM + currentRoleSpec.modifiers.interactionReachBonusM).toFixed(2)} м)
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[#94A3B8]">Коэф. ослабления γ:</span>
-            <span className="text-[#F59E0B] font-semibold">×{SUIT_DEFINITIONS[ppeState.suitId].gammaAttenuationFactor}</span>
+            <span className="text-[#94A3B8]">Свинцовый эквивалент:</span>
+            <span className="text-[#0EA5E9] font-semibold">{currentSuit.leadEquivalentMm} мм Pb</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[#94A3B8]">Ослабление α / β / γ:</span>
+            <span className="text-[#10B981] font-semibold">
+              {currentSuit.alphaBlockingPercent}% / ×{currentSuit.betaAttenuationFactor} / ×{currentSuit.gammaAttenuationFactor}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[#94A3B8]">Защита от дыма/аэрозолей:</span>
+            <span className="text-[#14B8A6] font-semibold">
+              {currentResp.filtrationEfficiencyPercent}% (КЗ {currentResp.inhalationProtectionFactor})
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-[#94A3B8]">Термостойкость / Диэлектрик:</span>
             <span className="text-[#F59E0B] font-semibold">
-              {SUIT_DEFINITIONS[ppeState.suitId].thermalRatingC}°C {SUIT_DEFINITIONS[ppeState.suitId].isDielectric ? '· 10 кВ' : ''}
+              {currentSuit.thermalRatingC}°C {currentSuit.isDielectric ? '· 10 кВ' : ''}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[#94A3B8]">Эффект роли звена:</span>
+            <span style={{ color: currentRoleSpec.primaryColorHex }} className="font-semibold">
+              Скорость ×{currentRoleSpec.modifiers.holdActionSpeedMultiplier.toFixed(2)} · Тушение ×{currentRoleSpec.modifiers.fireSuppressionMultiplier.toFixed(2)}
             </span>
           </div>
         </div>

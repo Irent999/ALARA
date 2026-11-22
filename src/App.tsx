@@ -72,7 +72,8 @@ import { HazardSourceSpawner } from './components/objects/HazardSourceSpawner';
 import {
   PPELoadoutState,
   verifyPPEReadinessChecklist,
-  calculatePPEProtectionFactors
+  calculatePPEProtectionFactors,
+  mapCharacterPpeToCheckState
 } from './modules/PPECheckModule';
 import {
   PhysiologicalStress,
@@ -393,6 +394,7 @@ export default function App() {
   const isExtendedArmRef = useRef<boolean>(isExtendedArm);
   const selectedInstrumentIdRef = useRef<InstrumentId>(selectedInstrumentId);
   const characterPpeStateRef = useRef<CharacterPPEState>(characterPpeState);
+  const coopRoleRef = useRef<CoopSquadRole>(coopRole);
   const playerAvatarRigRef = useRef<PlayerAvatarRig | null>(null);
   const physioTelemetryRef = useRef<PhysiologicalTelemetry>(physioTelemetry);
   const isMovingRef = useRef<boolean>(false);
@@ -443,6 +445,7 @@ export default function App() {
   isExtendedArmRef.current = isExtendedArm;
   selectedInstrumentIdRef.current = selectedInstrumentId;
   characterPpeStateRef.current = characterPpeState;
+  coopRoleRef.current = coopRole;
   physioTelemetryRef.current = physioTelemetry;
   activeScenarioIdRef.current = activeScenarioId;
   scenarioStepRef.current = scenarioStep;
@@ -457,9 +460,36 @@ export default function App() {
     isAARModalOpen ||
     isAnalyticsWindowOpen;
 
+  const getEffectiveReachM = (): number => {
+    const remTool = selectedRemoteToolIdRef.current;
+    const roleSpec = COOP_ROLE_SPECIFICATIONS[coopRoleRef.current];
+    const toolAddedM = REMOTE_TOOLS[remTool]?.addedDistanceM ?? 0;
+    const armExtra = isExtendedArmRef.current && remTool !== 'extended_arm' ? 0.45 : 0;
+    return 3.2 + toolAddedM + roleSpec.modifiers.interactionReachBonusM + armExtra;
+  };
+
+  const applyCoopRole = useCallback((role: CoopSquadRole) => {
+    setCoopRole(role);
+    coopRoleRef.current = role;
+    multiplayerRef.current?.setRole(role);
+    playerAvatarRigRef.current?.setCoopRole(role);
+
+    const spec = COOP_ROLE_SPECIFICATIONS[role];
+    handRigRef.current?.setCoopRoleAccent(spec.accentHexNumber);
+    leftHandRigDesktopRef.current?.setCoopRoleAccent(spec.accentHexNumber);
+    xrManagerRef.current?.setCoopRoleAccent(spec.accentHexNumber);
+
+    scenario4ControllerRef.current?.setOperatorLoadoutProfile({
+      role,
+      suitId: characterPpeStateRef.current.suitId,
+      respiratorId: characterPpeStateRef.current.respiratorId,
+      remoteToolId: selectedRemoteToolIdRef.current
+    });
+  }, []);
+
   /**
    * Полная синхронизация выбранного в Главном меню инвентаря/СИЗ с 3D-сценой,
-   * руками персонажа в Desktop/VR и физическим расчетом доз
+   * руками персонажа в Desktop/VR, физическим расчетом доз и Сценарием 4
    */
   const syncLoadoutTo3DScene = useCallback((
     instrumentId?: InstrumentId,
@@ -492,6 +522,9 @@ export default function App() {
     if (ppeSt) {
       setCharacterPpeState(ppeSt);
       characterPpeStateRef.current = ppeSt;
+      const syncedSuit = ppeSt.suitId;
+      const syncedResp = ppeSt.respiratorId;
+      setPpeCheckState(prev => mapCharacterPpeToCheckState(syncedSuit, syncedResp, prev));
     }
     if (ppeId) {
       setSelectedPpeId(ppeId);
@@ -501,14 +534,27 @@ export default function App() {
     setSelectedRemoteToolId(remTool);
     selectedRemoteToolIdRef.current = remTool;
 
+    if (newRemoteToolId !== undefined) {
+      if (newRemoteToolId === 'extended_arm') {
+        setIsExtendedArm(true);
+        isExtendedArmRef.current = true;
+        handRigRef.current?.setExtensionTarget(true);
+      } else if (newRemoteToolId === 'hand') {
+        setIsExtendedArm(false);
+        isExtendedArmRef.current = false;
+        handRigRef.current?.setExtensionTarget(false);
+      }
+    }
+
     // 1. Физическое обновление 3D-персонажа (манекен/тело под камерой)
     if (playerAvatarRigRef.current && ppeSt) {
       playerAvatarRigRef.current.updatePPEState(ppeSt);
     }
 
-    // 2. Обновление десктопных рук (прибор и текстуры рукавов/перчаток СИЗ)
+    // 2. Обновление десктопных рук (прибор, штанга/манипулятор и текстуры рукавов/перчаток СИЗ)
     if (handRigRef.current) {
       handRigRef.current.rebuildProbeGeometry(instr);
+      handRigRef.current.setRemoteToolMode(remTool);
       if (ppeSt) {
         handRigRef.current.setGloveSuitMaterial(ppeSt.suitId);
       }
@@ -520,12 +566,13 @@ export default function App() {
     // 3. Обновление рук в WebXR/VR
     if (xrManagerRef.current) {
       xrManagerRef.current.setInstrument(instr);
+      xrManagerRef.current.setRemoteToolMode(remTool);
       if (ppeSt) {
         xrManagerRef.current.setPpeSuit(ppeSt.suitId);
       }
     }
 
-    // 4. Синхронизация дистанционного манипулятора 1.5м со слотом Щипцы ЦМ-1.5 [3]
+    // 4. Синхронизация дистанционного манипулятора 1.5м со слотом Щипцы ЦМ-1.5 [6]
     if (newRemoteToolId === 'manipulator_15m' && activeToolIdRef.current !== 'tongs') {
       toolManagerRef.current?.selectTool('tongs');
       activeToolIdRef.current = 'tongs';
@@ -538,6 +585,16 @@ export default function App() {
       toolManagerRef.current?.selectTool('dp5');
       activeToolIdRef.current = 'dp5';
       setActiveToolId('dp5');
+    }
+
+    // 5. Обновление профиля оператора в Сценарии 4
+    if (ppeSt) {
+      scenario4ControllerRef.current?.setOperatorLoadoutProfile({
+        role: coopRoleRef.current,
+        suitId: ppeSt.suitId,
+        respiratorId: ppeSt.respiratorId,
+        remoteToolId: remTool
+      });
     }
   }, []);
 
@@ -627,6 +684,7 @@ export default function App() {
     // 4.1. 3D-модель тела персонажа (PlayerAvatarRig) в режиме от 1-го лица (без клиппинга плеч/торса)
     const playerAvatarRig = new PlayerAvatarRig(characterPpeStateRef.current);
     playerAvatarRig.setFirstPersonMode(true);
+    playerAvatarRig.setCoopRole(coopRoleRef.current);
     playerGroup.add(playerAvatarRig.rootGroup);
     playerAvatarRigRef.current = playerAvatarRig;
 
@@ -669,9 +727,12 @@ export default function App() {
     // 6. Две анатомические кисти рук (Simultaneous Dual Hand System):
     //    - Правая рука с радиометром внутри ладонной поверхности (Palmar Grip Pose: curl ≈ 0.42)
     //    - Левая рука с жестко интегрированным тактическим фонарем VRFlashlight в локальной иерархии кисти (Grip Pose: curl ≈ 0.45)
+    const initRoleAccent = COOP_ROLE_SPECIFICATIONS[coopRoleRef.current].accentHexNumber;
     const handRig = new RealisticHumanHandRig({ handedness: 'right', withRadiometer: true });
     handRig.rebuildProbeGeometry(selectedInstrumentIdRef.current);
+    handRig.setRemoteToolMode(selectedRemoteToolIdRef.current);
     handRig.setGloveSuitMaterial(characterPpeStateRef.current.suitId);
+    handRig.setCoopRoleAccent(initRoleAccent);
     camera.add(handRig.rootGroup);
     handRigRef.current = handRig;
 
@@ -681,6 +742,7 @@ export default function App() {
       initialFlashlightOn: false
     });
     leftHandRigDesktop.setGloveSuitMaterial(characterPpeStateRef.current.suitId);
+    leftHandRigDesktop.setCoopRoleAccent(initRoleAccent);
     camera.add(leftHandRigDesktop.rootGroup);
     leftHandRigDesktopRef.current = leftHandRigDesktop;
     flashlightMeshRef.current = leftHandRigDesktop.flashlight?.flashlightMesh ?? null;
@@ -1075,9 +1137,13 @@ export default function App() {
         if (leftHandRigDesktopRef.current) {
           leftHandRigDesktopRef.current.rootGroup.visible = false;
         }
-        // Применяем выбранный инструмент и текстуру перчаток СИЗ к контроллерам WebXR
+        // Применяем выбранный инструмент, штангу, роль и текстуру перчаток СИЗ к контроллерам WebXR
         xrManagerRef.current?.setInstrument(selectedInstrumentIdRef.current);
+        xrManagerRef.current?.setRemoteToolMode(selectedRemoteToolIdRef.current);
         xrManagerRef.current?.setPpeSuit(characterPpeStateRef.current.suitId);
+        xrManagerRef.current?.setCoopRoleAccent(
+          COOP_ROLE_SPECIFICATIONS[coopRoleRef.current].accentHexNumber
+        );
       },
       onSessionEnd: () => {
         setIsInVR(false);
@@ -1220,7 +1286,9 @@ export default function App() {
     xrManager.vrUiSystem = vrUiSystem;
     xrManager.attachVoiceTaskLogger(voiceLogger);
     xrManager.setInstrument(selectedInstrumentIdRef.current);
+    xrManager.setRemoteToolMode(selectedRemoteToolIdRef.current);
     xrManager.setPpeSuit(characterPpeStateRef.current.suitId);
+    xrManager.setCoopRoleAccent(COOP_ROLE_SPECIFICATIONS[coopRoleRef.current].accentHexNumber);
     xrManagerRef.current = xrManager;
     xrManager.checkXRSupport().then(supported => setIsVRSupported(supported));
 
@@ -1656,11 +1724,12 @@ export default function App() {
           }
 
           if (hasRay) {
+            const effReachM = getEffectiveReachM();
             const holdCandidate = interactionSystemRef.current.raycastInteractive(
               holdRayOrigin,
               holdRayDir,
               currentScenarioInteractive.current,
-              4.2
+              effReachM
             );
 
             if (holdCandidate && !holdCandidate.interacted && holdCandidate.holdAction) {
@@ -1690,7 +1759,9 @@ export default function App() {
                 const actionSpec = holdCandidate.holdAction;
                 const normalizedPref = actionSpec.preferredToolId === 'wrench' ? 'hands' : actionSpec.preferredToolId;
                 const isPreferred = !normalizedPref || normalizedPref === curTool;
-                const effectiveDuration = isPreferred ? actionSpec.durationSec : actionSpec.durationSec * 1.35;
+                const activeRoleSpec = COOP_ROLE_SPECIFICATIONS[coopRoleRef.current];
+                const baseDuration = isPreferred ? actionSpec.durationSec : actionSpec.durationSec * 1.35;
+                const effectiveDuration = baseDuration / activeRoleSpec.modifiers.holdActionSpeedMultiplier;
 
                 holdSystem.stepHold(
                   {
@@ -1938,12 +2009,14 @@ export default function App() {
       //    - Средства индивидуальной защиты СИЗ (100% задержка α, расчет пробега β по соотношению Каца-Пенфолда)
       //    - Защита расстоянием и дистанционный инструмент (закон обратных квадратов 1/r²)
       //    - Защита временем (интеграл H(t) методом трапеций/Симпсона и контроль лимита наряда-допуска)
-      const probeWorldPos =
+      const activeHandRig =
         isVR && xrManagerRef.current?.rightHandRig
-          ? xrManagerRef.current.rightHandRig.probeTipWorldPos
-          : handRigRef.current
-          ? handRigRef.current.probeTipWorldPos
-          : loopFallbackProbePos.set(0, 0, 0);
+          ? xrManagerRef.current.rightHandRig
+          : handRigRef.current;
+      const probeWorldPos = activeHandRig
+        ? activeHandRig.probeTipWorldPos
+        : loopFallbackProbePos.set(0, 0, 0);
+      const activeVisExtM = activeHandRig ? activeHandRig.getVisualProbeExtensionM() : 0;
 
       if (cameraRef.current) {
         cameraRef.current.getWorldPosition(loopOperatorWorldPos);
@@ -1966,7 +2039,9 @@ export default function App() {
         } else {
           loopSourceWorldPos.copy(source.position);
         }
-        const dist = Math.max(0.1, probeWorldPos.distanceTo(loopSourceWorldPos));
+        // Компенсируем визуальное смещение выдвинутой штанги/манипулятора на 3D-кисти,
+        // чтобы calculateComprehensiveProtection корректно прибавил remoteTool.addedDistanceM ровно 1 раз
+        const dist = Math.max(0.1, probeWorldPos.distanceTo(loopSourceWorldPos) + activeVisExtM);
         if (dist < minSourceDist) minSourceDist = dist;
 
         let shieldIntersections = loopShieldPool[si];
@@ -1986,7 +2061,7 @@ export default function App() {
         loopRayDirOperator.subVectors(loopSourceWorldPos, operatorWorldPos).normalize();
         loopRayProbe.set(probeWorldPos, loopRayDirProbe);
         loopRayProbe.near = 0;
-        loopRayProbe.far = dist;
+        loopRayProbe.far = Math.max(0.1, probeWorldPos.distanceTo(loopSourceWorldPos));
         loopRayOperator.set(operatorWorldPos, loopRayDirOperator);
         loopRayOperator.near = 0;
         loopRayOperator.far = operatorDist;
@@ -2021,6 +2096,8 @@ export default function App() {
       const compAnalysis = calculateComprehensiveProtection({
         sources: loopSourceInputs,
         ppeLoadoutId: selectedPpeIdRef.current,
+        suitId: characterPpeStateRef.current.suitId,
+        respiratorId: characterPpeStateRef.current.respiratorId,
         remoteToolId: selectedRemoteToolIdRef.current,
         isArmExtended: isExtendedArmRef.current,
         ventilationRateLitersPerMin: physioTelemetryRef.current?.airConsumptionLitersPerMin ?? 22.0,
@@ -2034,6 +2111,7 @@ export default function App() {
       // 5. Моделирование инерционности и статистической погрешности детектора по ГОСТ 27451-87
       const currentInstrId = selectedInstrumentIdRef.current;
       const instrument = GOST_INSTRUMENTS[currentInstrId];
+      const activeRoleSpecLoop = COOP_ROLE_SPECIFICATIONS[coopRoleRef.current];
       if (missionTimeRef.current === 0 && smoothedReadingRef.current === 0) {
         smoothedReadingRef.current = theoreticalDoseRate;
       }
@@ -2041,7 +2119,7 @@ export default function App() {
         smoothedReadingRef.current,
         theoreticalDoseRate,
         instrument,
-        dt
+        dt * activeRoleSpecLoop.modifiers.detectorResponseBonus
       );
       smoothedReadingRef.current = simulatedRate;
 
@@ -2100,7 +2178,10 @@ export default function App() {
         const pLimit = Math.max(0.001, permitLimitMsvRef.current);
         const accumMsv = cumulativeDoseRef.current;
         const activeCfg = ScenarioConfigRegistry.getConfig(activeScenarioIdRef.current);
-        const warnRatio = activeCfg?.warningThresholdRatio ?? 0.8;
+        const warnRatio = Math.min(
+          activeCfg?.warningThresholdRatio ?? 0.8,
+          activeRoleSpecLoop.modifiers.earlyWarningRatio
+        );
         const tMax = Math.max(1, activeCfg?.tMaxSec ?? 300);
 
         const pushLimitEventOnce = (
@@ -2523,7 +2604,7 @@ export default function App() {
             ctxRayOrigin,
             ctxRayDir,
             currentScenarioInteractive.current,
-            4.2
+            getEffectiveReachM()
           );
           if (hitMeta) {
             hitMeta.mesh.getWorldPosition(ctxObjWorldPos);
@@ -3160,6 +3241,12 @@ export default function App() {
               }
             }
           });
+          s4Ctrl.setOperatorLoadoutProfile({
+            role: coopRoleRef.current,
+            suitId: characterPpeStateRef.current.suitId,
+            respiratorId: characterPpeStateRef.current.respiratorId,
+            remoteToolId: selectedRemoteToolIdRef.current
+          });
           scenario4ControllerRef.current = s4Ctrl;
           setScenario4Snapshot(s4Ctrl.getHudSnapshot());
         } catch (err) {
@@ -3287,11 +3374,22 @@ export default function App() {
       if (slot.id === 'tongs') {
         selectedRemoteToolIdRef.current = 'manipulator_15m';
         setSelectedRemoteToolId('manipulator_15m');
+        handRigRef.current?.setRemoteToolMode('manipulator_15m');
+        xrManagerRef.current?.setRemoteToolMode('manipulator_15m');
         toolManagerRef.current?.setTongsClosure(grabbedObjectRef.current ? 1 : 0);
       } else if (selectedRemoteToolIdRef.current === 'manipulator_15m') {
         selectedRemoteToolIdRef.current = 'hand';
         setSelectedRemoteToolId('hand');
+        handRigRef.current?.setRemoteToolMode('hand');
+        xrManagerRef.current?.setRemoteToolMode('hand');
       }
+
+      scenario4ControllerRef.current?.setOperatorLoadoutProfile({
+        role: coopRoleRef.current,
+        suitId: characterPpeStateRef.current.suitId,
+        respiratorId: characterPpeStateRef.current.respiratorId,
+        remoteToolId: selectedRemoteToolIdRef.current
+      });
 
       if (changed) {
         addToast('info', `ИНСТРУМЕНТ [${slot.hotkey}]: ${slot.nameRu}`, slot.purposeRu);
@@ -4102,7 +4200,7 @@ export default function App() {
           rayOrigin,
           rayDir,
           currentScenarioInteractive.current,
-          4.5
+          getEffectiveReachM() + 0.3
         );
 
         if (matchedItem) {
@@ -4131,7 +4229,11 @@ export default function App() {
             return;
           }
 
-          // Переносимый предмет: если активны щипцы ЦМ-1.5 [3] и это извлекаемый/опасный предмет — крепим на конец щипцов
+          // Переносимый предмет: если активны щипцы ЦМ-1.5 [6] и это извлекаемый/опасный предмет — крепим на конец щипцов
+          const hasSafeRemoteManipulator =
+            activeToolIdRef.current === 'tongs' ||
+            selectedRemoteToolIdRef.current === 'manipulator_15m' ||
+            selectedRemoteToolIdRef.current === 'telescopic_rod_3m';
           const useTongsHolder =
             activeToolIdRef.current === 'tongs' &&
             Boolean(evacuationManagerRef.current?.isExtractableType(matchedItem));
@@ -4167,7 +4269,8 @@ export default function App() {
           }
 
           if (evacuationManagerRef.current?.isExtractableType(matchedItem)) {
-            const carryRes = evacuationManagerRef.current.startCarry(matchedItem, activeToolIdRef.current);
+            const carryToolId: MchsToolId = hasSafeRemoteManipulator ? 'tongs' : activeToolIdRef.current;
+            const carryRes = evacuationManagerRef.current.startCarry(matchedItem, carryToolId);
             setCarriedHazard(evacuationManagerRef.current.getCarriedInfo());
             setMchsMetrics(evacuationManagerRef.current.getMetrics());
             if (carryRes.bareHandViolation) {
@@ -4240,7 +4343,7 @@ export default function App() {
         rayOrigin,
         rayDir,
         currentScenarioInteractive.current,
-        4.2
+        getEffectiveReachM()
       );
 
       if (matchedItem) {
@@ -4269,6 +4372,10 @@ export default function App() {
           return;
         }
 
+        const hasSafeRemoteManipulator =
+          activeToolIdRef.current === 'tongs' ||
+          selectedRemoteToolIdRef.current === 'manipulator_15m' ||
+          selectedRemoteToolIdRef.current === 'telescopic_rod_3m';
         const useTongsHolder =
           activeToolIdRef.current === 'tongs' &&
           Boolean(evacuationManagerRef.current?.isExtractableType(matchedItem));
@@ -4298,7 +4405,8 @@ export default function App() {
           handRigRef.current?.setGripTarget(true);
 
           if (evacuationManagerRef.current?.isExtractableType(matchedItem)) {
-            const carryRes = evacuationManagerRef.current.startCarry(matchedItem, activeToolIdRef.current);
+            const carryToolId: MchsToolId = hasSafeRemoteManipulator ? 'tongs' : activeToolIdRef.current;
+            const carryRes = evacuationManagerRef.current.startCarry(matchedItem, carryToolId);
             setCarriedHazard(evacuationManagerRef.current.getCarriedInfo());
             setMchsMetrics(evacuationManagerRef.current.getMetrics());
             if (carryRes.bareHandViolation) {
@@ -4379,7 +4487,25 @@ export default function App() {
   const toggleExtendArm = () => {
     setIsExtendedArm(prev => {
       const next = !prev;
+      isExtendedArmRef.current = next;
       handRigRef.current?.setExtensionTarget(next);
+      if (next && selectedRemoteToolIdRef.current === 'hand') {
+        selectedRemoteToolIdRef.current = 'extended_arm';
+        setSelectedRemoteToolId('extended_arm');
+        handRigRef.current?.setRemoteToolMode('extended_arm');
+        xrManagerRef.current?.setRemoteToolMode('extended_arm');
+      } else if (!next && selectedRemoteToolIdRef.current === 'extended_arm') {
+        selectedRemoteToolIdRef.current = 'hand';
+        setSelectedRemoteToolId('hand');
+        handRigRef.current?.setRemoteToolMode('hand');
+        xrManagerRef.current?.setRemoteToolMode('hand');
+      }
+      scenario4ControllerRef.current?.setOperatorLoadoutProfile({
+        role: coopRoleRef.current,
+        suitId: characterPpeStateRef.current.suitId,
+        respiratorId: characterPpeStateRef.current.respiratorId,
+        remoteToolId: selectedRemoteToolIdRef.current
+      });
       return next;
     });
   };
@@ -4591,7 +4717,7 @@ export default function App() {
       vrUiSystemRef.current.openGostModal(
         selectedInstrumentId,
         id => {
-          setSelectedInstrumentId(id);
+          syncLoadoutTo3DScene(id);
           addToast('info', 'ПРИБОР ВЫБРАН В VR', `Активирован: ${GOST_INSTRUMENTS[id].name}`);
         },
         () => {}
@@ -4795,11 +4921,22 @@ export default function App() {
         />
       </ScenarioManager>
 
-      {/* Симулятор физиологического стресса, расхода кислорода АСВ-2 и запотевания забрала */}
+      {/* Симулятор физиологического стресса, расхода кислорода АСВ-2, тепловой нагрузки, дыма и запотевания забрала */}
       <PhysiologicalStress
         ppeState={ppeCheckState}
         currentDoseRateMsvPerHour={currentDoseRateMicroSv / 1000.0}
         accumulatedDoseMsv={cumulativeDoseMsv}
+        ambientTemperatureC={
+          activeScenarioId === 4 && scenario4Snapshot
+            ? 22 + scenario4Snapshot.thermalHeatLoad01 * 180
+            : 22
+        }
+        smokeExposure01={
+          activeScenarioId === 4 && scenario4Snapshot
+            ? scenario4Snapshot.smokeExposure01
+            : 0
+        }
+        stressDampingFactor={COOP_ROLE_SPECIFICATIONS[coopRole].modifiers.stressDampingFactor}
         isPhysicalExertion={Boolean(isMovingRef.current || isCrouched || isGripped || isExtendedArm)}
         onUpdateTelemetry={setPhysioTelemetry}
         onOxygenDepletion={handleOxygenDepletion}
@@ -4931,7 +5068,17 @@ export default function App() {
             }}
             targetedObject={targetedObject}
             coopRoleCallsign={COOP_ROLE_SPECIFICATIONS[coopRole].callsignRu}
+            coopRoleBadgeCode={COOP_ROLE_SPECIFICATIONS[coopRole].badgeCodeRu}
+            coopRoleSummaryRu={COOP_ROLE_SPECIFICATIONS[coopRole].prioritySummaryRu}
             coopPeersCount={coopPeers.length}
+            effectiveReachM={Number(
+              (
+                3.2 +
+                (REMOTE_TOOLS[selectedRemoteToolId]?.addedDistanceM ?? 0) +
+                COOP_ROLE_SPECIFICATIONS[coopRole].modifiers.interactionReachBonusM +
+                (isExtendedArm && selectedRemoteToolId !== 'extended_arm' ? 0.45 : 0)
+              ).toFixed(2)
+            )}
             onCycleCoopRole={() => {
               const order: CoopSquadRole[] = [
                 'RECON_DOSIMETRIST',
@@ -4939,8 +5086,9 @@ export default function App() {
                 'INCIDENT_COMMANDER'
               ];
               const next = order[(order.indexOf(coopRole) + 1) % order.length];
-              setCoopRole(next);
-              multiplayerRef.current?.setRole(next);
+              applyCoopRole(next);
+              const nextSpec = COOP_ROLE_SPECIFICATIONS[next];
+              addToast('info', `РОЛЬ: ${nextSpec.callsignRu}`, nextSpec.prioritySummaryRu);
             }}
             oxygenPercent={physioTelemetry.remainingOxygenPercent}
             spO2Percent={physioTelemetry.spO2Percent}
@@ -5064,8 +5212,22 @@ export default function App() {
           oxygenPercent={physioTelemetry.remainingOxygenPercent}
           spO2Percent={physioTelemetry.spO2Percent}
           coreBodyTempC={physioTelemetry.coreBodyTempC}
+          coopRole={coopRole}
           coopRoleCallsign={COOP_ROLE_SPECIFICATIONS[coopRole].callsignRu}
           coopPeersCount={coopPeers.length}
+          effectiveReachM={Number(
+            (
+              3.2 +
+              (REMOTE_TOOLS[selectedRemoteToolId]?.addedDistanceM ?? 0) +
+              COOP_ROLE_SPECIFICATIONS[coopRole].modifiers.interactionReachBonusM +
+              (isExtendedArm && selectedRemoteToolId !== 'extended_arm' ? 0.45 : 0)
+            ).toFixed(2)
+          )}
+          onSelectCoopRole={role => {
+            applyCoopRole(role);
+            const spec = COOP_ROLE_SPECIFICATIONS[role];
+            addToast('info', `РОЛЬ ЗВЕНА: ${spec.callsignRu}`, spec.prioritySummaryRu);
+          }}
           onCycleCoopRole={() => {
             const order: CoopSquadRole[] = [
               'RECON_DOSIMETRIST',
@@ -5073,8 +5235,9 @@ export default function App() {
               'INCIDENT_COMMANDER'
             ];
             const next = order[(order.indexOf(coopRole) + 1) % order.length];
-            setCoopRole(next);
-            multiplayerRef.current?.setRole(next);
+            applyCoopRole(next);
+            const nextSpec = COOP_ROLE_SPECIFICATIONS[next];
+            addToast('info', `РОЛЬ ЗВЕНА: ${nextSpec.callsignRu}`, nextSpec.prioritySummaryRu);
           }}
           currentDoseRateMicroSv={currentDoseRateMicroSv}
           cumulativeDoseMsv={cumulativeDoseMsv}
@@ -5166,7 +5329,7 @@ export default function App() {
           }}
           selectedInstrumentId={selectedInstrumentId}
           onSelectInstrument={id => {
-            setSelectedInstrumentId(id);
+            syncLoadoutTo3DScene(id);
             setIsGostModalOpen(false);
             vrUiSystemRef.current?.closeModals();
             addToast('info', 'ПРИБОР ВЫБРАН', `Активирован: ${GOST_INSTRUMENTS[id].name}`);

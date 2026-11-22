@@ -466,7 +466,7 @@ export const Scenario4Hud: React.FC<Scenario4HudProps> = ({
                     )}
                   </div>
                   <div className="flex flex-wrap gap-1">
-                    {vehicle.targets.slice(0, 4).map(t => {
+                    {vehicle.targets.slice(0, 6).map(t => {
                       const isActiveTarget = vehicle.autopilotTargetName === t.name;
                       return (
                         <button

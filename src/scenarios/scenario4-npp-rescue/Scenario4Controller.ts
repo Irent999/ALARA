@@ -37,6 +37,34 @@ import {
 } from '../../state/scenario4StateMachine';
 import type { UnifiedLifecyclePhase, UnifiedScenarioState } from '../../state/scenarioContract';
 import { ViveInteractionAdapter, type VivePollInputs } from '../../xr/viveInteractionAdapter';
+import { COOP_ROLE_SPECIFICATIONS, type CoopSquadRole } from '../../network/MultiplayerManager';
+import type { RespiratorTypeId, SuitTypeId } from '../../components/CharacterCustomizer3D';
+import { REMOTE_TOOLS, type RemoteToolId } from '../../physics/gostPhysics';
+
+export interface Scenario4OperatorLoadoutProfile {
+  role: CoopSquadRole;
+  suitId: SuitTypeId;
+  respiratorId: RespiratorTypeId;
+  remoteToolId: RemoteToolId;
+}
+
+const SUIT_THERMAL_RATING_C: Readonly<Record<SuitTypeId, number>> = {
+  none: 40,
+  l1_suit: 65,
+  lead_apron: 60,
+  kih4_suit: 90,
+  heavy_lead_armor: 120,
+  bop_suit: 350
+};
+
+const RESPIRATOR_SMOKE_PENETRATION: Readonly<Record<RespiratorTypeId, number>> = {
+  none: 1.0,
+  lepestok_200: 0.35,
+  gp7_gasmask: 0.12,
+  gp7vm_gasmask: 0.10,
+  ppm88_mask: 0.06,
+  asv2_scba: 0.0
+};
 
 export interface Scenario4ControllerOptions {
   readonly envGroup: THREE.Group;
@@ -162,6 +190,11 @@ export class Scenario4Controller {
   private readonly scratchVecA = new THREE.Vector3();
   private readonly scratchVecB = new THREE.Vector3();
 
+  private operatorRole: CoopSquadRole = 'RECON_DOSIMETRIST';
+  private operatorSuitId: SuitTypeId = 'none';
+  private operatorRespiratorId: RespiratorTypeId = 'none';
+  private operatorRemoteToolId: RemoteToolId = 'hand';
+
   constructor(options: Scenario4ControllerOptions) {
     this.envGroup = options.envGroup;
     this.camera = options.camera;
@@ -202,6 +235,27 @@ export class Scenario4Controller {
 
   public notifyTeleportFade(): void {
     this.vrComfortFade01 = 1.0;
+  }
+
+  private getEffectiveReachBonusM(): number {
+    const toolBonus = REMOTE_TOOLS[this.operatorRemoteToolId]?.addedDistanceM ?? 0;
+    const roleBonus = COOP_ROLE_SPECIFICATIONS[this.operatorRole]?.modifiers.interactionReachBonusM ?? 0;
+    return toolBonus + roleBonus;
+  }
+
+  private applyOperatorLoadoutModifiers(): void {
+    const roleSpec = COOP_ROLE_SPECIFICATIONS[this.operatorRole];
+    const reachBonus = this.getEffectiveReachBonusM();
+    this.fireMgr?.setRoleModifiers(reachBonus, roleSpec.modifiers.fireSuppressionMultiplier);
+    this.emergencyOps?.setRoleModifiers(reachBonus, roleSpec.modifiers.detectorResponseBonus);
+  }
+
+  public setOperatorLoadoutProfile(profile: Scenario4OperatorLoadoutProfile): void {
+    this.operatorRole = profile.role;
+    this.operatorSuitId = profile.suitId;
+    this.operatorRespiratorId = profile.respiratorId;
+    this.operatorRemoteToolId = profile.remoteToolId;
+    this.applyOperatorLoadoutModifiers();
   }
 
   public async loadCustomGlbFile(file: File): Promise<void> {
@@ -345,12 +399,21 @@ export class Scenario4Controller {
     }
 
     // 2. Пожарный автомобиль МЧС и вытягиваемый пожарный рукав
+    const groundMeshes: THREE.Mesh[] = [];
+    worldRoot.traverse(obj => {
+      if ((obj as THREE.Mesh).isMesh) {
+        groundMeshes.push(obj as THREE.Mesh);
+      }
+    });
+
     this.vehicleSys = new MchsVehicleSystem({
       spawnPos: m.vehicleSpawn.pos,
       lookTarget: this.entrancePos,
       driveTargets: m.buildingDriveTargets,
       buildingVolumes: report.buildingVolumes,
-      siteBounds: this.modelBounds
+      siteBounds: this.modelBounds,
+      deckSurfaceY: report.deckSurfaceY,
+      groundMeshes
     });
     this.rootGroup.add(this.vehicleSys.rootGroup);
 
@@ -371,6 +434,7 @@ export class Scenario4Controller {
       SCENARIO_4_CONFIG.FIRE_SCALE
     );
     this.rootGroup.add(this.fireMgr.rootGroup);
+    this.applyOperatorLoadoutModifiers();
 
     // 5. Система эвакуации персонала (4 группы / 10 чел. внутри зданий)
     this.evacMgr = new NpcEvacuationSystem({
@@ -631,8 +695,10 @@ export class Scenario4Controller {
       }
     }
 
+    const reachBonus = this.getEffectiveReachBonusM();
+
     if (this.fireMgr.status === 'ON_POST') {
-      if (playerPos.distanceTo(this.fireMgr.getPrimaryPostPos()) <= 3.5) {
+      if (playerPos.distanceTo(this.fireMgr.getPrimaryPostPos()) <= 3.5 + reachBonus) {
         this.fireMgr.grabPrimaryExtinguisher();
         this.onToast(
           'info',
@@ -656,7 +722,7 @@ export class Scenario4Controller {
     if (
       this.fireMgr.isSpareAvailable() &&
       this.fireMgr.charge01 < 0.85 &&
-      playerPos.distanceTo(this.fireMgr.getSparePostPos()) <= 3.5
+      playerPos.distanceTo(this.fireMgr.getSparePostPos()) <= 3.5 + reachBonus
     ) {
       this.fireMgr.swapSpareExtinguisher();
       this.onToast('success', 'БАЛЛОН ОУ-5 ЗАМЕНЁН', 'Запасной баллон (100%) готов к применению.');
@@ -671,7 +737,7 @@ export class Scenario4Controller {
       }
     }
 
-    const npcCmd = this.evacMgr.tryCommandNearestGroup(playerPos, this.fireMgr);
+    const npcCmd = this.evacMgr.tryCommandNearestGroup(playerPos, this.fireMgr, reachBonus);
     if (npcCmd.found) {
       if (npcCmd.startedEvac) {
         this.onToast(
@@ -820,6 +886,7 @@ export class Scenario4Controller {
     }
 
     // 1. Обновление автомобиля МЧС и пожарного рукава
+    const earlyWarnRatio = COOP_ROLE_SPECIFICATIONS[this.operatorRole]?.modifiers.earlyWarningRatio ?? 0.8;
     const vehRes = this.vehicleSys.update({
       dt,
       playerPos,
@@ -831,7 +898,7 @@ export class Scenario4Controller {
       manualSteer: vehicleSteer,
       isSpraying: this.fireMgr.isSpraying,
       hasAlert: Boolean(
-        this.fsm.getWarningBanner() || this.cumulativeDoseMsv >= this.doseLimitMsv * 0.8
+        this.fsm.getWarningBanner() || this.cumulativeDoseMsv >= this.doseLimitMsv * earlyWarnRatio
       ),
       extraColliders: this.wallColliders
     });
@@ -860,7 +927,7 @@ export class Scenario4Controller {
       );
     }
 
-    // 3. Очаги пожара и ОУ-5
+    // 3. Очаги пожара и ОУ-5 (с учетом термостойкости костюма, фильтрации СИЗОД и роли звена)
     const fireState = this.fireMgr.update(
       dt,
       playerPos,
@@ -870,10 +937,19 @@ export class Scenario4Controller {
       handAnchorQuat,
       hasVrHandQuat
     );
-    this.currentHeatLoad01 = fireState.thermalHeatLoad01;
-    this.currentSmoke01 = fireState.smokeExposure01 * opsRes.smokeMultiplier;
-    if (fireState.thermalHeatLoad01 > this.peakHeatLoad01) {
-      this.peakHeatLoad01 = fireState.thermalHeatLoad01;
+    const suitThermalC = SUIT_THERMAL_RATING_C[this.operatorSuitId] ?? 40;
+    const roleThermalMult = this.operatorRole === 'LIQUIDATOR_OPERATOR' ? 0.85 : 1.0;
+    const heatAtten = THREE.MathUtils.clamp(40 / Math.max(40, suitThermalC), 0.14, 1.0) * roleThermalMult;
+    const smokePenetration = RESPIRATOR_SMOKE_PENETRATION[this.operatorRespiratorId] ?? 1.0;
+
+    this.currentHeatLoad01 = THREE.MathUtils.clamp(fireState.thermalHeatLoad01 * heatAtten, 0, 1);
+    this.currentSmoke01 = THREE.MathUtils.clamp(
+      fireState.smokeExposure01 * opsRes.smokeMultiplier * smokePenetration,
+      0,
+      1
+    );
+    if (this.currentHeatLoad01 > this.peakHeatLoad01) {
+      this.peakHeatLoad01 = this.currentHeatLoad01;
     }
 
     // 4. Эвакуация NPC
@@ -1010,11 +1086,13 @@ export class Scenario4Controller {
       prompt = '[Enter] / [E] — Сесть за руль пожарной машины АЦ-40 МЧС';
     }
 
+    const reachBonus = this.getEffectiveReachBonusM();
+
     if (phase === 'BRIEFING_ENTRY') {
       if (this.fireMgr.status === 'ON_POST' && !this.vehicleSys.isHoseAttached) {
         this.evacMgr.setTargetHighlight(this.fireMgr.getPrimaryPostPos(), 0xef4444);
         this.evacMgr.updateGuidePath(null);
-        if (!prompt && playerPos.distanceTo(this.fireMgr.getPrimaryPostPos()) <= 3.5) {
+        if (!prompt && playerPos.distanceTo(this.fireMgr.getPrimaryPostPos()) <= 3.5 + reachBonus) {
           prompt = '[E] / ЛКМ / Курок — Взять огнетушитель ОУ-5 со стойки';
         }
       } else if (this.fireMgr.status === 'HELD_LOCKED' && !this.vehicleSys.isHoseAttached) {
@@ -1035,7 +1113,7 @@ export class Scenario4Controller {
         this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [
           this.fireMgr.getSparePostPos()
         ]);
-        if (!prompt && playerPos.distanceTo(this.fireMgr.getSparePostPos()) <= 3.5) {
+        if (!prompt && playerPos.distanceTo(this.fireMgr.getSparePostPos()) <= 3.5 + reachBonus) {
           prompt = '[E] / Курок — Заменить баллон ОУ-5 на запасной (100%)';
         }
       } else {
@@ -1043,7 +1121,7 @@ export class Scenario4Controller {
         if (nextFire) {
           this.evacMgr.setTargetHighlight(nextFire.worldPos, 0xf97316);
           this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [nextFire.worldPos]);
-          if (!prompt && playerPos.distanceTo(nextFire.worldPos) <= 8.5) {
+          if (!prompt && playerPos.distanceTo(nextFire.worldPos) <= 8.5 + reachBonus) {
             prompt = `Удерживайте ЛКМ / [E] / Курок — Тушение: ${nextFire.config.nameRu} (${Math.round(nextFire.intensity * 100)}%)`;
           }
         }
@@ -1066,7 +1144,7 @@ export class Scenario4Controller {
         if (pendingNpc) {
           this.evacMgr.setTargetHighlight(pendingNpc.currentPos, 0x22c55e);
           this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [pendingNpc.currentPos]);
-          if (!prompt && playerPos.distanceTo(pendingNpc.currentPos) <= 7.0) {
+          if (!prompt && playerPos.distanceTo(pendingNpc.currentPos) <= 7.0 + reachBonus) {
             prompt = `[E] / ЛКМ / Курок — Начать эвакуацию: ${pendingNpc.config.nameRu}`;
           }
         } else {

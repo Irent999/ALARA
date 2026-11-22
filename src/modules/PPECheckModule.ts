@@ -7,8 +7,8 @@
  * - Боевой устав войск РХБ защиты и Руководство по эксплуатации изолирующих костюмов (КИХ-4, ИЗК, Л-1)
  */
 
-export type SuitType = 'IZK' | 'KIH_4' | 'L_1' | 'RHBZ_HEAVY';
-export type RespiratorType = 'SHMP' | 'DP_5_RESP' | 'ASV_2';
+export type SuitType = 'NONE' | 'BOP_1' | 'IZK' | 'KIH_4' | 'L_1' | 'RHBZ_HEAVY';
+export type RespiratorType = 'NONE' | 'SHMP' | 'DP_5_RESP' | 'PPM_88' | 'ASV_2';
 export type DosimeterDeviceType = 'DKG_07B' | 'SRP_68_01';
 
 /**
@@ -104,6 +104,32 @@ export interface ProtectionCoefficientsResult {
  * Нормативная база защитных костюмов
  */
 export const SUIT_SPECIFICATIONS: Readonly<Record<SuitType, SuitSpecification>> = {
+  NONE: {
+    id: 'NONE',
+    codeRu: 'Х/б форма',
+    fullNameRu: 'Повседневная хлопчатобумажная спецодежда без термо- и спецзащиты',
+    massKg: 1.1,
+    thermalInsulationFactor: 1.0,
+    baseProtectionFactors: {
+      alpha: 20.0,
+      beta: 1.05,
+      gamma: 1.0,
+      aerosol: 1.0
+    }
+  },
+  BOP_1: {
+    id: 'BOP_1',
+    codeRu: 'БОП-1 МЧС',
+    fullNameRu: 'Боевая одежда пожарного БОП-1 / ТОК-200 с термозащитой до 350°C',
+    massKg: 5.4,
+    thermalInsulationFactor: 1.45,
+    baseProtectionFactors: {
+      alpha: 1800.0,
+      beta: 16.0,
+      gamma: 1.06,
+      aerosol: 400.0
+    }
+  },
   IZK: {
     id: 'IZK',
     codeRu: 'ИЗК',
@@ -146,7 +172,7 @@ export const SUIT_SPECIFICATIONS: Readonly<Record<SuitType, SuitSpecification>> 
   RHBZ_HEAVY: {
     id: 'RHBZ_HEAVY',
     codeRu: 'РХБЗ-Комплект РЗК',
-    fullNameRu: 'Тяжелый радиационно-защитный комплект с освинцованным жилетом и фартуком (0.5 мм Pb экв.)',
+    fullNameRu: 'Тяжелый радиационно-защитный комплект с освинцованным жилетом и фартуком (0.5–2.5 мм Pb экв.)',
     massKg: 16.5,
     thermalInsulationFactor: 2.6,
     baseProtectionFactors: {
@@ -162,21 +188,37 @@ export const SUIT_SPECIFICATIONS: Readonly<Record<SuitType, SuitSpecification>> 
  * Нормативная база средств защиты органов дыхания (СИЗОД)
  */
 export const RESPIRATOR_SPECIFICATIONS: Readonly<Record<RespiratorType, RespiratorSpecification>> = {
+  NONE: {
+    id: 'NONE',
+    codeRu: 'Без СИЗОД',
+    fullNameRu: 'Открытое дыхание атмосферным воздухом (без фильтрации аэрозолей и дыма)',
+    isAutonomousClosedCircuit: false,
+    nominalDurationMinutes: 9999,
+    inhalationProtectionFactor: 1.0
+  },
+  PPM_88: {
+    id: 'PPM_88',
+    codeRu: 'Маска ППМ-88 МЧС',
+    fullNameRu: 'Полнолицевая панорамная маска ППМ-88 с комбинированным фильтром от дыма и аэрозолей',
+    isAutonomousClosedCircuit: false,
+    nominalDurationMinutes: 140,
+    inhalationProtectionFactor: 2500.0
+  },
   SHMP: {
     id: 'SHMP',
-    codeRu: 'ШМП (Противогаз ГП-7/ПМК)',
-    fullNameRu: 'Фильтрующий противогаз со шлем-маской ШМП и коробкой ФПК ЕО-16',
+    codeRu: 'ШМП (Противогаз ГП-7/ВМ)',
+    fullNameRu: 'Фильтрующий противогаз со шлем-маской ШМП/ГП-7ВМ и коробкой ФПК ЕО-16',
     isAutonomousClosedCircuit: false,
     nominalDurationMinutes: 120,
-    inhalationProtectionFactor: 100.0
+    inhalationProtectionFactor: 1000.0
   },
   DP_5_RESP: {
     id: 'DP_5_RESP',
-    codeRu: 'РПГ-67 / ФПК-ДП',
-    fullNameRu: 'Панорамный респираторно-фильтрующий блок противоаэрозольной защиты',
+    codeRu: 'Лепесток-200 / РПГ',
+    fullNameRu: 'Противоаэрозольный фильтрующий респиратор класса FFP3 (ФПП-15)',
     isAutonomousClosedCircuit: false,
     nominalDurationMinutes: 90,
-    inhalationProtectionFactor: 50.0
+    inhalationProtectionFactor: 200.0
   },
   ASV_2: {
     id: 'ASV_2',
@@ -184,7 +226,7 @@ export const RESPIRATOR_SPECIFICATIONS: Readonly<Record<RespiratorType, Respirat
     fullNameRu: 'Аппарат сжатого воздуха изолирующий АСВ-2 с избыточным подмасочным давлением',
     isAutonomousClosedCircuit: true,
     nominalDurationMinutes: 45,
-    inhalationProtectionFactor: 5000.0
+    inhalationProtectionFactor: 10000.0
   }
 };
 
@@ -334,5 +376,58 @@ export function calculatePPEProtectionFactors(state: PPELoadoutState): Protectio
     dermalContaminationMultiplier: Number(dermalContaminationMultiplier.toFixed(4)),
     effectiveIntegrityRatio: Number(effectiveIntegrityRatio.toFixed(3)),
     breachAlertActive: rawIntegrity < 0.85 || !state.suitSealVerified || state.oxygenOrFilterReservePercent < 15.0
+  };
+}
+
+/**
+ * Синхронизация визуальной конфигурации 3D-манекена СИЗ (suitId / respiratorId)
+ * с инженерным состоянием модуля физиологии и проверки СИЗ (PPELoadoutState)
+ */
+export function mapCharacterPpeToCheckState(
+  suitId: string,
+  respiratorId: string,
+  prev: PPELoadoutState
+): PPELoadoutState {
+  const suitMap: Record<string, SuitType> = {
+    none: 'NONE',
+    bop_suit: 'BOP_1',
+    l1_suit: 'L_1',
+    kih4_suit: 'KIH_4',
+    lead_apron: 'RHBZ_HEAVY',
+    heavy_lead_armor: 'RHBZ_HEAVY'
+  };
+  const respMap: Record<string, RespiratorType> = {
+    none: 'NONE',
+    lepestok_200: 'DP_5_RESP',
+    ppm88_mask: 'PPM_88',
+    gp7_gasmask: 'SHMP',
+    gp7vm_gasmask: 'SHMP',
+    asv2_scba: 'ASV_2'
+  };
+
+  const nextSuitType = suitMap[suitId] ?? 'NONE';
+  const nextRespType = respMap[respiratorId] ?? 'NONE';
+  const respChanged = nextRespType !== prev.respiratorType;
+
+  const nextReserve = respChanged
+    ? 100.0
+    : nextRespType === 'NONE'
+    ? 100.0
+    : prev.oxygenOrFilterReservePercent;
+  const nextPressure =
+    nextRespType === 'ASV_2'
+      ? Number(((nextReserve / 100.0) * 29.4).toFixed(2))
+      : nextRespType === 'NONE'
+      ? 0.0
+      : 1.0;
+
+  return {
+    ...prev,
+    suitType: nextSuitType,
+    respiratorType: nextRespType,
+    suitIntegrity: 1.0,
+    suitSealVerified: nextSuitType !== 'NONE' || nextRespType !== 'NONE',
+    oxygenOrFilterReservePercent: nextReserve,
+    cylinderPressureMpa: nextPressure
   };
 }

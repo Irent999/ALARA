@@ -325,7 +325,24 @@ export const SCENARIO_4_CONFIG = {
     seatLocalOffset: [0.50, 1.78, 1.54] as readonly [number, number, number],
     exitSideOffset: [2.35, 0, 1.54] as readonly [number, number, number],
     pumpLocalOffset: [0, 0.95, -2.85] as readonly [number, number, number],
-    collisionRadiusM: 2.1
+    collisionRadiusM: 2.1,
+    /**
+     * Настройки границ передвижения АЦ-40 по территории /assembly.glb:
+     * - freeRoamAcrossSite: отключает блокировку грубыми прямоугольниками (Box3) зданий и стен,
+     *   чтобы машина свободно ездила по дорогам, дворам и всей площадке без «невидимых стен».
+     * - clampToSiteBox3: ограничивает выезд за пределы реального Box3 сборки (с учётом scale/rotation).
+     * - edgeMarginM: отступ внутрь от краёв Box3 площадки в метрах (положительный — внутрь, отрицательный — выезд за край).
+     */
+    driveBounds: {
+      freeRoamAcrossSite: true,
+      clampToSiteBox3: true,
+      edgeMarginM: 2.0,
+      enableBuildingBoxColliders: false,
+      enableExtraColliders: false,
+      maxColliderSiteFraction: 0.42,
+      maxDeckStepHeightM: 2.2,
+      groundFollowSmoothRate: 10.0
+    }
   },
 
   // --- 9. Пожарный рукав (Hose) от машины МЧС к внутренним очагам ---

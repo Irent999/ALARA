@@ -29,6 +29,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { InstrumentId } from '../instruments/gostInstruments';
+import type { RemoteToolId } from '../physics/gostPhysics';
 import {
   createBopReflectiveStripeTexture,
   createMchsChevronTexture
@@ -579,7 +580,12 @@ export class RealisticHumanHandRig {
   private bareWristMeshes: THREE.Mesh[] = [];
   private sleeveEmblemMeshes: THREE.Mesh[] = [];
   private bopReflectiveMeshes: THREE.Mesh[] = [];
+  private roleCuffMeshes: THREE.Mesh[] = [];
   private currentSuitId: string = 'none';
+  private remoteToolId: RemoteToolId = 'hand';
+  private roleAccentColorHex = 0x38bdf8;
+  private telescopicBoomGroup: THREE.Group | null = null;
+  private tongsHeadGroup: THREE.Group | null = null;
   private currentGripProgress = 0; // 0.0 = пальцы расправлены, 0.42/0.45 = Grip Pose прибора/фонаря, 1.0 = сжаты в кулак
   private targetGripProgress = 0;
   private triggerCurlInput = 0;
@@ -906,6 +912,21 @@ export class RealisticHumanHandRig {
     emblemMesh.visible = false;
     this.palmGroup.add(emblemMesh);
     this.sleeveEmblemMeshes.push(emblemMesh);
+
+    // Полоса-идентификатор роли звена РХБЗ на запястье (АТОМ-1 / АТОМ-2 / ШТАБ-0)
+    const roleBandGeo = new THREE.TorusGeometry(0.0315, 0.0028, 12, 30);
+    roleBandGeo.scale(1.18, 0.80, 1.0);
+    const roleBandMat = new THREE.MeshStandardMaterial({
+      color: this.roleAccentColorHex,
+      emissive: this.roleAccentColorHex,
+      emissiveIntensity: 0.45,
+      roughness: 0.32,
+      metalness: 0.45
+    });
+    const roleBandMesh = new THREE.Mesh(roleBandGeo, roleBandMat);
+    roleBandMesh.position.set(0, palmBaseY, 0.015);
+    this.palmGroup.add(roleBandMesh);
+    this.roleCuffMeshes.push(roleBandMesh);
 
     return wristMesh;
   }
@@ -1497,6 +1518,43 @@ export class RealisticHumanHandRig {
     );
     this.radiometerChassisGroup.add(catenaryCable);
 
+    // Выносная телескопическая штанга 2.8м и удлинитель манипулятора 1.5м (переключаются по RemoteToolId)
+    this.telescopicBoomGroup = new THREE.Group();
+    this.telescopicBoomGroup.name = 'remote_telescopic_boom';
+    const carbonMat = createPolymerCasingMaterial(0x0f172a);
+    const collarBlueMat = createMetalConnectorMaterial(0x0ea5e9);
+    const steelTubeMat = createMetalConnectorMaterial(0xcbd5e9);
+
+    const boomSeg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.0115, 0.36, 20), carbonMat);
+    boomSeg1.rotation.x = Math.PI / 2;
+    boomSeg1.position.set(0, 0.003, -0.26);
+    const boomSeg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.0082, 0.0095, 0.38, 20), steelTubeMat);
+    boomSeg2.rotation.x = Math.PI / 2;
+    boomSeg2.position.set(0, 0.003, -0.61);
+    const boomSeg3 = new THREE.Mesh(new THREE.CylinderGeometry(0.0068, 0.0078, 0.38, 20), carbonMat);
+    boomSeg3.rotation.x = Math.PI / 2;
+    boomSeg3.position.set(0, 0.003, -0.96);
+    const lockCollarA = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.024, 20), collarBlueMat);
+    lockCollarA.rotation.x = Math.PI / 2;
+    lockCollarA.position.set(0, 0.003, -0.43);
+    const lockCollarB = lockCollarA.clone();
+    lockCollarB.position.set(0, 0.003, -0.78);
+    this.telescopicBoomGroup.add(boomSeg1, boomSeg2, boomSeg3, lockCollarA, lockCollarB);
+    this.telescopicBoomGroup.visible = false;
+    this.radiometerChassisGroup.add(this.telescopicBoomGroup);
+
+    this.tongsHeadGroup = new THREE.Group();
+    this.tongsHeadGroup.name = 'remote_manipulator_ext';
+    const manipStem = new THREE.Mesh(new THREE.CylinderGeometry(0.0075, 0.0088, 0.46, 20), steelTubeMat);
+    manipStem.rotation.x = Math.PI / 2;
+    manipStem.position.set(0, 0.003, -0.31);
+    const manipCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.026, 20), createPolymerCasingMaterial(0xf59e0b));
+    manipCollar.rotation.x = Math.PI / 2;
+    manipCollar.position.set(0, 0.003, -0.52);
+    this.tongsHeadGroup.add(manipStem, manipCollar);
+    this.tongsHeadGroup.visible = false;
+    this.radiometerChassisGroup.add(this.tongsHeadGroup);
+
     // Выносной датчик / блок детектора направлен строго вперед по направлению указательного пальца (вдоль -Z)
     this.radiometerChassisGroup.add(this.probeAssemblyGroup);
     this.rebuildProbeGeometry('dp5');
@@ -1858,6 +1916,45 @@ export class RealisticHumanHandRig {
     this.setGloveSuitMaterial(state?.suitId || 'none');
   }
 
+  public getVisualProbeExtensionM(): number {
+    if (this.remoteToolId === 'telescopic_rod_3m') return 1.08;
+    if (this.remoteToolId === 'manipulator_15m') return 0.45;
+    return 0;
+  }
+
+  public setRemoteToolMode(toolId: RemoteToolId): void {
+    this.remoteToolId = toolId;
+    const visExt = this.getVisualProbeExtensionM();
+
+    if (this.hasRadiometer) {
+      this.probeAssemblyGroup.position.set(0, 0, -visExt);
+      if (this.telescopicBoomGroup) {
+        this.telescopicBoomGroup.visible = toolId === 'telescopic_rod_3m';
+      }
+      if (this.tongsHeadGroup) {
+        this.tongsHeadGroup.visible = toolId === 'manipulator_15m';
+      }
+    }
+
+    // При выборе вытянутой руки (+0.45 м), манипулятора или штанги плавно выносим кисть вперед в Desktop
+    if (toolId === 'extended_arm') {
+      this.setExtensionTarget(true);
+    } else if (toolId === 'hand') {
+      this.setExtensionTarget(false);
+    }
+  }
+
+  public setCoopRoleAccent(colorHex: number): void {
+    this.roleAccentColorHex = colorHex;
+    for (let i = 0; i < this.roleCuffMeshes.length; i++) {
+      const mat = this.roleCuffMeshes[i].material as THREE.MeshStandardMaterial;
+      if (mat) {
+        mat.color.setHex(colorHex);
+        mat.emissive.setHex(colorHex);
+      }
+    }
+  }
+
   public getSuitId(): string {
     return this.currentSuitId;
   }
@@ -2038,12 +2135,14 @@ export class RealisticHumanHandRig {
       this.handGroup.rotation.set(this.smoothedPitchComp * 0.16, 0, this.wristAngle);
     }
 
-    // 3. Мировая позиция кончика выносного датчика (вдоль оси -Z указательного пальца) или обновление матрицы фонаря левой руки
+    // 3. Мировая позиция кончика выносного датчика (вдоль оси -Z указательного пальца с учётом телескопической штанги)
     if (this.hasRadiometer) {
       this.radiometerChassisGroup.updateWorldMatrix(true, false);
       this.radiometerChassisGroup.getWorldPosition(this.probeTipWorldPos);
       this.radiometerChassisGroup.getWorldQuaternion(this.tempWorldQuat);
-      this.tempProbeOffset.set(0, 0.003, -0.220).applyQuaternion(this.tempWorldQuat);
+      this.tempProbeOffset
+        .set(0, 0.003, -0.220 - this.getVisualProbeExtensionM())
+        .applyQuaternion(this.tempWorldQuat);
       this.probeTipWorldPos.add(this.tempProbeOffset);
     } else {
       this.palmGroup.updateWorldMatrix(true, true);
