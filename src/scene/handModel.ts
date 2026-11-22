@@ -892,7 +892,7 @@ export class RealisticHumanHandRig {
     this.palmGroup.add(bopStripeMesh);
     this.bopReflectiveMeshes.push(bopStripeMesh);
 
-    // Нарукавный шеврон «МЧС РОССИИ» на внешней стороне рукава
+    // Нарукавный шеврон «МЧС УЗБЕКИСТАНА» на внешней стороне рукава
     const emblemMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(0.034, 0.042),
       new THREE.MeshBasicMaterial({

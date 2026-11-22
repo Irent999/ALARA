@@ -42,21 +42,23 @@ function createMchsDoorTexture(): THREE.CanvasTexture {
   ctx.fillStyle = '#b91c1c';
   ctx.fillRect(0, 0, 512, 192);
   ctx.fillStyle = '#f8fafc';
-  ctx.fillRect(0, 64, 512, 56);
-  ctx.fillStyle = '#1e3a8a';
-  ctx.fillRect(0, 114, 512, 12);
+  ctx.fillRect(0, 62, 512, 60);
+  ctx.fillStyle = '#0ea5e9';
+  ctx.fillRect(0, 118, 512, 8);
+  ctx.fillStyle = '#16a34a';
+  ctx.fillRect(0, 54, 512, 8);
 
   ctx.fillStyle = '#0f172a';
-  ctx.font = 'bold 34px sans-serif';
+  ctx.font = 'bold 28px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('МЧС РОССИИ · АЦ-40', 256, 102);
+  ctx.fillText('МЧС УЗБЕКИСТАНА · АЦ-40', 256, 101, 480);
 
   ctx.fillStyle = '#fef08a';
-  ctx.font = 'bold 20px monospace';
-  ctx.fillText('ПОЖАРНО-СПАСАТЕЛЬНАЯ СЛУЖБА АЭС', 256, 44);
+  ctx.font = 'bold 19px monospace';
+  ctx.fillText('ПОЖАРНО-СПАСАТЕЛЬНАЯ СЛУЖБА АЭС', 256, 38, 480);
   ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 20px monospace';
-  ctx.fillText('БОРТ 04 · НАСОС / РУКАВ 58 М', 256, 162);
+  ctx.font = 'bold 19px monospace';
+  ctx.fillText('БОРТ 04 · НАСОС / РУКАВ 58 М', 256, 162, 480);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;

@@ -340,7 +340,7 @@ export class PlayerAvatarRig {
     this.rootGroup.add(this.scbaUnitGroup);
 
     // ------------------------------------------------------------------------
-    // 8.5. БОЕВАЯ ОДЕЖДА ПОЖАРНОГО МЧС (БОП-1) И НАШИВКИ «МЧС РОССИИ»
+    // 8.5. БОЕВАЯ ОДЕЖДА ПОЖАРНОГО МЧС (БОП-1) И НАШИВКИ «МЧС УЗБЕКИСТАНА»
     // ------------------------------------------------------------------------
     this.mchsInsigniaGroup = new THREE.Group();
     const chevronMat = new THREE.MeshBasicMaterial({

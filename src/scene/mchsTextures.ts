@@ -1,5 +1,5 @@
 /**
- * ALARA-Planner Pro VR — Генератор процедурных Canvas-текстур МЧС России и объектов АЭС
+ * ALARA-Planner Pro VR — Генератор процедурных Canvas-текстур МЧС Узбекистана и объектов АЭС
  * (Все текстуры создаются в памяти браузера/Electron без внешних URL и используют THREE.SRGBColorSpace)
  */
 
@@ -11,7 +11,7 @@ let cachedBopReflectiveTex: THREE.CanvasTexture | null = null;
 let cachedEvacSignTex: THREE.CanvasTexture | null = null;
 
 /**
- * Процедурный нарукавный шеврон МЧС России (Белая звезда надежды + оранжевый треугольник + «МЧС РОССИИ»)
+ * Процедурный нарукавный шеврон МЧС Узбекистана (Белая звезда надежды + оранжевый треугольник + «МЧС УЗБЕКИСТАНА»)
  */
 export function createMchsChevronTexture(): THREE.CanvasTexture {
   if (cachedMchsChevronTex) return cachedMchsChevronTex;
@@ -45,9 +45,9 @@ export function createMchsChevronTexture(): THREE.CanvasTexture {
 
   // Верхняя дуговая плашка
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 26px sans-serif';
+  ctx.font = 'bold 19px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('МЧС РОССИИ', 128, 66);
+  ctx.fillText('МЧС УЗБЕКИСТАНА', 128, 66, 184);
 
   // Звезда Надежды (8-конечная белая звезда + синий круг + оранжевый треугольник)
   const cx = 128;
@@ -99,7 +99,7 @@ export function createMchsChevronTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Наспинная светоотражающая нашивка «МЧС РОССИИ» для БОП и химзащиты
+ * Наспинная светоотражающая нашивка «МЧС УЗБЕКИСТАНА» для БОП и химзащиты
  */
 export function createMchsBackPatchTexture(): THREE.CanvasTexture {
   if (cachedMchsBackPatchTex) return cachedMchsBackPatchTex;
@@ -124,10 +124,10 @@ export function createMchsBackPatchTexture(): THREE.CanvasTexture {
   ctx.fillRect(16, 32, 480, 96);
 
   ctx.fillStyle = '#ffffff';
-  ctx.font = '900 54px sans-serif';
+  ctx.font = '900 40px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('МЧС РОССИИ', 256, 82);
+  ctx.fillText('МЧС УЗБЕКИСТАНА', 256, 82, 460);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;

@@ -330,13 +330,6 @@ export const HUD: React.FC<HUDProps> = ({
       : (currentDoseRateMicroSv / 1000).toFixed(2);
   const doseRateUnit = currentDoseRateMicroSv < 1000 ? 'мкЗв/ч' : 'мЗв/ч';
 
-  const threatDotColor =
-    threatLevel === 'danger'
-      ? 'bg-rose-400'
-      : threatLevel === 'warning'
-      ? 'bg-amber-400'
-      : 'bg-emerald-400';
-
   const threatTextColor =
     threatLevel === 'danger'
       ? 'text-rose-300'
@@ -535,49 +528,41 @@ export const HUD: React.FC<HUDProps> = ({
         </div>
       )}
 
-      {/* ВЕРХНЯЯ ПАНЕЛЬ (ZERO-CLUTTER): 1 компактная строка слева + 3 кнопки управления справа */}
+      {/* ВЕРХНЯЯ ПАНЕЛЬ: единая компактная строка телеметрии слева + системные кнопки справа */}
       <div className="fixed top-3 left-3 right-3 z-40 flex items-center justify-between gap-2 pointer-events-none">
-        {/* Левая единая мини-строка телеметрии (клик открывает Тактический Планшет) */}
         <button
           type="button"
           onClick={() => openTabletHandler?.()}
-          className="pointer-events-auto flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-slate-950/85 hover:bg-slate-900 border border-slate-700/80 shadow-lg text-[11px] font-mono tabular-nums text-slate-200 cursor-pointer"
+          className="pointer-events-auto flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-slate-950/90 hover:bg-slate-900 border border-white/12 shadow-lg text-[11px] font-mono tabular-nums text-slate-200 cursor-pointer whitespace-nowrap"
           title="Открыть Тактический Планшет [Tab]"
         >
-          <span className={`w-2 h-2 rounded-full shrink-0 ${threatDotColor}`} />
-          <span className="font-bold text-sky-300">#{scenario.id}</span>
+          <span className="font-bold text-sky-300">Сц. {scenario.id}</span>
+          <span className="text-slate-500">·</span>
           <span className="text-slate-300">
-            Шаг {activeStepNumber}/{totalSteps}
+            Фаза {activeStepNumber}/{totalSteps}
           </span>
-          {isScenario4 && (
-            <span className="text-orange-300 font-bold">
-              Очаги {scenario4Snapshot!.firesExtinguished}/{scenario4Snapshot!.totalFires} · Спас.{' '}
-              {scenario4Snapshot!.rescuedCount}/{scenario4Snapshot!.totalNpcCount}
-            </span>
-          )}
-          <span className="text-slate-600">|</span>
-          <span className={`flex items-center gap-1 font-bold ${threatTextColor}`}>
-            <Radiation className="w-3 h-3" />
+          <span className="text-slate-500">·</span>
+          <span className={`flex items-center gap-1 font-semibold ${threatTextColor}`}>
+            <Radiation className="w-3 h-3 shrink-0" />
             {formattedDoseRate} {doseRateUnit}
           </span>
           <span className="text-slate-400 hidden sm:inline">
-            Доза {(cumulativeDoseMsv * 1000).toFixed(1)} мкЗв
+            · Доза {(cumulativeDoseMsv * 1000).toFixed(1)} мкЗв
           </span>
-          <span className="text-slate-400 hidden md:inline">{countdownFormatted}</span>
+          <span className="text-slate-500 hidden md:inline">· {countdownFormatted}</span>
         </button>
 
-        {/* Правые компактные системные кнопки */}
         <div className="pointer-events-auto flex items-center gap-1.5">
           {openTabletHandler && (
             <button
               type="button"
               onClick={openTabletHandler}
-              className="px-2.5 py-1.5 rounded-xl bg-slate-950/85 hover:bg-slate-900 border border-sky-500/40 text-sky-300 text-xs font-semibold flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap"
+              className="px-2.5 py-1.5 rounded-lg bg-slate-950/90 hover:bg-slate-900 border border-white/12 text-slate-200 text-xs font-medium flex items-center gap-1.5 shadow-lg cursor-pointer whitespace-nowrap"
               title="Тактический Планшет [Tab]"
             >
-              <Tablet className="w-3.5 h-3.5" />
+              <Tablet className="w-3.5 h-3.5 text-sky-400" />
               <span className="hidden sm:inline">Планшет</span>
-              <kbd className="text-[10px] font-mono text-slate-400">[Tab]</kbd>
+              <span className="text-[10px] font-mono text-slate-400">[Tab]</span>
             </button>
           )}
 
@@ -585,10 +570,10 @@ export const HUD: React.FC<HUDProps> = ({
             type="button"
             onClick={onToggleVR}
             disabled={!isVRSupported}
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border shadow-lg flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border shadow-lg flex items-center gap-1 whitespace-nowrap ${
               isVRSupported
-                ? 'bg-slate-950/85 hover:bg-slate-900 border-slate-700 text-amber-300'
-                : 'bg-slate-950/60 border-slate-800 text-slate-500 cursor-not-allowed'
+                ? 'bg-slate-950/90 hover:bg-slate-900 border-white/12 text-amber-300 cursor-pointer'
+                : 'bg-slate-950/60 border-white/5 text-slate-500 cursor-not-allowed'
             }`}
             title={isVRSupported ? 'Войти в VR-режим (WebXR)' : 'WebXR не обнаружен'}
           >
@@ -599,11 +584,11 @@ export const HUD: React.FC<HUDProps> = ({
           <button
             type="button"
             onClick={() => onToggleVisibility?.(false)}
-            className="px-2.5 py-1.5 rounded-xl bg-slate-950/85 hover:bg-slate-900 border border-slate-700 text-slate-300 text-xs flex items-center gap-1 shadow-lg cursor-pointer whitespace-nowrap"
+            className="px-2.5 py-1.5 rounded-lg bg-slate-950/90 hover:bg-slate-900 border border-white/12 text-slate-300 text-xs flex items-center gap-1 shadow-lg cursor-pointer whitespace-nowrap"
             title="Скрыть 2D HUD [H]"
           >
             <EyeOff className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">[H]</span>
+            <span className="hidden md:inline font-mono text-[10px] text-slate-400">[H]</span>
           </button>
         </div>
       </div>
@@ -703,8 +688,8 @@ export const HUD: React.FC<HUDProps> = ({
           </div>
         )}
 
-        {/* Строка слотов */}
-        <div className="flex items-center gap-1 px-2 py-1.5 rounded-2xl bg-slate-950/88 border border-slate-700/80 shadow-xl">
+        {/* Строка слотов инструментов */}
+        <div className="flex items-center gap-1 px-1.5 py-1 rounded-lg bg-slate-950/90 border border-white/12 shadow-xl">
           {primarySlots.map(slot => {
             const isSelected = activeToolId === slot.id;
             return (
@@ -712,10 +697,10 @@ export const HUD: React.FC<HUDProps> = ({
                 key={slot.id}
                 type="button"
                 onClick={() => onSelectTool?.(slot.id)}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-mono transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                className={`px-2.5 py-1 rounded-md text-[11px] font-mono transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                   isSelected
                     ? 'bg-sky-500 text-slate-950 font-bold shadow'
-                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-300 border border-white/8'
                 }`}
                 title={`${slot.nameRu} — ${slot.purposeRu} [${slot.hotkey}]`}
               >
@@ -727,51 +712,44 @@ export const HUD: React.FC<HUDProps> = ({
             );
           })}
 
-          <div className="w-px h-5 bg-slate-800 mx-0.5 hidden sm:block" />
+          {!isScenario4 && (
+            <>
+              <div className="w-px h-5 bg-white/10 mx-0.5 hidden sm:block" />
+              {secondarySlots.map(slot => {
+                const isSelected = activeToolId === slot.id;
+                return (
+                  <button
+                    key={slot.id}
+                    type="button"
+                    onClick={() => onSelectTool?.(slot.id)}
+                    className={`px-2 py-1 rounded-md text-[11px] font-mono transition hidden sm:flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                      isSelected
+                        ? 'bg-amber-400 text-slate-950 font-bold shadow'
+                        : 'bg-slate-900/60 hover:bg-slate-800 text-slate-400 border border-white/8'
+                    }`}
+                    title={`${slot.nameRu} — ${slot.purposeRu} [${slot.hotkey}]`}
+                  >
+                    <span className={isSelected ? 'text-slate-950 font-black' : 'text-slate-500'}>
+                      [{slot.hotkey}]
+                    </span>
+                    <span>{slot.shortNameRu}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
 
-          {secondarySlots.map(slot => {
-            const isSelected = activeToolId === slot.id;
-            return (
-              <button
-                key={slot.id}
-                type="button"
-                onClick={() => onSelectTool?.(slot.id)}
-                className={`px-2 py-1 rounded-xl text-[11px] font-mono transition hidden sm:flex items-center gap-1 cursor-pointer whitespace-nowrap ${
-                  isSelected
-                    ? 'bg-amber-400 text-slate-950 font-bold shadow'
-                    : 'bg-slate-900/50 hover:bg-slate-800 text-slate-400 border border-slate-800/80'
-                }`}
-                title={`${slot.nameRu} — ${slot.purposeRu} [${slot.hotkey}]`}
-              >
-                <span className={isSelected ? 'text-slate-950 font-black' : 'text-slate-500'}>
-                  [{slot.hotkey}]
-                </span>
-                <span>{slot.shortNameRu}</span>
-              </button>
-            );
-          })}
-
-          {/* Бейдж переключения струи [Q] появляется только при активном стволе/огнетушителе [3] */}
+          {/* Переключатель режима струи [Q] только при активном стволе/огнетушителе [3] */}
           {activeToolId === 'extinguisher' && (
             <button
               type="button"
               onClick={onToggleNozzleSprayMode}
-              className="ml-1 px-2.5 py-1 rounded-xl text-[11px] font-mono font-bold bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-400/50 text-cyan-200 flex items-center gap-1 cursor-pointer whitespace-nowrap"
+              className="ml-0.5 px-2.5 py-1 rounded-md text-[11px] font-mono font-semibold bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-400/45 text-cyan-200 flex items-center gap-1 cursor-pointer whitespace-nowrap"
               title="Переключить режим струи [Q]"
             >
               <Droplets className="w-3 h-3 text-cyan-300" />
               <span>[Q] {nozzleSprayMode === 'SOLID' ? 'Сплошная' : 'Распыл'}</span>
             </button>
-          )}
-
-          {/* Бейдж состояния ОУ-5 для Сценария #4 */}
-          {isScenario4 && scenario4Snapshot && (
-            <div className="ml-1 px-2 py-1 rounded-xl text-[10px] font-mono bg-slate-900 border border-slate-800 text-cyan-300 hidden md:flex items-center gap-1">
-              <span>
-                ОУ-5: {scenario4Snapshot.extinguisherChargePct}%
-                {scenario4Snapshot.extinguisherLifecycleState === 'STOWED' ? ' (убран)' : ''}
-              </span>
-            </div>
           )}
         </div>
       </div>

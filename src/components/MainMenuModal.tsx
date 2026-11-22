@@ -102,8 +102,8 @@ export const MainMenuModal: React.FC<MainMenuModalProps> = ({
                 <h1 className="text-xl font-black tracking-tight text-white uppercase">
                   ALARA МЧС — Тренажёр Ликвидации ЧС на АЭС
                 </h1>
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/30 font-mono font-bold">
-                  МЧС РОССИИ • НРБ-99/2009
+                <span className="text-[11px] px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30 font-mono font-bold">
+                  МЧС УЗБЕКИСТАНА · НРБ-99/2009
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">

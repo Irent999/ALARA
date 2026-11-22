@@ -421,7 +421,7 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     head.castShadow = true;
     group.add(head);
 
-    // Особенности костюма (БОП МЧС, Фартук, КИХ-4, Шевроны МЧС России)
+    // Особенности костюма (БОП МЧС, Фартук, КИХ-4, Шевроны МЧС Узбекистана)
     if (ppeState.suitId !== 'none') {
       const chevronMat = new THREE.MeshBasicMaterial({
         map: createMchsChevronTexture(),
