@@ -848,6 +848,8 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
     }
   }, [ppeState, selectedRemoteToolId, coopRole]);
 
+  const [showDetails, setShowDetails] = useState(false);
+
   const currentSuit = SUIT_DEFINITIONS[ppeState.suitId];
   const currentResp = RESPIRATOR_DEFINITIONS[ppeState.respiratorId];
   const currentTool = REMOTE_TOOLS[selectedRemoteToolId] || REMOTE_TOOLS.hand;
@@ -857,34 +859,34 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
   return (
     <div className="flex flex-col lg:flex-row gap-4 items-stretch w-full">
       {/* 3D Сцена манекена */}
-      <div className="relative flex-1 min-h-[380px] rounded-xl overflow-hidden border border-slate-400/15 bg-[#0B1117] flex items-center justify-center">
+      <div className="relative flex-1 min-h-[360px] rounded-xl overflow-hidden border border-slate-400/15 bg-[#0B1117] flex items-center justify-center">
         <div ref={mountRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
-        <div className="absolute top-3 left-3 alara-glass rounded-[10px] px-3 py-1.5 text-xs text-[#94A3B8] pointer-events-none flex items-center gap-1.5">
+        <div className="absolute top-3 left-3 alara-glass rounded-[10px] px-2.5 py-1 text-[11px] text-[#94A3B8] pointer-events-none flex items-center gap-1.5">
           <RotateCcw className="w-3.5 h-3.5 text-[#0EA5E9]" />
-          <span>Вращайте манекен мышью (360° CAD)</span>
+          <span>360° CAD</span>
         </div>
         <div className="absolute bottom-3 left-3 right-3 alara-glass rounded-[10px] px-3 py-1.5 text-[11px] font-mono alara-tabular pointer-events-none flex flex-wrap items-center justify-between gap-2 text-[#F1F5F9]">
           <span style={{ color: currentRoleSpec.primaryColorHex }} className="font-semibold">
             {currentRoleSpec.callsignRu}
           </span>
           <span className="text-[#94A3B8]">
-            Инструмент: <strong className="text-[#0EA5E9]">{currentTool.shortNameRu}</strong> · Досягаемость{' '}
-            <strong className="text-[#10B981]">{effectiveReachM.toFixed(2)} м</strong>
+            <strong className="text-[#0EA5E9]">{currentTool.shortNameRu}</strong> ·{' '}
+            <strong className="text-[#10B981]">{effectiveReachM.toFixed(1)} м</strong>
           </span>
         </div>
       </div>
 
       {/* Панель переключения СИЗ, инструмента, роли и прибора */}
-      <div className="w-full lg:w-96 flex flex-col gap-3 text-xs">
-        <div className="p-3.5 rounded-xl alara-surface space-y-2">
+      <div className="w-full lg:w-96 flex flex-col gap-2.5 text-xs">
+        <div className="p-3 rounded-xl alara-surface space-y-1.5">
           <label className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
-            <Shield className="w-4 h-4 text-[#0EA5E9]" />
-            <span>Защитный костюм (СИЗ тела)</span>
+            <Shield className="w-3.5 h-3.5 text-[#0EA5E9]" />
+            <span>Костюм</span>
           </label>
           <select
             value={ppeState.suitId}
             onChange={e => onChangePPE({ ...ppeState, suitId: e.target.value as SuitTypeId })}
-            className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-2 text-[#14B8A6] font-mono font-medium focus:outline-none focus:border-[#0EA5E9]"
+            className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-2.5 py-1.5 text-[#14B8A6] font-mono font-medium focus:outline-none focus:border-[#0EA5E9]"
           >
             {Object.entries(SUIT_DEFINITIONS).map(([id, s]) => (
               <option key={id} value={id}>
@@ -892,41 +894,35 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
               </option>
             ))}
           </select>
-          <p className="text-[11px] text-[#94A3B8] leading-normal">
-            {currentSuit.descRu}
-          </p>
         </div>
 
-        <div className="p-3.5 rounded-xl alara-surface space-y-2">
+        <div className="p-3 rounded-xl alara-surface space-y-1.5">
           <label className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
-            <Eye className="w-4 h-4 text-[#10B981]" />
-            <span>Защита органов дыхания (СИЗОД)</span>
+            <Eye className="w-3.5 h-3.5 text-[#10B981]" />
+            <span>СИЗОД / Маска</span>
           </label>
           <select
             value={ppeState.respiratorId}
             onChange={e => onChangePPE({ ...ppeState, respiratorId: e.target.value as RespiratorTypeId })}
-            className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-2 text-[#10B981] font-mono font-medium focus:outline-none focus:border-[#10B981]"
+            className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-2.5 py-1.5 text-[#10B981] font-mono font-medium focus:outline-none focus:border-[#10B981]"
           >
             {Object.entries(RESPIRATOR_DEFINITIONS).map(([id, r]) => (
               <option key={id} value={id}>
-                {r.nameRu} (К_защ = {r.inhalationProtectionFactor})
+                {r.nameRu} (КЗ {r.inhalationProtectionFactor})
               </option>
             ))}
           </select>
-          <p className="text-[11px] text-[#94A3B8] leading-normal">
-            {currentResp.descRu}
-          </p>
         </div>
 
-        <div className="p-3.5 rounded-xl alara-surface space-y-2">
+        <div className="p-3 rounded-xl alara-surface space-y-1.5">
           <label className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-[#F59E0B]" />
-            <span>Прибор в руке дозиметриста</span>
+            <Sparkles className="w-3.5 h-3.5 text-[#F59E0B]" />
+            <span>Прибор</span>
           </label>
           <select
             value={ppeState.instrumentId}
             onChange={e => onChangePPE({ ...ppeState, instrumentId: e.target.value as InstrumentId })}
-            className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-2 text-[#F59E0B] font-mono font-medium focus:outline-none focus:border-[#F59E0B]"
+            className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-2.5 py-1.5 text-[#F59E0B] font-mono font-medium focus:outline-none focus:border-[#F59E0B]"
           >
             {Object.values(GOST_INSTRUMENTS).map(inst => (
               <option key={inst.id} value={inst.id}>
@@ -934,92 +930,91 @@ export const CharacterCustomizer3D: React.FC<CharacterCustomizer3DProps> = ({
               </option>
             ))}
           </select>
-          <p className="text-[11px] text-[#94A3B8] leading-normal">
-            {GOST_INSTRUMENTS[ppeState.instrumentId].nameFull}
-          </p>
         </div>
 
         {onChangeRemoteTool && (
-          <div className="p-3.5 rounded-xl alara-surface space-y-2">
+          <div className="p-3 rounded-xl alara-surface space-y-1.5">
             <label className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-[#0EA5E9]" />
-              <span>Дистанционный инструмент</span>
+              <Layers className="w-3.5 h-3.5 text-[#0EA5E9]" />
+              <span>Инструмент</span>
             </label>
             <select
               value={selectedRemoteToolId}
               onChange={e => onChangeRemoteTool(e.target.value as RemoteToolId)}
-              className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-2 text-[#0EA5E9] font-mono font-medium focus:outline-none focus:border-[#0EA5E9]"
+              className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-2.5 py-1.5 text-[#0EA5E9] font-mono font-medium focus:outline-none focus:border-[#0EA5E9]"
             >
               {Object.values(REMOTE_TOOLS).map(tool => (
                 <option key={tool.id} value={tool.id}>
-                  {tool.nameRu}
+                  {tool.shortNameRu}
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-[#94A3B8] leading-normal">
-              {currentTool.descriptionRu}
-            </p>
           </div>
         )}
 
         {onChangeCoopRole && (
-          <div className="p-3.5 rounded-xl alara-surface space-y-2">
+          <div className="p-3 rounded-xl alara-surface space-y-1.5">
             <label className="font-semibold text-[#F1F5F9] flex items-center gap-1.5">
-              <UserCheck className="w-4 h-4 text-[#14B8A6]" />
-              <span>Роль звена РХБЗ</span>
+              <UserCheck className="w-3.5 h-3.5 text-[#14B8A6]" />
+              <span>Роль звена</span>
             </label>
             <select
               value={coopRole}
               onChange={e => onChangeCoopRole(e.target.value as CoopSquadRole)}
-              className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-3 py-2 text-[#F1F5F9] font-mono font-medium focus:outline-none focus:border-[#14B8A6]"
+              className="w-full bg-[#0B1117] border border-slate-400/20 rounded-[10px] px-2.5 py-1.5 text-[#F1F5F9] font-mono font-medium focus:outline-none focus:border-[#14B8A6]"
             >
               {Object.values(COOP_ROLE_SPECIFICATIONS).map(spec => (
                 <option key={spec.role} value={spec.role}>
-                  {spec.callsignRu} — {spec.titleRu}
+                  {spec.callsignRu} · {spec.titleRu}
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-[#94A3B8] leading-normal">
-              {currentRoleSpec.prioritySummaryRu}
-            </p>
           </div>
         )}
 
-        <div className="p-3 rounded-xl bg-[#0EA5E9]/8 border border-[#0EA5E9]/25 text-[11px] font-mono alara-tabular space-y-1">
-          <div className="flex justify-between">
-            <span className="text-[#94A3B8]">Дальность действий / замера:</span>
-            <span className="text-[#0EA5E9] font-semibold">
-              {effectiveReachM.toFixed(2)} м (+{(currentTool.addedDistanceM + currentRoleSpec.modifiers.interactionReachBonusM).toFixed(2)} м)
+        <div className="p-3 rounded-xl alara-surface text-[11px] font-mono alara-tabular space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[#94A3B8]">
+              Дальность <strong className="text-[#0EA5E9]">{effectiveReachM.toFixed(1)} м</strong> ·{' '}
+              <strong className="text-[#F59E0B]">{currentSuit.thermalRatingC}°C</strong>
             </span>
+            <button
+              type="button"
+              onClick={() => setShowDetails(prev => !prev)}
+              className="text-[#0EA5E9] hover:text-sky-300 font-sans font-medium cursor-pointer whitespace-nowrap"
+            >
+              {showDetails ? 'Скрыть' : 'Подробнее ?'}
+            </button>
           </div>
-          <div className="flex justify-between">
-            <span className="text-[#94A3B8]">Свинцовый эквивалент:</span>
-            <span className="text-[#0EA5E9] font-semibold">{currentSuit.leadEquivalentMm} мм Pb</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[#94A3B8]">Ослабление α / β / γ:</span>
-            <span className="text-[#10B981] font-semibold">
-              {currentSuit.alphaBlockingPercent}% / ×{currentSuit.betaAttenuationFactor} / ×{currentSuit.gammaAttenuationFactor}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[#94A3B8]">Защита от дыма/аэрозолей:</span>
-            <span className="text-[#14B8A6] font-semibold">
-              {currentResp.filtrationEfficiencyPercent}% (КЗ {currentResp.inhalationProtectionFactor})
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[#94A3B8]">Термостойкость / Диэлектрик:</span>
-            <span className="text-[#F59E0B] font-semibold">
-              {currentSuit.thermalRatingC}°C {currentSuit.isDielectric ? '· 10 кВ' : ''}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[#94A3B8]">Эффект роли звена:</span>
-            <span style={{ color: currentRoleSpec.primaryColorHex }} className="font-semibold">
-              Скорость ×{currentRoleSpec.modifiers.holdActionSpeedMultiplier.toFixed(2)} · Тушение ×{currentRoleSpec.modifiers.fireSuppressionMultiplier.toFixed(2)}
-            </span>
-          </div>
+
+          {showDetails && (
+            <div className="pt-2 border-t border-slate-400/15 space-y-1.5 text-[11px]">
+              <p className="font-sans text-[#94A3B8] leading-snug">{currentSuit.descRu}</p>
+              <p className="font-sans text-[#94A3B8] leading-snug">{currentResp.descRu}</p>
+              <div className="flex justify-between">
+                <span className="text-[#94A3B8]">Свинец:</span>
+                <span className="text-[#0EA5E9] font-semibold">{currentSuit.leadEquivalentMm} мм Pb</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#94A3B8]">α / β / γ:</span>
+                <span className="text-[#10B981] font-semibold">
+                  {currentSuit.alphaBlockingPercent}% / ×{currentSuit.betaAttenuationFactor} / ×{currentSuit.gammaAttenuationFactor}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#94A3B8]">Фильтрация дыма:</span>
+                <span className="text-[#14B8A6] font-semibold">
+                  {currentResp.filtrationEfficiencyPercent}% (КЗ {currentResp.inhalationProtectionFactor})
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#94A3B8]">Бонус роли:</span>
+                <span style={{ color: currentRoleSpec.primaryColorHex }} className="font-semibold">
+                  Скорость ×{currentRoleSpec.modifiers.holdActionSpeedMultiplier.toFixed(2)} · Тушение ×{currentRoleSpec.modifiers.fireSuppressionMultiplier.toFixed(2)}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
