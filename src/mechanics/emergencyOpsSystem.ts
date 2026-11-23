@@ -10,6 +10,7 @@
 
 import * as THREE from 'three';
 import { SCENARIO_4_CONFIG } from '../npp/nppNodeConfig';
+import { TargetMarkerSprite } from './targetMarkerSprite';
 
 export interface EmergencyOpsSnapshot {
   readonly radReconDone: boolean;
@@ -46,6 +47,18 @@ export class EmergencyOpsSystem {
   private animClockSec = 0;
   private reachBonusM = 0;
   private radReconSpeedMultiplier = 1.0;
+  private targetMarkersVisible = true;
+
+  private readonly radMarkerSprite = new TargetMarkerSprite(2.45, 0.72);
+  private readonly valveMarkerSprite = new TargetMarkerSprite(2.55, 0.75);
+  private readonly casualtyMarkerSprite = new TargetMarkerSprite(2.55, 0.75);
+
+  public setTargetMarkersVisible(visible: boolean): void {
+    this.targetMarkersVisible = visible;
+    this.radMarkerSprite.sprite.visible = visible && !this.radReconDone;
+    this.valveMarkerSprite.sprite.visible = visible && !this.loopIsolated;
+    this.casualtyMarkerSprite.sprite.visible = visible && !this.casualtyStabilized;
+  }
 
   public setRoleModifiers(reachBonusM: number, radReconSpeedMultiplier: number): void {
     this.reachBonusM = Math.max(0, reachBonusM);
@@ -76,6 +89,15 @@ export class EmergencyOpsSystem {
     const casMats = this.buildCasualtyTriageStation();
     this.casualtyRingMat = casMats.ringMat;
     this.casualtyMaskMesh = casMats.maskMesh;
+
+    this.radMarkerSprite.sprite.position.set(this.radReconPos.x, this.radReconPos.y + 2.55, this.radReconPos.z);
+    this.valveMarkerSprite.sprite.position.set(this.loopIsolationPos.x, this.loopIsolationPos.y + 2.75, this.loopIsolationPos.z);
+    this.casualtyMarkerSprite.sprite.position.set(this.casualtyTriagePos.x, this.casualtyTriagePos.y + 2.55, this.casualtyTriagePos.z);
+    this.rootGroup.add(
+      this.radMarkerSprite.sprite,
+      this.valveMarkerSprite.sprite,
+      this.casualtyMarkerSprite.sprite
+    );
   }
 
   private track<T extends { dispose: () => void }>(item: T): T {
@@ -390,6 +412,43 @@ export class EmergencyOpsSystem {
       );
     }
 
+    const distRad = playerPos.distanceTo(this.radReconPos);
+    const distValve = playerPos.distanceTo(this.loopIsolationPos);
+    const distCas = playerPos.distanceTo(this.casualtyTriagePos);
+
+    this.radMarkerSprite.sync(
+      {
+        title: `ДОРАЗВЕДКА ДП-5В · ${Math.round(distRad)} м`,
+        subtitle: `У входа · Прогресс ${Math.min(100, Math.round((this.radReconTimerSec / SCENARIO_4_CONFIG.EMERGENCY_OPS.radReconDurationSec) * 100))}%`,
+        accentHex: '#FACC15',
+        bgHex: 'rgba(66, 32, 6, 0.88)'
+      },
+      distRad,
+      this.targetMarkersVisible && !this.radReconDone
+    );
+
+    this.valveMarkerSprite.sync(
+      {
+        title: `АВАР. ЗАДВИЖКА · ${Math.round(distValve)} м`,
+        subtitle: 'Корпус №1 · Перекрыть контур [E]',
+        accentHex: '#EF4444',
+        bgHex: 'rgba(69, 10, 10, 0.9)'
+      },
+      distValve,
+      this.targetMarkersVisible && !this.loopIsolated
+    );
+
+    this.casualtyMarkerSprite.sync(
+      {
+        title: `ПОСТРАДАВШИЙ · ${Math.round(distCas)} м`,
+        subtitle: 'Корпус №2 · Подать кислород [E]',
+        accentHex: '#38BDF8',
+        bgHex: 'rgba(8, 47, 73, 0.9)'
+      },
+      distCas,
+      this.targetMarkersVisible && !this.casualtyStabilized
+    );
+
     this.radRingMat.opacity = this.radReconDone
       ? 0.25
       : 0.42 + Math.sin(this.animClockSec * 4.0) * 0.18;
@@ -471,6 +530,9 @@ export class EmergencyOpsSystem {
   }
 
   public dispose(): void {
+    this.radMarkerSprite.dispose();
+    this.valveMarkerSprite.dispose();
+    this.casualtyMarkerSprite.dispose();
     this.disposables.forEach(d => d.dispose());
     this.rootGroup.parent?.remove(this.rootGroup);
   }

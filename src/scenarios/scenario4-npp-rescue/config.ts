@@ -16,7 +16,10 @@ export {
   type Scenario4PhaseId as Scenario4StepId,
   type Scenario4PhaseMeta as Scenario4StepMeta,
   type Scenario4DebriefSummary,
-  type Scenario4HudSnapshot
+  type Scenario4HudSnapshot,
+  type Scenario4TargetKind,
+  type Scenario4NavTargetItem,
+  type Scenario4NavigationSnapshot
 } from '../../state/scenario4StateMachine';
 export type {
   ExtinguisherLifecycleState,

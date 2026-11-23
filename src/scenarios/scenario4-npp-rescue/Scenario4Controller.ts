@@ -33,6 +33,8 @@ import {
   SCENARIO4_PHASE_ORDER,
   Scenario4DebriefSummary,
   Scenario4HudSnapshot,
+  Scenario4NavigationSnapshot,
+  Scenario4NavTargetItem,
   Scenario4StateMachine
 } from '../../state/scenario4StateMachine';
 import type { UnifiedLifecyclePhase, UnifiedScenarioState } from '../../state/scenarioContract';
@@ -189,6 +191,8 @@ export class Scenario4Controller {
 
   private readonly scratchVecA = new THREE.Vector3();
   private readonly scratchVecB = new THREE.Vector3();
+  private readonly scratchCamForward = new THREE.Vector3();
+  private targetMarkersVisible = true;
 
   private operatorRole: CoopSquadRole = 'RECON_DOSIMETRIST';
   private operatorSuitId: SuitTypeId = 'none';
@@ -235,6 +239,25 @@ export class Scenario4Controller {
 
   public notifyTeleportFade(): void {
     this.vrComfortFade01 = 1.0;
+  }
+
+  public getTargetMarkersVisible(): boolean {
+    return this.targetMarkersVisible;
+  }
+
+  public toggleTargetMarkers(): boolean {
+    this.targetMarkersVisible = !this.targetMarkersVisible;
+    this.fireMgr?.setTargetMarkersVisible(this.targetMarkersVisible);
+    this.evacMgr?.setTargetMarkersVisible(this.targetMarkersVisible);
+    this.emergencyOps?.setTargetMarkersVisible(this.targetMarkersVisible);
+    this.onToast(
+      'info',
+      this.targetMarkersVisible ? '3D-МАРКЕРЫ ЦЕЛЕЙ ВКЛЮЧЕНЫ' : '3D-МАРКЕРЫ ЦЕЛЕЙ СКРЫТЫ',
+      this.targetMarkersVisible
+        ? 'Над очагами, группами эвакуации и угрозами отображаются дистанция и подсказки.'
+        : '3D-метки скрыты (клавиша [M] возвращает подсветку в любой момент).'
+    );
+    return this.targetMarkersVisible;
   }
 
   private getEffectiveReachBonusM(): number {
@@ -425,18 +448,20 @@ export class Scenario4Controller {
     });
     this.rootGroup.add(this.emergencyOps.rootGroup);
 
-    // 4. Система пожаротушения (ОУ-5 + интеграция с пожарным рукавом МЧС)
+    // 4. Система пожаротушения (ОУ-5 + интеграция с пожарным рукавом МЧС + наружные маяки на корпусах)
     this.fireMgr = new ExtinguisherSystem(
       NPP_NODE_CONFIG.fireZones,
       m.fireZones,
       this.primaryPostPos,
       this.sparePostPos,
-      SCENARIO_4_CONFIG.FIRE_SCALE
+      SCENARIO_4_CONFIG.FIRE_SCALE,
+      m.buildingAnchors,
+      m.fireZoneBuildingIndices
     );
     this.rootGroup.add(this.fireMgr.rootGroup);
     this.applyOperatorLoadoutModifiers();
 
-    // 5. Система эвакуации персонала (4 группы / 10 чел. внутри зданий)
+    // 5. Система эвакуации персонала (4 группы / 10 чел. внутри зданий + 3D-маркеры)
     this.evacMgr = new NpcEvacuationSystem({
       npcSpecs: NPP_NODE_CONFIG.npcGroups,
       discoveredNpcs: m.npcSpawns,
@@ -444,12 +469,19 @@ export class Scenario4Controller {
       triggerSpecs: NPP_NODE_CONFIG.triggerZones,
       discoveredTriggers: m.triggers,
       entrancePos: this.entrancePos,
+      entrances: m.entrances,
+      buildingAnchors: m.buildingAnchors,
+      npcGroupBuildingIndices: m.npcGroupBuildingIndices,
       exits: m.exits,
       assemblyPos: this.assemblyPos,
       markerScale: SCENARIO_4_CONFIG.MARKER_SCALE,
       npcScale: SCENARIO_4_CONFIG.NPC_SCALE
     });
     this.rootGroup.add(this.evacMgr.rootGroup);
+
+    this.fireMgr.setTargetMarkersVisible(this.targetMarkersVisible);
+    this.evacMgr.setTargetMarkersVisible(this.targetMarkersVisible);
+    this.emergencyOps.setTargetMarkersVisible(this.targetMarkersVisible);
 
     // 6. Синхронизация маркеров ИИИ (Cs-137, Co-60) с мировыми координатами очагов внутри .glb
     const fireIsotopes: ReadonlyArray<{ isotopeId: string; activityMBq: number }> = [
@@ -1124,6 +1156,18 @@ export class Scenario4Controller {
           if (!prompt && playerPos.distanceTo(nextFire.worldPos) <= 8.5 + reachBonus) {
             prompt = `Удерживайте ЛКМ / [E] / Курок — Тушение: ${nextFire.config.nameRu} (${Math.round(nextFire.intensity * 100)}%)`;
           }
+        } else if (!this.emergencyOps.loopIsolated) {
+          this.evacMgr.setTargetHighlight(this.emergencyOps.loopIsolationPos, 0xef4444);
+          this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [
+            this.emergencyOps.loopIsolationPos
+          ]);
+          if (!prompt) prompt = 'Все очаги потушены! Перекройте красную задвижку в Корпусе №1 [E]';
+        } else if (!this.emergencyOps.casualtyStabilized) {
+          this.evacMgr.setTargetHighlight(this.emergencyOps.casualtyTriagePos, 0x38bdf8);
+          this.evacMgr.updateGuidePath(this.scratchVecA.copy(playerPos), [
+            this.emergencyOps.casualtyTriagePos
+          ]);
+          if (!prompt) prompt = 'Окажите медпомощь пострадавшему в Корпусе №2 [E]';
         }
       }
     } else if (phase === 'EVACUATION_ESCORT') {
@@ -1233,6 +1277,150 @@ export class Scenario4Controller {
     };
   }
 
+  private computeRelativeBearingDeg(playerPos: THREE.Vector3, targetPos: THREE.Vector3): number {
+    this.camera.getWorldDirection(this.scratchCamForward);
+    let fx = this.scratchCamForward.x;
+    let fz = this.scratchCamForward.z;
+    const fLen = Math.hypot(fx, fz);
+    if (fLen < 1e-4) {
+      fx = 0;
+      fz = -1;
+    } else {
+      fx /= fLen;
+      fz /= fLen;
+    }
+
+    let tx = targetPos.x - playerPos.x;
+    let tz = targetPos.z - playerPos.z;
+    const tLen = Math.hypot(tx, tz);
+    if (tLen < 1e-4) return 0;
+    tx /= tLen;
+    tz /= tLen;
+
+    const dot = fx * tx + fz * tz;
+    const det = fx * tz - fz * tx;
+    return Math.round(THREE.MathUtils.radToDeg(Math.atan2(det, dot)));
+  }
+
+  private buildNavigationSnapshot(): Scenario4NavigationSnapshot {
+    if (this.isLoadingGlb || !this.fireMgr || !this.evacMgr || !this.emergencyOps) {
+      return {
+        markersVisible: this.targetMarkersVisible,
+        priorityTarget: null,
+        activeBuildingAlerts: []
+      };
+    }
+
+    const playerPos = this.playerGroup.position;
+    const phase = this.fsm.getPhase();
+    let priorityTarget: Scenario4NavTargetItem | null = null;
+
+    const setPriority = (
+      id: string,
+      kind: Scenario4NavTargetItem['kind'],
+      labelRu: string,
+      buildingLabelRu: string | null,
+      pos: THREE.Vector3,
+      statusRu: string
+    ) => {
+      const distM = Math.round(Math.hypot(pos.x - playerPos.x, pos.z - playerPos.z));
+      priorityTarget = {
+        id,
+        kind,
+        labelRu,
+        buildingLabelRu,
+        distanceM: distM,
+        relativeBearingDeg: this.computeRelativeBearingDeg(playerPos, pos),
+        statusRu
+      };
+    };
+
+    if (phase === 'BRIEFING_ENTRY') {
+      if (this.fireMgr.status === 'ON_POST' && !this.vehicleSys?.isHoseAttached) {
+        setPriority('ext_post', 'extinguisher', 'Огнетушитель ОУ-5', 'Стартовая площадка', this.fireMgr.getPrimaryPostPos(), 'ВЗЯТЬ [E]');
+      } else if (!this.emergencyOps.radReconDone) {
+        setPriority('rad_recon', 'emergency_op', 'Доразведка ДП-5В', 'У входа', this.emergencyOps.radReconPos, 'ПРОВЕРКА');
+      } else {
+        setPriority('entry_main', 'entrance', 'Вход в аварийный корпус', 'Корпус №1', this.entrancePos, 'ВОЙТИ');
+      }
+    } else if (phase === 'FIRE_SUPPRESSION') {
+      if (!this.vehicleSys?.isHoseAttached && this.fireMgr.status === 'EMPTY' && this.fireMgr.isSpareAvailable()) {
+        setPriority('ext_spare', 'extinguisher', 'Запасной баллон ОУ-5', 'Корпус №1', this.fireMgr.getSparePostPos(), 'ЗАМЕНИТЬ [E]');
+      } else {
+        const nextFire = this.fireMgr.getNearestActiveFire(playerPos);
+        if (nextFire) {
+          setPriority(
+            nextFire.config.id,
+            'fire',
+            `Очаг №${nextFire.index + 1}`,
+            nextFire.buildingLabelRu,
+            nextFire.worldPos,
+            `ПОЖАР ${Math.round(nextFire.intensity * 100)}%`
+          );
+        } else if (!this.emergencyOps.loopIsolated) {
+          setPriority('loop_iso', 'emergency_op', 'Аварийная задвижка', 'Корпус №1', this.emergencyOps.loopIsolationPos, 'ПЕРЕКРЫТЬ [E]');
+        } else if (!this.emergencyOps.casualtyStabilized) {
+          setPriority('cas_triage', 'emergency_op', 'Пострадавший оператор', 'Корпус №2', this.emergencyOps.casualtyTriagePos, 'ПОМОЩЬ [E]');
+        }
+      }
+    } else if (phase === 'EVACUATION_ESCORT') {
+      if (!this.emergencyOps.loopIsolated) {
+        setPriority('loop_iso', 'emergency_op', 'Аварийная задвижка', 'Корпус №1', this.emergencyOps.loopIsolationPos, 'ПЕРЕКРЫТЬ [E]');
+      } else if (!this.emergencyOps.casualtyStabilized) {
+        setPriority('cas_triage', 'emergency_op', 'Пострадавший оператор', 'Корпус №2', this.emergencyOps.casualtyTriagePos, 'ПОМОЩЬ [E]');
+      } else {
+        const nextNpc = this.evacMgr.getNearestPendingNpcGroup(playerPos);
+        if (nextNpc) {
+          setPriority(
+            nextNpc.config.id,
+            'npc',
+            `${nextNpc.config.nameRu} (${nextNpc.config.count} чел.)`,
+            nextNpc.buildingLabelRu,
+            nextNpc.currentPos,
+            nextNpc.state === 'PANIC' ? 'УГРОЗА ОГНЯ' : 'ЭВАКУИРОВАТЬ [E]'
+          );
+        } else {
+          setPriority('asm_zone', 'assembly', 'Пункт сбора МЧС', 'Площадка', this.assemblyPos, 'ВЫЙТИ К СБОРУ');
+        }
+      }
+    } else if (phase === 'COMPLETED') {
+      setPriority('done', 'completed', 'Все задачи выполнены', null, this.assemblyPos, 'ГОТОВО');
+    }
+
+    // Собираем сводку по корпусам, где ещё активен пожар или ждут люди
+    const bldAlertMap = new Map<string, { fires: number; people: number }>();
+    for (let i = 0; i < this.fireMgr.fires.length; i++) {
+      const f = this.fireMgr.fires[i];
+      if (f.status !== 'EXTINGUISHED' && f.intensity > 0) {
+        const entry = bldAlertMap.get(f.buildingLabelRu) ?? { fires: 0, people: 0 };
+        entry.fires += 1;
+        bldAlertMap.set(f.buildingLabelRu, entry);
+      }
+    }
+    for (let i = 0; i < this.evacMgr.npcGroups.length; i++) {
+      const g = this.evacMgr.npcGroups[i];
+      if (g.state !== 'SAFE') {
+        const entry = bldAlertMap.get(g.buildingLabelRu) ?? { fires: 0, people: 0 };
+        entry.people += g.config.count;
+        bldAlertMap.set(g.buildingLabelRu, entry);
+      }
+    }
+
+    const activeBuildingAlerts: string[] = [];
+    bldAlertMap.forEach((counts, bldLabel) => {
+      const parts: string[] = [];
+      if (counts.fires > 0) parts.push(`${counts.fires} очаг`);
+      if (counts.people > 0) parts.push(`${counts.people} чел.`);
+      activeBuildingAlerts.push(`${bldLabel} (${parts.join(', ')})`);
+    });
+
+    return {
+      markersVisible: this.targetMarkersVisible,
+      priorityTarget,
+      activeBuildingAlerts
+    };
+  }
+
   private buildHudSnapshot(): Scenario4HudSnapshot {
     const meta = this.fsm.getMeta();
     const totalFires = this.fireMgr?.getTotalFires() ?? NPP_NODE_CONFIG.fireZones.length;
@@ -1281,6 +1469,7 @@ export class Scenario4Controller {
       emergencyOps: this.emergencyOps
         ? this.emergencyOps.getSnapshot(this.playerGroup.position)
         : EMPTY_EMERGENCY_OPS_SNAPSHOT,
+      navigation: this.buildNavigationSnapshot(),
       activeInputLabelRu: this.activeInputLabelRu,
       targetPromptRu: this.targetPromptRu,
       warningBannerRu: this.fsm.getWarningBanner(),

@@ -20,7 +20,10 @@ import {
   ChevronUp,
   ChevronRight,
   Truck,
-  Navigation
+  Navigation,
+  Eye,
+  EyeOff,
+  ArrowUp
 } from 'lucide-react';
 import type { Scenario4HudSnapshot } from './config';
 
@@ -35,6 +38,7 @@ interface Scenario4HudProps {
   onStartAutopilot: (buildingIndex: number) => void;
   onCancelAutopilot: () => void;
   onToggleBeacons?: () => void;
+  onToggleTargetMarkers?: () => void;
 }
 
 export const Scenario4Hud: React.FC<Scenario4HudProps> = ({
@@ -47,7 +51,8 @@ export const Scenario4Hud: React.FC<Scenario4HudProps> = ({
   onBoardOrExitVehicle,
   onStartAutopilot,
   onCancelAutopilot,
-  onToggleBeacons
+  onToggleBeacons,
+  onToggleTargetMarkers
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -155,6 +160,88 @@ export const Scenario4Hud: React.FC<Scenario4HudProps> = ({
           </div>
         </div>
       )}
+
+      {/* ВЕРХНИЙ ЦЕНТР: Компактный компас-навигатор к приоритетной цели + кнопка 3D-меток [M] */}
+      {isHudVisible &&
+        !snapshot.isLoadingGlb &&
+        !snapshot.loadErrorRu &&
+        !snapshot.debrief &&
+        snapshot.navigation?.priorityTarget && (
+          <div className="fixed top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-none flex flex-col items-center gap-1 max-w-[calc(100vw-24px)]">
+            <div className="pointer-events-auto flex items-center gap-2.5 px-3 py-1.5 rounded-xl alara-glass text-[11px] font-mono alara-tabular text-[#F1F5F9]">
+              <div
+                className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 border ${
+                  snapshot.navigation.priorityTarget.kind === 'fire'
+                    ? 'bg-[#F59E0B]/15 border-[#F59E0B]/50 text-[#F59E0B]'
+                    : snapshot.navigation.priorityTarget.kind === 'npc'
+                    ? 'bg-[#10B981]/15 border-[#10B981]/50 text-[#10B981]'
+                    : 'bg-[#0EA5E9]/15 border-[#0EA5E9]/50 text-[#0EA5E9]'
+                }`}
+                title="Направление к приоритетной цели"
+              >
+                <ArrowUp
+                  className="w-3.5 h-3.5 transition-transform duration-100"
+                  style={{
+                    transform: `rotate(${snapshot.navigation.priorityTarget.relativeBearingDeg}deg)`
+                  }}
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="font-bold text-[#F8FAFC] truncate max-w-[185px]">
+                  {snapshot.navigation.priorityTarget.labelRu}
+                </span>
+                {snapshot.navigation.priorityTarget.buildingLabelRu && (
+                  <>
+                    <span className="text-[#64748B]">·</span>
+                    <span className="text-[#94A3B8] whitespace-nowrap">
+                      {snapshot.navigation.priorityTarget.buildingLabelRu}
+                    </span>
+                  </>
+                )}
+                <span className="text-[#64748B]">·</span>
+                <span
+                  className={`font-bold whitespace-nowrap ${
+                    snapshot.navigation.priorityTarget.kind === 'fire'
+                      ? 'text-[#F59E0B]'
+                      : snapshot.navigation.priorityTarget.kind === 'npc'
+                      ? 'text-[#10B981]'
+                      : 'text-[#0EA5E9]'
+                  }`}
+                >
+                  {snapshot.navigation.priorityTarget.distanceM} м
+                </span>
+              </div>
+
+              {onToggleTargetMarkers && (
+                <button
+                  type="button"
+                  onClick={onToggleTargetMarkers}
+                  className={`ml-1 px-2 py-0.5 rounded-[8px] border text-[10px] font-semibold flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                    snapshot.navigation.markersVisible
+                      ? 'bg-[#0EA5E9]/20 hover:bg-[#0EA5E9]/30 border-[#0EA5E9]/55 text-sky-200'
+                      : 'alara-surface hover:bg-slate-800/80 text-[#94A3B8]'
+                  }`}
+                  title="Показать / скрыть 3D-маркеры целей и расстояния [M]"
+                >
+                  {snapshot.navigation.markersVisible ? (
+                    <Eye className="w-3 h-3" />
+                  ) : (
+                    <EyeOff className="w-3 h-3" />
+                  )}
+                  <span>Метки [M]</span>
+                </button>
+              )}
+            </div>
+
+            {snapshot.navigation.activeBuildingAlerts.length > 0 && (
+              <div className="px-2.5 py-0.5 rounded-lg alara-glass text-[10px] font-mono alara-tabular text-[#CBD5E1] whitespace-nowrap overflow-hidden text-ellipsis max-w-[92vw]">
+                <span className="text-[#F59E0B] font-semibold">Тревога:</span>{' '}
+                {snapshot.navigation.activeBuildingAlerts.join(' · ')}
+              </div>
+            )}
+          </div>
+        )}
 
       {/* ВЕРХНИЙ ЛЕВЫЙ УГОЛ: Сворачиваемый чип / карточка миссии и сервис */}
       {isHudVisible && !snapshot.isLoadingGlb && !snapshot.loadErrorRu && !snapshot.debrief && (

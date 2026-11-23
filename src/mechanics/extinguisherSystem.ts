@@ -11,23 +11,35 @@
 
 import * as THREE from 'three';
 import { SCENARIO_4_CONFIG, type FireZoneSpec } from '../npp/nppNodeConfig';
-import type { NamedWorldMarker } from '../npp/nppSceneInspector';
+import type { BuildingBeaconAnchor, NamedWorldMarker } from '../npp/nppSceneInspector';
+import { TargetMarkerSprite } from './targetMarkerSprite';
 
 export type ExtinguisherStatus = 'ON_POST' | 'HELD_LOCKED' | 'ARMED' | 'EMPTY';
 export type ExtinguisherLifecycleState = 'IDLE_HOLSTERED' | 'EQUIPPED' | 'SPRAYING' | 'STOWED';
 export type FireZoneStatus = 'ACTIVE' | 'SUPPRESSING' | 'EXTINGUISHED';
 
 export interface FireZoneRuntime {
+  readonly index: number;
   readonly config: FireZoneSpec;
   readonly worldPos: THREE.Vector3;
+  readonly buildingLabelRu: string;
   readonly rootGroup: THREE.Group;
   intensity: number; // 1.0 -> 0.0
   status: FireZoneStatus;
   steamTimer: number;
+  extinguishedLabelTimer: number;
   readonly flameCones: THREE.Mesh[];
   readonly smokePuffs: THREE.Mesh[];
+  readonly tallSmokePuffs: THREE.Mesh[];
   readonly light: THREE.PointLight;
   readonly floorRing: THREE.Mesh;
+  readonly beaconGroup: THREE.Group;
+  readonly beaconDomeMat: THREE.MeshBasicMaterial;
+  readonly beaconBeamMesh: THREE.Mesh;
+  readonly beaconBeamMat: THREE.MeshBasicMaterial;
+  readonly beaconFloorRing: THREE.Mesh;
+  readonly beaconFloorRingMat: THREE.MeshBasicMaterial;
+  readonly markerSprite: TargetMarkerSprite;
 }
 
 export interface SprayHitResult {
@@ -93,6 +105,15 @@ export class ExtinguisherSystem {
   private elapsedAnimSec = 0;
   private reachBonusM = 0;
   private suppressionMultiplier = 1.0;
+  private targetMarkersVisible = true;
+
+  public setTargetMarkersVisible(visible: boolean): void {
+    this.targetMarkersVisible = visible;
+    for (let i = 0; i < this.fires.length; i++) {
+      this.fires[i].markerSprite.sprite.visible =
+        visible && (this.fires[i].status !== 'EXTINGUISHED' || this.fires[i].extinguishedLabelTimer > 0);
+    }
+  }
 
   public setRoleModifiers(reachBonusM: number, suppressionMultiplier: number): void {
     this.reachBonusM = Math.max(0, reachBonusM);
@@ -104,7 +125,9 @@ export class ExtinguisherSystem {
     discoveredFires: ReadonlyArray<NamedWorldMarker>,
     primaryPostPos: THREE.Vector3,
     sparePostPos: THREE.Vector3,
-    effectScale = 0.62
+    effectScale = 0.62,
+    buildingAnchors: ReadonlyArray<BuildingBeaconAnchor> = [],
+    fireZoneBuildingIndices: ReadonlyArray<number> = []
   ) {
     this.rootGroup.name = 'npp_extinguisher_fire_system';
     this.effectScale = Math.max(0.25, Math.min(2.0, effectScale));
@@ -117,7 +140,7 @@ export class ExtinguisherSystem {
     this.buildExtinguisherPosts();
     this.buildHandheldExtinguisher();
     this.buildSprayParticlePool();
-    this.buildFireZones(fireSpecs, discoveredFires);
+    this.buildFireZones(fireSpecs, discoveredFires, buildingAnchors, fireZoneBuildingIndices);
   }
 
   private buildBottleMesh(withPin: boolean): {
@@ -297,19 +320,30 @@ export class ExtinguisherSystem {
 
   private buildFireZones(
     fireSpecs: ReadonlyArray<FireZoneSpec>,
-    discoveredFires: ReadonlyArray<NamedWorldMarker>
+    discoveredFires: ReadonlyArray<NamedWorldMarker>,
+    buildingAnchors: ReadonlyArray<BuildingBeaconAnchor>,
+    fireZoneBuildingIndices: ReadonlyArray<number>
   ): void {
     const es = this.effectScale;
     const flameGeo = new THREE.ConeGeometry(0.32 * es, 1.15 * es, 8);
     const smokeGeo = new THREE.DodecahedronGeometry(0.36 * es, 0);
+    const tallSmokeGeo = new THREE.DodecahedronGeometry(0.92 * Math.max(0.85, es), 1);
+    const beaconPoleGeo = new THREE.CylinderGeometry(0.055, 0.075, 3.2, 8);
+    const beaconDomeGeo = new THREE.SphereGeometry(0.24, 12, 10);
+    const beaconBeamGeo = new THREE.CylinderGeometry(0.14, 0.36, 7.5, 12, 1, true);
+    const beaconRingGeo = new THREE.RingGeometry(1.1, 1.42, 32);
 
     fireSpecs.forEach((cfg, idx) => {
-      const matched = discoveredFires.find(d =>
-        d.name.toUpperCase().startsWith(cfg.markerName.toUpperCase())
-      ) ?? discoveredFires[idx];
+      const matched =
+        discoveredFires.find(d => d.name.toUpperCase().startsWith(cfg.markerName.toUpperCase())) ??
+        discoveredFires[idx];
       const worldPos = matched
         ? matched.pos.clone()
         : new THREE.Vector3(cfg.defaultPos[0], cfg.defaultPos[1], cfg.defaultPos[2]);
+
+      const bldIdx = fireZoneBuildingIndices[idx] ?? idx;
+      const bldAnchor = buildingAnchors[bldIdx] ?? buildingAnchors[0];
+      const buildingLabelRu = bldAnchor?.labelRu ?? `Корпус №${(bldIdx % 3) + 1}`;
 
       const group = new THREE.Group();
       group.position.copy(worldPos);
@@ -324,18 +358,18 @@ export class ExtinguisherSystem {
       group.add(baseMesh);
 
       const ringInner = Math.max(padRadius + 0.12, cfg.radiusM * 1.12 * es);
-      const ringOuter = ringInner + 0.14 * es;
+      const ringOuter = ringInner + 0.16 * es;
       const floorRing = new THREE.Mesh(
         new THREE.RingGeometry(ringInner, ringOuter, 28),
         new THREE.MeshBasicMaterial({
           color: 0xf97316,
           side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.34
+          opacity: 0.55
         })
       );
       floorRing.rotation.x = -Math.PI / 2;
-      floorRing.position.y = 0.02;
+      floorRing.position.y = 0.025;
       group.add(floorRing);
 
       const flameCones: THREE.Mesh[] = [];
@@ -343,7 +377,7 @@ export class ExtinguisherSystem {
         const flameMat = new THREE.MeshBasicMaterial({
           color: f % 2 === 0 ? 0xf97316 : 0xfacc15,
           transparent: true,
-          opacity: 0.85,
+          opacity: 0.88,
           blending: THREE.AdditiveBlending,
           depthWrite: false
         });
@@ -364,7 +398,7 @@ export class ExtinguisherSystem {
           color: 0x1e293b,
           roughness: 1.0,
           transparent: true,
-          opacity: 0.5 * cfg.smokeDensity,
+          opacity: 0.52 * cfg.smokeDensity,
           depthWrite: false
         });
         const puff = new THREE.Mesh(smokeGeo, smokeMat);
@@ -378,22 +412,105 @@ export class ExtinguisherSystem {
         smokePuffs.push(puff);
       }
 
-      const light = new THREE.PointLight(0xf97316, 3.6, 8.5 * Math.max(0.7, es), 1.6);
-      light.position.set(0, 1.1 * es, 0);
+      // Высокий шлейф дыма, видимый издалека и над кровлей корпуса
+      const plumeHeightBase = bldAnchor
+        ? Math.max(4.5, bldAnchor.roofBeaconPos.y - worldPos.y + 1.5)
+        : 6.5;
+      const tallSmokePuffs: THREE.Mesh[] = [];
+      for (let ts = 0; ts < 5; ts++) {
+        const tallMat = new THREE.MeshStandardMaterial({
+          color: 0x334155,
+          roughness: 1.0,
+          transparent: true,
+          opacity: 0.42,
+          depthWrite: false
+        });
+        const puff = new THREE.Mesh(tallSmokeGeo, tallMat);
+        puff.position.set(
+          ((ts % 3) - 1) * 0.75,
+          plumeHeightBase * 0.45 + ts * 1.6,
+          ((ts % 2) - 0.5) * 0.75
+        );
+        puff.userData.phase = ts * 1.15 + idx * 0.85;
+        puff.userData.baseHeight = plumeHeightBase * 0.42;
+        group.add(puff);
+        tallSmokePuffs.push(puff);
+      }
+
+      const light = new THREE.PointLight(0xf97316, 4.4, 11.5 * Math.max(0.8, es), 1.5);
+      light.position.set(0, 1.3 * es, 0);
       group.add(light);
+
+      // Наружный аварийный маяк тревоги на фасаде/входе здания (виден с улицы при подходе)
+      const beaconGroup = new THREE.Group();
+      const beaconPos = bldAnchor ? bldAnchor.facadePos.clone() : worldPos.clone();
+      // Сдвигаем стойку маяка чуть вбок от центра входа, чтобы не мешать проходу
+      beaconPos.x += idx % 2 === 0 ? -1.45 : 1.45;
+      beaconGroup.position.copy(beaconPos);
+
+      const poleMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.55, metalness: 0.6 });
+      const pole = new THREE.Mesh(beaconPoleGeo, poleMat);
+      pole.position.y = 1.6;
+      beaconGroup.add(pole);
+
+      const beaconDomeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+      const beaconDome = new THREE.Mesh(beaconDomeGeo, beaconDomeMat);
+      beaconDome.position.y = 3.28;
+      beaconGroup.add(beaconDome);
+
+      const beaconBeamMat = new THREE.MeshBasicMaterial({
+        color: 0xf97316,
+        transparent: true,
+        opacity: 0.24,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      const beaconBeamMesh = new THREE.Mesh(beaconBeamGeo, beaconBeamMat);
+      beaconBeamMesh.position.y = 5.4;
+      beaconGroup.add(beaconBeamMesh);
+
+      const beaconFloorRingMat = new THREE.MeshBasicMaterial({
+        color: 0xef4444,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.55
+      });
+      const beaconFloorRing = new THREE.Mesh(beaconRingGeo, beaconFloorRingMat);
+      beaconFloorRing.rotation.x = -Math.PI / 2;
+      beaconFloorRing.position.y = 0.04;
+      beaconGroup.add(beaconFloorRing);
+
+      this.rootGroup.add(beaconGroup);
+
+      // Парящий 3D-маркер с расстоянием и статусом очага
+      const markerSprite = new TargetMarkerSprite(2.7, 0.8);
+      markerSprite.sprite.position.set(0, Math.max(3.2, 3.6 * es), 0);
+      group.add(markerSprite.sprite);
 
       this.rootGroup.add(group);
       this.fires.push({
+        index: idx,
         config: cfg,
         worldPos,
+        buildingLabelRu,
         rootGroup: group,
         intensity: cfg.initialIntensity,
         status: cfg.initialIntensity > 0 ? 'ACTIVE' : 'EXTINGUISHED',
         steamTimer: 0,
+        extinguishedLabelTimer: 0,
         flameCones,
         smokePuffs,
+        tallSmokePuffs,
         light,
-        floorRing
+        floorRing,
+        beaconGroup,
+        beaconDomeMat,
+        beaconBeamMesh,
+        beaconBeamMat,
+        beaconFloorRing,
+        beaconFloorRingMat,
+        markerSprite
       });
     });
   }
@@ -710,6 +827,7 @@ export class ExtinguisherSystem {
           fire.intensity = 0;
           fire.status = 'EXTINGUISHED';
           fire.steamTimer = 3.2;
+          fire.extinguishedLabelTimer = 4.0;
           extinguishedFireId = fire.config.id;
         }
       } else if (fire.status === 'SUPPRESSING') {
@@ -826,6 +944,7 @@ export class ExtinguisherSystem {
     for (let i = 0; i < this.fires.length; i++) {
       const fire = this.fires[i];
       const dist = playerPos.distanceTo(fire.worldPos);
+      const distInt = Math.round(dist);
 
       if (fire.intensity <= 0 || fire.status === 'EXTINGUISHED') {
         extinguishedCount += 1;
@@ -834,6 +953,29 @@ export class ExtinguisherSystem {
         fire.flameCones.forEach(c => {
           c.visible = false;
         });
+        fire.tallSmokePuffs.forEach(p => {
+          p.visible = false;
+        });
+
+        // Наружный маяк здания переводится в спокойный зелёный режим «Выполнено»
+        fire.beaconDomeMat.color.setHex(0x22c55e);
+        fire.beaconBeamMesh.visible = false;
+        fire.beaconFloorRing.visible = false;
+
+        if (fire.extinguishedLabelTimer > 0) {
+          fire.extinguishedLabelTimer = Math.max(0, fire.extinguishedLabelTimer - dt);
+        }
+        fire.markerSprite.sync(
+          {
+            title: `✓ Очаг №${fire.index + 1} потушен`,
+            subtitle: `${fire.buildingLabelRu} · Ликвидирован`,
+            accentHex: '#22C55E',
+            bgHex: 'rgba(5, 46, 22, 0.9)'
+          },
+          dist,
+          this.targetMarkersVisible && fire.extinguishedLabelTimer > 0,
+          Math.min(0.95, fire.extinguishedLabelTimer * 0.6)
+        );
 
         if (fire.steamTimer > 0) {
           fire.steamTimer = Math.max(0, fire.steamTimer - dt);
@@ -868,7 +1010,7 @@ export class ExtinguisherSystem {
       }
 
       const flicker = 0.85 + Math.sin(this.elapsedAnimSec * 17 + i * 2.1) * 0.15;
-      fire.light.intensity = 3.8 * fire.intensity * flicker;
+      fire.light.intensity = 4.4 * fire.intensity * flicker;
       fire.floorRing.visible = true;
       fire.flameCones.forEach(c => {
         c.visible = true;
@@ -895,6 +1037,43 @@ export class ExtinguisherSystem {
           fire.config.smokeDensity * (0.35 + fire.intensity * 0.5) * (1 - cycle / 2.6)
         );
       });
+
+      // Высокий шлейф дыма над кровлей корпуса для визуального обнаружения очага снаружи
+      fire.tallSmokePuffs.forEach(p => {
+        p.visible = true;
+        const ph = (p.userData.phase as number) || 0;
+        const baseH = (p.userData.baseHeight as number) || 3.2;
+        const cycle = (this.elapsedAnimSec * 0.85 + ph) % 6.0;
+        p.position.y = baseH + cycle * 1.45;
+        p.scale.setScalar(0.75 + cycle * 0.24);
+        const mat = p.material as THREE.MeshStandardMaterial;
+        mat.color.setHex(isSteamTransition ? 0xcbd5e1 : 0x334155);
+        mat.opacity = Math.min(0.45, (0.2 + fire.intensity * 0.35) * (1 - cycle / 6.3));
+      });
+
+      // Мигающий красно-оранжевый аварийный маяк у фасада корпуса
+      const strobePhase = Math.sin(this.elapsedAnimSec * 8.5 + i * 1.7);
+      const isHotFlash = strobePhase > 0;
+      fire.beaconDomeMat.color.setHex(isHotFlash ? 0xef4444 : 0xf97316);
+      fire.beaconBeamMesh.visible = true;
+      fire.beaconBeamMat.opacity = 0.14 + Math.max(0, strobePhase) * 0.22;
+      fire.beaconFloorRing.visible = true;
+      fire.beaconFloorRingMat.opacity = 0.35 + Math.max(0, strobePhase) * 0.35;
+
+      const pct = Math.max(1, Math.round(fire.intensity * 100));
+      fire.markerSprite.sync(
+        {
+          title:
+            fire.status === 'SUPPRESSING'
+              ? `ТУШЕНИЕ №${fire.index + 1} · ${distInt} м`
+              : `ПОЖАР №${fire.index + 1} · ${distInt} м`,
+          subtitle: `${fire.buildingLabelRu} · Интенсивность ${pct}%`,
+          accentHex: fire.status === 'SUPPRESSING' ? '#38BDF8' : '#FB923C',
+          bgHex: fire.status === 'SUPPRESSING' ? 'rgba(8, 47, 73, 0.9)' : 'rgba(67, 20, 7, 0.9)'
+        },
+        dist,
+        this.targetMarkersVisible
+      );
     }
 
     if (this.hissGain) {
@@ -964,6 +1143,9 @@ export class ExtinguisherSystem {
     this.hissGain = null;
     this.crackleGain = null;
 
+    for (let i = 0; i < this.fires.length; i++) {
+      this.fires[i].markerSprite.dispose();
+    }
     this.rootGroup.traverse(obj => {
       if ((obj as THREE.Mesh).isMesh || (obj as THREE.Points).isPoints) {
         const mesh = obj as THREE.Mesh;

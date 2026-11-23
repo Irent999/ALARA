@@ -16,8 +16,9 @@
 
 import * as THREE from 'three';
 import type { NpcGroupSpec, TriggerZoneSpec } from '../npp/nppNodeConfig';
-import type { NamedWorldMarker } from '../npp/nppSceneInspector';
+import type { BuildingBeaconAnchor, NamedWorldMarker } from '../npp/nppSceneInspector';
 import type { ExtinguisherSystem } from './extinguisherSystem';
+import { TargetMarkerSprite } from './targetMarkerSprite';
 
 export type NpcEvacState =
   | 'IDLE'
@@ -28,6 +29,7 @@ export type NpcEvacState =
 
 export interface NpcGroupRuntime {
   readonly config: NpcGroupSpec;
+  readonly buildingLabelRu: string;
   readonly rootGroup: THREE.Group;
   readonly startPos: THREE.Vector3;
   readonly currentPos: THREE.Vector3;
@@ -35,8 +37,14 @@ export interface NpcGroupRuntime {
   readonly exitPos: THREE.Vector3;
   waypointIndex: number;
   state: NpcEvacState;
+  safeLabelTimer: number;
   readonly statusBeaconMesh: THREE.Mesh;
   readonly statusBeaconMat: THREE.MeshBasicMaterial;
+  readonly floorRingMesh: THREE.Mesh;
+  readonly floorRingMat: THREE.MeshBasicMaterial;
+  readonly beaconBeamMesh: THREE.Mesh;
+  readonly beaconBeamMat: THREE.MeshBasicMaterial;
+  readonly markerSprite: TargetMarkerSprite;
   readonly personMeshes: THREE.Group[];
 }
 
@@ -84,6 +92,22 @@ export class NpcEvacuationSystem {
   private readonly markerScale: number;
   private readonly npcScale: number;
   private animClockSec = 0;
+  private targetMarkersVisible = true;
+  private readonly assemblyMarkerSprite: TargetMarkerSprite;
+
+  public setTargetMarkersVisible(visible: boolean): void {
+    this.targetMarkersVisible = visible;
+    for (let i = 0; i < this.npcGroups.length; i++) {
+      const grp = this.npcGroups[i];
+      grp.markerSprite.sprite.visible =
+        visible && (grp.state !== 'SAFE' || grp.safeLabelTimer > 0);
+    }
+    this.assemblyMarkerSprite.sprite.visible = visible;
+    if (!visible) {
+      this.activeTargetHalo.visible = false;
+      this.arrowInstanced.visible = false;
+    }
+  }
 
   constructor(params: {
     npcSpecs: ReadonlyArray<NpcGroupSpec>;
@@ -92,6 +116,9 @@ export class NpcEvacuationSystem {
     triggerSpecs: ReadonlyArray<TriggerZoneSpec>;
     discoveredTriggers: ReadonlyArray<NamedWorldMarker>;
     entrancePos: THREE.Vector3;
+    entrances?: ReadonlyArray<NamedWorldMarker>;
+    buildingAnchors?: ReadonlyArray<BuildingBeaconAnchor>;
+    npcGroupBuildingIndices?: ReadonlyArray<number>;
     exits: ReadonlyArray<NamedWorldMarker>;
     assemblyPos: THREE.Vector3;
     markerScale?: number;
@@ -104,9 +131,27 @@ export class NpcEvacuationSystem {
     this.assemblyPos.copy(params.assemblyPos);
     params.exits.forEach(e => this.exitPositions.push(e.pos.clone()));
 
-    this.buildEntranceAndExitSigns(params.exits);
+    this.assemblyMarkerSprite = new TargetMarkerSprite(2.6, 0.78);
+    this.assemblyMarkerSprite.sprite.position.set(
+      this.assemblyPos.x,
+      this.assemblyPos.y + 3.4,
+      this.assemblyPos.z
+    );
+    this.rootGroup.add(this.assemblyMarkerSprite.sprite);
+
+    const entranceList =
+      params.entrances && params.entrances.length > 0
+        ? params.entrances
+        : [{ name: 'ENTRANCE_MAIN', pos: params.entrancePos }];
+    this.buildEntranceAndExitSigns(entranceList, params.exits, params.buildingAnchors ?? []);
     this.buildTriggerZones(params.triggerSpecs, params.discoveredTriggers);
-    this.buildNpcGroups(params.npcSpecs, params.discoveredNpcs, params.discoveredWaypoints);
+    this.buildNpcGroups(
+      params.npcSpecs,
+      params.discoveredNpcs,
+      params.discoveredWaypoints,
+      params.buildingAnchors ?? [],
+      params.npcGroupBuildingIndices ?? []
+    );
 
     const ms = this.markerScale;
     this.activeTargetHalo = new THREE.Group();
@@ -194,34 +239,46 @@ export class NpcEvacuationSystem {
     return board;
   }
 
-  private buildEntranceAndExitSigns(exits: ReadonlyArray<NamedWorldMarker>): void {
+  private buildEntranceAndExitSigns(
+    entrances: ReadonlyArray<NamedWorldMarker>,
+    exits: ReadonlyArray<NamedWorldMarker>,
+    buildingAnchors: ReadonlyArray<BuildingBeaconAnchor>
+  ): void {
     const ms = this.markerScale;
-    const entGroup = new THREE.Group();
-    entGroup.position.copy(this.entrancePos);
+    entrances.forEach((ent, eIdx) => {
+      const entGroup = new THREE.Group();
+      entGroup.position.copy(ent.pos);
 
-    const entRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.95 * ms, 1.15 * ms, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0x0ea5e9,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.72
-      })
-    );
-    entRing.rotation.x = -Math.PI / 2;
-    entRing.position.y = 0.025;
-    entGroup.add(entRing);
+      const entRing = new THREE.Mesh(
+        new THREE.RingGeometry(0.95 * ms, 1.15 * ms, 32),
+        new THREE.MeshBasicMaterial({
+          color: 0x0ea5e9,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.72
+        })
+      );
+      entRing.rotation.x = -Math.PI / 2;
+      entRing.position.y = 0.025;
+      entGroup.add(entRing);
 
-    const entTex = this.createSignTexture('ВХОД МЧС', 'ОПАСНАЯ ЗОНА АЭС', '#082f49', '#38bdf8');
-    const entSign = this.createDoubleSidedSignBoard(2.1 * ms, 0.78 * ms, entTex);
-    entSign.position.set(0, 2.75 * ms, 0);
-    const entPole = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.04 * ms, 0.045 * ms, 2.35 * ms, 8),
-      new THREE.MeshStandardMaterial({ color: 0x334155 })
-    );
-    entPole.position.set(0, 1.18 * ms, 0);
-    entGroup.add(entPole, entSign);
-    this.rootGroup.add(entGroup);
+      const bldLabel = buildingAnchors[eIdx]?.labelRu ?? `КОРПУС №${eIdx + 1}`;
+      const entTex = this.createSignTexture(
+        `ВХОД · ${bldLabel.toUpperCase()}`,
+        'ПРОХОД В АВАРИЙНУЮ ЗОНУ',
+        '#082f49',
+        '#38bdf8'
+      );
+      const entSign = this.createDoubleSidedSignBoard(2.1 * ms, 0.78 * ms, entTex);
+      entSign.position.set(0, 2.75 * ms, 0);
+      const entPole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04 * ms, 0.045 * ms, 2.35 * ms, 8),
+        new THREE.MeshStandardMaterial({ color: 0x334155 })
+      );
+      entPole.position.set(0, 1.18 * ms, 0);
+      entGroup.add(entPole, entSign);
+      this.rootGroup.add(entGroup);
+    });
 
     const exitTex = this.createSignTexture(
       'ВЫХОД / ЭВАКУАЦИЯ',
@@ -371,7 +428,9 @@ export class NpcEvacuationSystem {
   private buildNpcGroups(
     npcSpecs: ReadonlyArray<NpcGroupSpec>,
     discoveredNpcs: ReadonlyArray<NamedWorldMarker>,
-    discoveredWaypoints: ReadonlyArray<NamedWorldMarker>
+    discoveredWaypoints: ReadonlyArray<NamedWorldMarker>,
+    buildingAnchors: ReadonlyArray<BuildingBeaconAnchor>,
+    npcGroupBuildingIndices: ReadonlyArray<number>
   ): void {
     npcSpecs.forEach((cfg, idx) => {
       const matched =
@@ -380,6 +439,10 @@ export class NpcEvacuationSystem {
       const startPos = matched
         ? matched.pos.clone()
         : new THREE.Vector3(cfg.defaultPos[0], cfg.defaultPos[1], cfg.defaultPos[2]);
+
+      const bldIdx = npcGroupBuildingIndices[idx] ?? cfg.preferredBuildingIndex;
+      const bldAnchor = buildingAnchors[bldIdx] ?? buildingAnchors[0];
+      const buildingLabelRu = bldAnchor?.labelRu ?? `Корпус №${(bldIdx % 3) + 1}`;
 
       const groupRoot = new THREE.Group();
       groupRoot.position.copy(startPos);
@@ -402,15 +465,52 @@ export class NpcEvacuationSystem {
       }
 
       const initialState: NpcEvacState = cfg.initialState;
+      const initialColor = STATE_BEACON_COLORS[initialState];
+
       const statusBeaconMat = new THREE.MeshBasicMaterial({
-        color: STATE_BEACON_COLORS[initialState]
+        color: initialColor
       });
       const statusBeaconMesh = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.17, 0),
+        new THREE.OctahedronGeometry(0.21, 0),
         statusBeaconMat
       );
-      statusBeaconMesh.position.set(0, 2.1 * this.npcScale, 0);
+      statusBeaconMesh.position.set(0, 2.2 * this.npcScale, 0);
       groupRoot.add(statusBeaconMesh);
+
+      // Пульсирующее напольное кольцо и световой луч над группой персонала
+      const floorRingMat = new THREE.MeshBasicMaterial({
+        color: initialColor,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.65
+      });
+      const floorRingMesh = new THREE.Mesh(
+        new THREE.RingGeometry(1.15 * this.markerScale, 1.45 * this.markerScale, 32),
+        floorRingMat
+      );
+      floorRingMesh.rotation.x = -Math.PI / 2;
+      floorRingMesh.position.y = 0.035;
+      groupRoot.add(floorRingMesh);
+
+      const beaconBeamMat = new THREE.MeshBasicMaterial({
+        color: initialColor,
+        transparent: true,
+        opacity: 0.16,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      const beaconBeamMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.28, 4.6, 10, 1, true),
+        beaconBeamMat
+      );
+      beaconBeamMesh.position.y = 2.4;
+      groupRoot.add(beaconBeamMesh);
+
+      // Парящий 3D-маркер с числом людей, статусом и расстоянием
+      const markerSprite = new TargetMarkerSprite(2.65, 0.78);
+      markerSprite.sprite.position.set(0, 2.95 * this.npcScale, 0);
+      groupRoot.add(markerSprite.sprite);
 
       // Если в .glb или инспекторе есть WAYPOINT_G1_* / WAYPOINT_G2_* — используем их, иначе fallback
       const matchedWaypoints = discoveredWaypoints.filter(w =>
@@ -426,6 +526,7 @@ export class NpcEvacuationSystem {
       this.rootGroup.add(groupRoot);
       this.npcGroups.push({
         config: cfg,
+        buildingLabelRu,
         rootGroup: groupRoot,
         startPos,
         currentPos: startPos.clone(),
@@ -433,8 +534,14 @@ export class NpcEvacuationSystem {
         exitPos,
         waypointIndex: 0,
         state: initialState,
+        safeLabelTimer: 0,
         statusBeaconMesh,
         statusBeaconMat,
+        floorRingMesh,
+        floorRingMat,
+        beaconBeamMesh,
+        beaconBeamMat,
+        markerSprite,
         personMeshes
       });
     });
@@ -442,7 +549,13 @@ export class NpcEvacuationSystem {
 
   private setGroupState(grp: NpcGroupRuntime, next: NpcEvacState): void {
     grp.state = next;
-    grp.statusBeaconMat.color.setHex(STATE_BEACON_COLORS[next]);
+    const col = STATE_BEACON_COLORS[next];
+    grp.statusBeaconMat.color.setHex(col);
+    grp.floorRingMat.color.setHex(col);
+    grp.beaconBeamMat.color.setHex(col);
+    if (next === 'SAFE') {
+      grp.safeLabelTimer = 4.0;
+    }
   }
 
   /**
@@ -492,7 +605,7 @@ export class NpcEvacuationSystem {
   }
 
   public setTargetHighlight(pos: THREE.Vector3 | null, colorHex = 0x38bdf8): void {
-    if (!pos) {
+    if (!pos || !this.targetMarkersVisible) {
       this.activeTargetHalo.visible = false;
       return;
     }
@@ -503,7 +616,7 @@ export class NpcEvacuationSystem {
 
   public updateGuidePath(fromPos: THREE.Vector3 | null, viaPoints: THREE.Vector3[] = []): void {
     this.guidePathPoints.length = 0;
-    if (!fromPos) {
+    if (!fromPos || !this.targetMarkersVisible) {
       this.arrowInstanced.visible = false;
       return;
     }
@@ -583,15 +696,52 @@ export class NpcEvacuationSystem {
     let justEvacuatedGroupNameRu: string | null = null;
     let blockedGroupWarningRu: string | null = null;
 
+    // Обновляем дистанционный 3D-маркер Пункта сбора МЧС
+    const asmDist = playerPos.distanceTo(this.assemblyPos);
+    this.assemblyMarkerSprite.sync(
+      {
+        title: `ПУНКТ СБОРА МЧС · ${Math.round(asmDist)} м`,
+        subtitle: 'Безопасная зона эвакуации',
+        accentHex: '#10B981',
+        bgHex: 'rgba(2, 44, 34, 0.88)'
+      },
+      asmDist,
+      this.targetMarkersVisible
+    );
+
     for (let i = 0; i < this.npcGroups.length; i++) {
       const grp = this.npcGroups[i];
       totalNpcCount += grp.config.count;
       grp.statusBeaconMesh.rotation.y += dt * 2.2;
 
+      const distToGrp = playerPos.distanceTo(grp.currentPos);
+      const distInt = Math.round(distToGrp);
+      const pulse = 0.5 + 0.5 * Math.sin(this.animClockSec * 4.8 + i * 1.1);
+
       if (grp.state === 'SAFE') {
         rescuedCount += grp.config.count;
+        grp.beaconBeamMesh.visible = false;
+        grp.floorRingMat.opacity = 0.22;
+        if (grp.safeLabelTimer > 0) {
+          grp.safeLabelTimer = Math.max(0, grp.safeLabelTimer - dt);
+        }
+        grp.markerSprite.sync(
+          {
+            title: `✓ Спасены (${grp.config.count} чел.)`,
+            subtitle: `${grp.buildingLabelRu} · На пункте сбора`,
+            accentHex: '#22C55E',
+            bgHex: 'rgba(5, 46, 22, 0.9)'
+          },
+          distToGrp,
+          this.targetMarkersVisible && grp.safeLabelTimer > 0,
+          Math.min(0.92, grp.safeLabelTimer * 0.6)
+        );
         continue;
       }
+
+      grp.beaconBeamMesh.visible = this.targetMarkersVisible;
+      grp.beaconBeamMat.opacity = 0.1 + pulse * 0.14;
+      grp.floorRingMat.opacity = 0.42 + pulse * 0.35;
 
       const nearestFire = fireMgr.getNearestActiveFire(grp.currentPos);
       const fireNearby = Boolean(
@@ -601,7 +751,7 @@ export class NpcEvacuationSystem {
         ? fireMgr.getFireById(grp.config.blockedByFireId)
         : undefined;
       const isRouteBlocked = Boolean(blockingFire && blockingFire.intensity > 0);
-      const playerClose = playerPos.distanceTo(grp.currentPos) <= grp.config.detectionRadiusM;
+      const playerClose = distToGrp <= grp.config.detectionRadiusM;
 
       if (grp.state === 'IDLE') {
         if (fireNearby) {
@@ -617,7 +767,6 @@ export class NpcEvacuationSystem {
         grp.personMeshes.forEach((p, idx) => {
           p.position.y = Math.abs(Math.sin(this.animClockSec * 5.2 + idx * 1.1)) * 0.06;
         });
-        continue;
       } else if (grp.state === 'WAITING_FOR_GUIDE') {
         if (isRouteBlocked) {
           this.setGroupState(grp, 'PANIC');
@@ -626,10 +775,7 @@ export class NpcEvacuationSystem {
             p.position.y = Math.abs(Math.sin(this.animClockSec * 2.5 + idx)) * 0.035;
           });
         }
-        continue;
-      }
-
-      if (grp.state === 'EVACUATING') {
+      } else if (grp.state === 'EVACUATING') {
         const target =
           grp.waypointIndex < grp.waypoints.length
             ? grp.waypoints[grp.waypointIndex]
@@ -641,39 +787,85 @@ export class NpcEvacuationSystem {
         if (nearestFire && nearestFire.worldPos.distanceTo(grp.currentPos) < 3.4) {
           this.setGroupState(grp, 'PANIC');
           blockedGroupWarningRu = `${grp.config.nameRu} остановилась перед активным огнём (${nearestFire.config.nameRu})!`;
-          continue;
-        }
-
-        this.scratchVecA.subVectors(target, grp.currentPos);
-        this.scratchVecA.y = 0;
-        const dist = this.scratchVecA.length();
-
-        if (dist < 0.55) {
-          if (grp.waypointIndex <= grp.waypoints.length) {
-            grp.waypointIndex += 1;
-          } else {
-            this.setGroupState(grp, 'SAFE');
-            const angle = (i - (this.npcGroups.length - 1) * 0.5) * 0.55;
-            grp.currentPos.set(
-              this.assemblyPos.x + Math.sin(angle) * 2.6,
-              this.assemblyPos.y,
-              this.assemblyPos.z + Math.cos(angle) * 1.8
-            );
-            grp.rootGroup.position.copy(grp.currentPos);
-            rescuedCount += grp.config.count;
-            justEvacuatedGroupNameRu = grp.config.nameRu;
-          }
         } else {
-          this.scratchVecA.divideScalar(dist);
-          const step = Math.min(dist, 2.4 * dt);
-          grp.currentPos.addScaledVector(this.scratchVecA, step);
-          grp.currentPos.y = THREE.MathUtils.lerp(grp.currentPos.y, target.y, Math.min(1, dt * 6));
-          grp.rootGroup.position.copy(grp.currentPos);
-          grp.rootGroup.lookAt(target.x, grp.currentPos.y, target.z);
-          grp.personMeshes.forEach((p, idx) => {
-            p.position.y = Math.abs(Math.sin(this.animClockSec * 8 + idx * 1.4)) * 0.055;
-          });
+          this.scratchVecA.subVectors(target, grp.currentPos);
+          this.scratchVecA.y = 0;
+          const dist = this.scratchVecA.length();
+
+          if (dist < 0.55) {
+            if (grp.waypointIndex <= grp.waypoints.length) {
+              grp.waypointIndex += 1;
+            } else {
+              this.setGroupState(grp, 'SAFE');
+              const angle = (i - (this.npcGroups.length - 1) * 0.5) * 0.55;
+              grp.currentPos.set(
+                this.assemblyPos.x + Math.sin(angle) * 2.6,
+                this.assemblyPos.y,
+                this.assemblyPos.z + Math.cos(angle) * 1.8
+              );
+              grp.rootGroup.position.copy(grp.currentPos);
+              rescuedCount += grp.config.count;
+              justEvacuatedGroupNameRu = grp.config.nameRu;
+            }
+          } else {
+            this.scratchVecA.divideScalar(dist);
+            const step = Math.min(dist, 2.4 * dt);
+            grp.currentPos.addScaledVector(this.scratchVecA, step);
+            grp.currentPos.y = THREE.MathUtils.lerp(grp.currentPos.y, target.y, Math.min(1, dt * 6));
+            grp.rootGroup.position.copy(grp.currentPos);
+            grp.rootGroup.lookAt(target.x, grp.currentPos.y, target.z);
+            grp.personMeshes.forEach((p, idx) => {
+              p.position.y = Math.abs(Math.sin(this.animClockSec * 8 + idx * 1.4)) * 0.055;
+            });
+          }
         }
+      }
+
+      // Синхронизируем 3D-метку статуса эвакуации над группой
+      if (grp.state === 'PANIC') {
+        grp.markerSprite.sync(
+          {
+            title: `ЭВАКУАЦИЯ (${grp.config.count}) · ${distInt} м`,
+            subtitle: `${grp.buildingLabelRu} · ПЕРЕКРЫТО ОГНЁМ`,
+            accentHex: '#EF4444',
+            bgHex: 'rgba(69, 10, 10, 0.9)'
+          },
+          distToGrp,
+          this.targetMarkersVisible
+        );
+      } else if (grp.state === 'WAITING_FOR_GUIDE') {
+        grp.markerSprite.sync(
+          {
+            title: `ЭВАКУАЦИЯ (${grp.config.count}) · ${distInt} м`,
+            subtitle: `${grp.buildingLabelRu} · ЖДУТ КОМАНДЫ [E]`,
+            accentHex: '#FACC15',
+            bgHex: 'rgba(66, 32, 6, 0.9)'
+          },
+          distToGrp,
+          this.targetMarkersVisible
+        );
+      } else if (grp.state === 'EVACUATING') {
+        grp.markerSprite.sync(
+          {
+            title: `ВЫХОД (${grp.config.count}) · ${distInt} м`,
+            subtitle: `${grp.buildingLabelRu} · В пути к выходу`,
+            accentHex: '#38BDF8',
+            bgHex: 'rgba(8, 47, 73, 0.9)'
+          },
+          distToGrp,
+          this.targetMarkersVisible
+        );
+      } else if (grp.state === 'IDLE') {
+        grp.markerSprite.sync(
+          {
+            title: `ПЕРСОНАЛ (${grp.config.count}) · ${distInt} м`,
+            subtitle: `${grp.buildingLabelRu} · Ожидание`,
+            accentHex: '#94A3B8',
+            bgHex: 'rgba(15, 23, 42, 0.88)'
+          },
+          distToGrp,
+          this.targetMarkersVisible
+        );
       }
     }
 
@@ -701,6 +893,10 @@ export class NpcEvacuationSystem {
   }
 
   public dispose(): void {
+    this.assemblyMarkerSprite.dispose();
+    for (let i = 0; i < this.npcGroups.length; i++) {
+      this.npcGroups[i].markerSprite.dispose();
+    }
     this.rootGroup.traverse(obj => {
       if ((obj as THREE.Mesh).isMesh || (obj as THREE.InstancedMesh).isInstancedMesh) {
         const mesh = obj as THREE.Mesh;

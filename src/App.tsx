@@ -1549,6 +1549,10 @@ export default function App() {
         scenario4ControllerRef.current?.toggleVehicleBeacons();
         return;
       }
+      if (e.code === 'KeyM' && !e.repeat && !modalOpenRef.current && activeScenarioIdRef.current === 4) {
+        scenario4ControllerRef.current?.toggleTargetMarkers();
+        return;
+      }
       if (e.code === 'KeyV' && !e.repeat) {
         voiceLoggerRef.current?.startPushToTalk();
       }
@@ -5153,6 +5157,9 @@ export default function App() {
             }}
             onToggleBeacons={() => {
               scenario4ControllerRef.current?.toggleVehicleBeacons();
+            }}
+            onToggleTargetMarkers={() => {
+              scenario4ControllerRef.current?.toggleTargetMarkers();
             }}
           />
         )}

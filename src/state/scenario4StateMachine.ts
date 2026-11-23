@@ -104,6 +104,31 @@ export interface Scenario4DebriefSummary {
   readonly gradeLabelRu: string;
 }
 
+export type Scenario4TargetKind =
+  | 'extinguisher'
+  | 'entrance'
+  | 'fire'
+  | 'emergency_op'
+  | 'npc'
+  | 'assembly'
+  | 'completed';
+
+export interface Scenario4NavTargetItem {
+  readonly id: string;
+  readonly kind: Scenario4TargetKind;
+  readonly labelRu: string;
+  readonly buildingLabelRu: string | null;
+  readonly distanceM: number;
+  readonly relativeBearingDeg: number;
+  readonly statusRu: string;
+}
+
+export interface Scenario4NavigationSnapshot {
+  readonly markersVisible: boolean;
+  readonly priorityTarget: Scenario4NavTargetItem | null;
+  readonly activeBuildingAlerts: ReadonlyArray<string>;
+}
+
 export interface Scenario4HudSnapshot {
   readonly isLoadingGlb: boolean;
   readonly loadProgressPct: number;
@@ -134,6 +159,7 @@ export interface Scenario4HudSnapshot {
   readonly installedEquipmentCount: number;
   readonly vehicle: MchsVehicleSnapshot;
   readonly emergencyOps: EmergencyOpsSnapshot;
+  readonly navigation: Scenario4NavigationSnapshot;
   readonly activeInputLabelRu: string;
   readonly targetPromptRu: string | null;
   readonly warningBannerRu: string | null;

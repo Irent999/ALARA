@@ -49,6 +49,16 @@ export interface NormalizationMetrics {
 
 export type NppSceneSourceKind = 'glb_file' | 'custom_upload';
 
+export interface BuildingBeaconAnchor {
+  readonly buildingIndex: number;
+  readonly buildingId: string;
+  readonly buildingName: string;
+  readonly labelRu: string;
+  readonly facadePos: THREE.Vector3;
+  readonly roofBeaconPos: THREE.Vector3;
+  readonly buildingCenter: THREE.Vector3;
+}
+
 export interface DiscoveredNppMarkers {
   readonly spawnPlayer: THREE.Vector3;
   readonly spawnLookTarget: THREE.Vector3;
@@ -56,6 +66,9 @@ export interface DiscoveredNppMarkers {
   readonly focusCameraTarget: THREE.Vector3;
   readonly vehicleSpawn: NamedWorldMarker;
   readonly buildingDriveTargets: NamedWorldMarker[];
+  readonly buildingAnchors: BuildingBeaconAnchor[];
+  readonly fireZoneBuildingIndices: number[];
+  readonly npcGroupBuildingIndices: number[];
   readonly radReconPoint: NamedWorldMarker;
   readonly loopIsolationPoint: NamedWorldMarker;
   readonly casualtyTriagePoint: NamedWorldMarker;
@@ -512,7 +525,107 @@ function measureWallClearance(
 }
 
 /**
- * Ищет ближайшую открытую, проходимую точку внутри корпуса с учётом зазора до стен .glb и уже занятых точек.
+ * Проверяет открытость пути (отсутствие сплошной стены) от точки A к точке B на уровне груди спасателя.
+ */
+function hasClearLineOfSightXZ(
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  bz: number,
+  meshes: THREE.Mesh[]
+): boolean {
+  if (meshes.length === 0) return true;
+  const dx = bx - ax;
+  const dz = bz - az;
+  const dist = Math.hypot(dx, dz);
+  if (dist < 0.4) return true;
+
+  const raycaster = new THREE.Raycaster(
+    new THREE.Vector3(ax, ay + 1.15, az),
+    new THREE.Vector3(dx / dist, 0, dz / dist),
+    0.15,
+    Math.max(0.2, dist - 0.35)
+  );
+  const hits = raycaster.intersectObjects(meshes, false);
+  for (let i = 0; i < hits.length; i++) {
+    const h = hits[i];
+    if (h.face && Math.abs(h.face.normal.y) > 0.78) continue;
+    return false;
+  }
+  return true;
+}
+
+function isInsideAnyWallCollider(x: number, z: number, colliders: ReadonlyArray<WallColliderBox>): boolean {
+  const pad = 0.65;
+  for (let i = 0; i < colliders.length; i++) {
+    const c = colliders[i];
+    if (x >= c.minX - pad && x <= c.maxX + pad && z >= c.minZ - pad && z <= c.maxZ + pad) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Выбирает наиболее открытый и доступный фасад корпуса для входного знака и наружного маяка тревоги.
+ */
+function computeBuildingFacadeAnchor(
+  building: BuildingVolumeInfo,
+  buildingIndex: number,
+  sceneBounds: THREE.Box3,
+  allMeshes: THREE.Mesh[],
+  deckSurfaceY: number
+): BuildingBeaconAnchor {
+  const candidates: ReadonlyArray<{ x: number; z: number; bias: number }> = [
+    { x: building.center[0], z: Math.min(sceneBounds.max.z - 1.5, building.max[2] + 1.8), bias: 1.6 },
+    { x: building.max[0] + 1.8, z: building.center[2], bias: 0.4 },
+    { x: building.min[0] - 1.8, z: building.center[2], bias: 0.4 },
+    { x: building.center[0], z: Math.max(sceneBounds.min.z + 1.5, building.min[2] - 1.8), bias: 0.0 }
+  ];
+
+  let bestX = candidates[0].x;
+  let bestZ = candidates[0].z;
+  let bestFloorY = deckSurfaceY;
+  let bestScore = -Infinity;
+
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i];
+    const cx = THREE.MathUtils.clamp(c.x, sceneBounds.min.x + 1.5, sceneBounds.max.x - 1.5);
+    const cz = THREE.MathUtils.clamp(c.z, sceneBounds.min.z + 1.5, sceneBounds.max.z - 1.5);
+    const fy = sampleInteriorFloorY(cx, cz, sceneBounds, allMeshes, deckSurfaceY);
+    const clear = measureWallClearance(cx, fy, cz, allMeshes, 3.2);
+    const score = clear * 2.0 + c.bias;
+    if (score > bestScore) {
+      bestScore = score;
+      bestX = cx;
+      bestZ = cz;
+      bestFloorY = fy;
+    }
+  }
+
+  const facadePos = new THREE.Vector3(bestX, bestFloorY, bestZ);
+  const roofY = Math.max(bestFloorY + 4.8, Math.min(building.max[1] + 0.65, bestFloorY + building.size[1] + 0.55));
+  const roofBeaconPos = new THREE.Vector3(
+    THREE.MathUtils.lerp(bestX, building.center[0], 0.35),
+    roofY,
+    THREE.MathUtils.lerp(bestZ, building.center[2], 0.35)
+  );
+
+  return {
+    buildingIndex,
+    buildingId: building.id,
+    buildingName: building.name,
+    labelRu: `Корпус №${buildingIndex + 1}`,
+    facadePos,
+    roofBeaconPos,
+    buildingCenter: new THREE.Vector3(building.center[0], bestFloorY, building.center[2])
+  };
+}
+
+/**
+ * Ищет ближайшую открытую, проходимую точку внутри корпуса с учётом зазора до стен .glb,
+ * прямой доступности со стороны открытого фасада и уже занятых точек (исключает застревание в стенах).
  */
 function findClearIndoorSpot(
   building: BuildingVolumeInfo,
@@ -521,10 +634,12 @@ function findClearIndoorSpot(
   allMeshes: THREE.Mesh[],
   deckSurfaceY: number,
   occupiedSpots: ReadonlyArray<THREE.Vector3> = [],
-  minSpacingM = 2.4
+  minSpacingM = 2.4,
+  facadePos?: THREE.Vector3,
+  wallColliders: ReadonlyArray<WallColliderBox> = []
 ): THREE.Vector3 {
-  const wallMarginX = Math.min(2.3, building.size[0] * 0.16);
-  const wallMarginZ = Math.min(2.3, building.size[2] * 0.16);
+  const wallMarginX = Math.min(2.1, building.size[0] * 0.14);
+  const wallMarginZ = Math.min(2.1, building.size[2] * 0.14);
   const clampedOx = THREE.MathUtils.clamp(offsetXZ[0], -0.34, 0.34);
   const clampedOz = THREE.MathUtils.clamp(offsetXZ[1], -0.34, 0.34);
 
@@ -550,6 +665,38 @@ function findClearIndoorSpot(
   );
   let bestScore = -Infinity;
 
+  const evaluateCandidate = (cx: number, cz: number, distWeight = 0.22): number => {
+    const fy = sampleInteriorFloorY(cx, cz, sceneBounds, allMeshes, deckSurfaceY);
+    const wallClear = measureWallClearance(cx, fy, cz, allMeshes, minWallClear + 1.0);
+    const losBonus =
+      facadePos && hasClearLineOfSightXZ(cx, fy, cz, facadePos.x, facadePos.z, allMeshes) ? 4.2 : 0;
+    const colliderPenalty = isInsideAnyWallCollider(cx, cz, wallColliders) ? 14.0 : 0;
+
+    let tooClosePenalty = 0;
+    for (let oi = 0; oi < occupiedSpots.length; oi++) {
+      const d = Math.hypot(cx - occupiedSpots[oi].x, cz - occupiedSpots[oi].z);
+      if (d < minSpacingM) {
+        tooClosePenalty += (minSpacingM - d) * 6.0;
+      }
+    }
+
+    const distFromAnchor = Math.hypot(cx - anchorX, cz - anchorZ);
+    const score =
+      Math.min(wallClear, minWallClear) * 4.5 +
+      losBonus -
+      distFromAnchor * distWeight -
+      tooClosePenalty -
+      colliderPenalty;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestPos = new THREE.Vector3(cx, fy, cz);
+    }
+    return wallClear >= minWallClear * 0.85 && tooClosePenalty === 0 && colliderPenalty === 0 && losBonus > 0
+      ? score
+      : -Infinity;
+  };
+
   for (let ring = 0; ring <= maxRings; ring++) {
     const angles = ring === 0 ? 1 : 8;
     for (let ai = 0; ai < angles; ai++) {
@@ -563,27 +710,36 @@ function findClearIndoorSpot(
           ? anchorZ
           : THREE.MathUtils.clamp(anchorZ + Math.sin(ang) * ring * stepM, Math.min(minZ, maxZ), Math.max(minZ, maxZ));
 
-      const fy = sampleInteriorFloorY(cx, cz, sceneBounds, allMeshes, deckSurfaceY);
-      const wallClear = measureWallClearance(cx, fy, cz, allMeshes, minWallClear + 0.8);
-
-      let tooClosePenalty = 0;
-      for (let oi = 0; oi < occupiedSpots.length; oi++) {
-        const d = Math.hypot(cx - occupiedSpots[oi].x, cz - occupiedSpots[oi].z);
-        if (d < minSpacingM) {
-          tooClosePenalty += (minSpacingM - d) * 6.0;
-        }
-      }
-
-      const distFromAnchor = Math.hypot(cx - anchorX, cz - anchorZ);
-      const score = Math.min(wallClear, minWallClear) * 4.5 - distFromAnchor * 0.25 - tooClosePenalty;
-      if (score > bestScore) {
-        bestScore = score;
-        bestPos = new THREE.Vector3(cx, fy, cz);
-      }
-
-      if (wallClear >= minWallClear * 0.85 && tooClosePenalty === 0) {
+      const fastAccept = evaluateCandidate(cx, cz);
+      if (fastAccept > 0) {
         return bestPos;
       }
+    }
+  }
+
+  // Если корпус в .glb — сплошной монолитный CAD-объём без проходов внутри,
+  // проверяем открытую проёмную/прифасадную зону перед входом, чтобы огонь и NPC не оказались в текстуре стены.
+  if (facadePos && bestScore < minWallClear * 3.0) {
+    const bayOffsets: ReadonlyArray<readonly [number, number]> = [
+      [0, 0],
+      [-2.2, 0.3],
+      [2.2, 0.3],
+      [0, -1.6],
+      [-1.8, -1.2],
+      [1.8, -1.2]
+    ];
+    for (let bi = 0; bi < bayOffsets.length; bi++) {
+      const bx = THREE.MathUtils.clamp(
+        facadePos.x + bayOffsets[bi][0],
+        sceneBounds.min.x + 1.5,
+        sceneBounds.max.x - 1.5
+      );
+      const bz = THREE.MathUtils.clamp(
+        facadePos.z + bayOffsets[bi][1],
+        sceneBounds.min.z + 1.5,
+        sceneBounds.max.z - 1.5
+      );
+      evaluateCandidate(bx, bz, 0.08);
     }
   }
 
@@ -786,23 +942,27 @@ export function inspectNppSceneGraph(
     sceneBounds.max.z + Math.max(14.0, Math.min(130, diag * transform.spawn.overviewDistanceFactor * 0.48))
   );
 
-  // Вход в главный корпус (у переднего фасада первого здания, чтобы игрок заходил внутрь)
+  // Якоря фасадов/крыш и входов для каждого из целевых корпусов (чтобы каждый корпус имел видимый вход и маяк)
+  const buildingSourceList = mainBuildings.length > 0 ? mainBuildings : allBuildingVolumes;
+  const buildingAnchors: BuildingBeaconAnchor[] = buildingSourceList.map((bld, idx) =>
+    computeBuildingFacadeAnchor(bld, idx, sceneBounds, allMeshes, deckSurfaceY)
+  );
+
+  // Вход в корпуса (у открытого фасада каждого активного здания, начиная с главного корпуса №1)
   if (entrances.length === 0) {
-    const autoEntrance = primaryBuilding
-      ? new THREE.Vector3(
-          primaryBuilding.center[0],
-          sampleInteriorFloorY(
-            primaryBuilding.center[0],
-            Math.min(sceneBounds.max.z - 2.0, primaryBuilding.max[2] + 1.5),
-            sceneBounds,
-            allMeshes,
-            deckSurfaceY
-          ),
-          Math.min(sceneBounds.max.z - 2.0, primaryBuilding.max[2] + 1.5)
-        )
-      : resolveRelAnchor(config.defaultEntranceRelPos);
-    missingExpectedNodes.push(`ENTRANCE_* (вход у фасада ${primaryBuilding?.name ?? 'главного корпуса'}: [${roundCoords(autoEntrance).join(', ')}])`);
-    entrances.push({ name: 'AUTO_ENTRANCE_MAIN', pos: autoEntrance });
+    if (buildingAnchors.length > 0) {
+      buildingAnchors.slice(0, 3).forEach((anchor, idx) => {
+        const entryName = idx === 0 ? 'AUTO_ENTRANCE_MAIN' : `AUTO_ENTRANCE_BLDG_${idx + 1}`;
+        entrances.push({ name: entryName, pos: anchor.facadePos.clone() });
+      });
+      missingExpectedNodes.push(
+        `ENTRANCE_* (входы у корпусов №1–${Math.min(3, buildingAnchors.length)}: [${roundCoords(entrances[0].pos).join(', ')}])`
+      );
+    } else {
+      const autoEntrance = resolveRelAnchor(config.defaultEntranceRelPos);
+      missingExpectedNodes.push(`ENTRANCE_* (вход у фасада главного корпуса: [${roundCoords(autoEntrance).join(', ')}])`);
+      entrances.push({ name: 'AUTO_ENTRANCE_MAIN', pos: autoEntrance });
+    }
   }
   const mainEntrancePos = entrances[0].pos;
 
@@ -909,11 +1069,16 @@ export function inspectNppSceneGraph(
     );
   }
 
-  // 1. Привязка очагов пожара строго ВНУТРИ открытых проходов зданий (без клиппинга в стенах .glb)
+  // 1. Привязка очагов пожара строго в открытых проходах / доступных проёмах зданий (без клиппинга в стенах .glb)
   const occupiedIndoorSpots: THREE.Vector3[] = [];
   const elevOffset = SCENARIO_4_CONFIG.FIRE_CLEARANCE.fireElevationOffsetM;
+  const fireZoneBuildingIndices: number[] = [];
 
   const resolvedFireZones: NamedWorldMarker[] = config.fireZones.map((fz, idx) => {
+    const bldIdx =
+      mainBuildings.length > 0 ? fz.preferredBuildingIndex % mainBuildings.length : 0;
+    fireZoneBuildingIndices.push(bldIdx);
+
     const found =
       fireZones.find(m => m.name.toUpperCase().startsWith(fz.markerName.toUpperCase())) ??
       fireZones[idx];
@@ -924,10 +1089,8 @@ export function inspectNppSceneGraph(
       return { name: found.name, pos: p };
     }
 
-    const targetBld =
-      mainBuildings.length > 0
-        ? mainBuildings[fz.preferredBuildingIndex % mainBuildings.length]
-        : undefined;
+    const targetBld = mainBuildings.length > 0 ? mainBuildings[bldIdx] : undefined;
+    const anchor = buildingAnchors[bldIdx];
     const indoorPos = targetBld
       ? findClearIndoorSpot(
           targetBld,
@@ -936,20 +1099,27 @@ export function inspectNppSceneGraph(
           allMeshes,
           deckSurfaceY,
           occupiedIndoorSpots,
-          3.2
+          3.2,
+          anchor?.facadePos,
+          wallColliders
         )
       : resolveRelAnchor(fz.relPos);
     indoorPos.y += elevOffset;
     occupiedIndoorSpots.push(indoorPos);
 
     missingExpectedNodes.push(
-      `${fz.markerName} -> ВНУТРИ "${targetBld?.name ?? 'комплекса'}" [${roundCoords(indoorPos).join(', ')}]`
+      `${fz.markerName} -> ${anchor?.labelRu ?? targetBld?.name ?? 'комплекс'} [${roundCoords(indoorPos).join(', ')}]`
     );
     return { name: fz.markerName, pos: indoorPos };
   });
 
-  // 2. Привязка всех 4 групп NPC (10 чел.) строго ВНУТРИ зданий + маршруты выхода через входную дверь
+  // 2. Привязка всех 4 групп NPC (10 чел.) в доступных зонах корпусов + маршруты выхода через ближайший фасадный проём
+  const npcGroupBuildingIndices: number[] = [];
   const resolvedNpcSpawns: NamedWorldMarker[] = config.npcGroups.map((ng, idx) => {
+    const bldIdx =
+      mainBuildings.length > 0 ? ng.preferredBuildingIndex % mainBuildings.length : 0;
+    npcGroupBuildingIndices.push(bldIdx);
+
     const found =
       npcSpawns.find(m => m.name.toUpperCase().startsWith(ng.markerName.toUpperCase())) ??
       npcSpawns[idx];
@@ -958,10 +1128,8 @@ export function inspectNppSceneGraph(
       return found;
     }
 
-    const targetBld =
-      mainBuildings.length > 0
-        ? mainBuildings[ng.preferredBuildingIndex % mainBuildings.length]
-        : undefined;
+    const targetBld = mainBuildings.length > 0 ? mainBuildings[bldIdx] : undefined;
+    const anchor = buildingAnchors[bldIdx];
     const indoorPos = targetBld
       ? findClearIndoorSpot(
           targetBld,
@@ -970,13 +1138,15 @@ export function inspectNppSceneGraph(
           allMeshes,
           deckSurfaceY,
           occupiedIndoorSpots,
-          3.0
+          3.0,
+          anchor?.facadePos,
+          wallColliders
         )
       : resolveRelAnchor(ng.relPos);
     occupiedIndoorSpots.push(indoorPos);
 
     missingExpectedNodes.push(
-      `${ng.markerName} (${ng.count} чел.) -> ВНУТРИ "${targetBld?.name ?? 'комплекса'}" [${roundCoords(indoorPos).join(', ')}]`
+      `${ng.markerName} (${ng.count} чел.) -> ${anchor?.labelRu ?? targetBld?.name ?? 'комплекс'} [${roundCoords(indoorPos).join(', ')}]`
     );
     return { name: ng.markerName, pos: indoorPos };
   });
@@ -1001,7 +1171,9 @@ export function inspectNppSceneGraph(
         allMeshes,
         deckSurfaceY,
         occupiedIndoorSpots,
-        2.8
+        2.8,
+        buildingAnchors[0]?.facadePos,
+        wallColliders
       )
     : resolveInsideBuilding(
         allBuildingVolumes[0],
@@ -1016,7 +1188,8 @@ export function inspectNppSceneGraph(
     pos: loopIsolationPos
   };
 
-  const bldForTriage = mainBuildings[1] ?? mainBuildings[0];
+  const triageBldIdx = mainBuildings.length > 1 ? 1 : 0;
+  const bldForTriage = mainBuildings[triageBldIdx] ?? mainBuildings[0];
   const casualtyTriagePos = bldForTriage
     ? findClearIndoorSpot(
         bldForTriage,
@@ -1025,7 +1198,9 @@ export function inspectNppSceneGraph(
         allMeshes,
         deckSurfaceY,
         occupiedIndoorSpots,
-        2.8
+        2.8,
+        buildingAnchors[triageBldIdx]?.facadePos,
+        wallColliders
       )
     : resolveInsideBuilding(
         allBuildingVolumes[0],
@@ -1112,27 +1287,15 @@ export function inspectNppSceneGraph(
     );
     if (!hasWp) {
       const npcStart = resolvedNpcSpawns[idx]?.pos ?? resolveRelAnchor(ng.relPos);
-      const bld =
-        mainBuildings.length > 0
-          ? mainBuildings[ng.preferredBuildingIndex % mainBuildings.length]
-          : undefined;
-      const bldDoorZ = bld
-        ? Math.min(sceneBounds.max.z - 2.0, bld.max[2] + 1.5)
-        : mainEntrancePos.z;
-      const bldDoorX = bld ? bld.center[0] : mainEntrancePos.x;
-      const doorFloorY = sampleInteriorFloorY(
-        bldDoorX,
-        bldDoorZ,
-        sceneBounds,
-        allMeshes,
-        deckSurfaceY
-      );
+      const bldIdx =
+        mainBuildings.length > 0 ? ng.preferredBuildingIndex % mainBuildings.length : 0;
+      const anchor = buildingAnchors[bldIdx];
+      const doorwayPos = anchor ? anchor.facadePos.clone() : mainEntrancePos.clone();
       const midInteriorPos = new THREE.Vector3(
-        THREE.MathUtils.lerp(npcStart.x, bldDoorX, 0.5),
+        THREE.MathUtils.lerp(npcStart.x, doorwayPos.x, 0.5),
         npcStart.y,
-        THREE.MathUtils.lerp(npcStart.z, bldDoorZ, 0.5)
+        THREE.MathUtils.lerp(npcStart.z, doorwayPos.z, 0.5)
       );
-      const doorwayPos = new THREE.Vector3(bldDoorX, doorFloorY, bldDoorZ);
       const courtyardPos = exits[0].pos.clone();
 
       resolvedWaypoints.push(
@@ -1192,6 +1355,9 @@ export function inspectNppSceneGraph(
       focusCameraTarget,
       vehicleSpawn,
       buildingDriveTargets,
+      buildingAnchors,
+      fireZoneBuildingIndices,
+      npcGroupBuildingIndices,
       radReconPoint,
       loopIsolationPoint,
       casualtyTriagePoint,
