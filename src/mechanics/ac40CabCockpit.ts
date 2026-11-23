@@ -44,18 +44,21 @@ export class Ac40CabCockpit {
   public readonly rootGroup = new THREE.Group();
   private readonly steeringWheelSpinGroup = new THREE.Group();
 
-  private readonly clusterCanvas: HTMLCanvasElement;
-  private readonly clusterCtx: CanvasRenderingContext2D;
-  private readonly clusterTex: THREE.CanvasTexture;
+  private readonly maxAnisotropy: number;
+  private interiorBuilt = false;
 
-  private readonly pumpCanvas: HTMLCanvasElement;
-  private readonly pumpCtx: CanvasRenderingContext2D;
-  private readonly pumpTex: THREE.CanvasTexture;
+  private clusterCanvas: HTMLCanvasElement | null = null;
+  private clusterCtx: CanvasRenderingContext2D | null = null;
+  private clusterTex: THREE.CanvasTexture | null = null;
 
-  private readonly switchPump: ToggleSwitchVisual;
-  private readonly switchHose: ToggleSwitchVisual;
-  private readonly switchBeacons: ToggleSwitchVisual;
-  private readonly switchComms: ToggleSwitchVisual;
+  private pumpCanvas: HTMLCanvasElement | null = null;
+  private pumpCtx: CanvasRenderingContext2D | null = null;
+  private pumpTex: THREE.CanvasTexture | null = null;
+
+  private switchPump: ToggleSwitchVisual | null = null;
+  private switchHose: ToggleSwitchVisual | null = null;
+  private switchBeacons: ToggleSwitchVisual | null = null;
+  private switchComms: ToggleSwitchVisual | null = null;
 
   private readonly disposables: Array<{ dispose: () => void }> = [];
 
@@ -64,6 +67,20 @@ export class Ac40CabCockpit {
 
   constructor(maxAnisotropy = 4) {
     this.rootGroup.name = 'ac40_cab_cockpit';
+    this.maxAnisotropy = Math.max(1, Math.min(8, maxAnisotropy));
+
+    // На старте строим только лёгкий внешний каркас кабины и остекление;
+    // тяжёлый интерьер, рулевая колонка и CanvasTexture-дисплеи собираются лениво при подходе/посадке.
+    this.buildCabShellAndGlass();
+  }
+
+  public isInteriorBuilt(): boolean {
+    return this.interiorBuilt;
+  }
+
+  public ensureInteriorBuilt(): void {
+    if (this.interiorBuilt) return;
+    this.interiorBuilt = true;
 
     this.clusterCanvas = document.createElement('canvas');
     this.clusterCanvas.width = 512;
@@ -71,7 +88,7 @@ export class Ac40CabCockpit {
     this.clusterCtx = this.clusterCanvas.getContext('2d')!;
     this.clusterTex = this.track(new THREE.CanvasTexture(this.clusterCanvas));
     this.clusterTex.colorSpace = THREE.SRGBColorSpace;
-    this.clusterTex.anisotropy = Math.max(1, Math.min(8, maxAnisotropy));
+    this.clusterTex.anisotropy = this.maxAnisotropy;
 
     this.pumpCanvas = document.createElement('canvas');
     this.pumpCanvas.width = 512;
@@ -79,9 +96,8 @@ export class Ac40CabCockpit {
     this.pumpCtx = this.pumpCanvas.getContext('2d')!;
     this.pumpTex = this.track(new THREE.CanvasTexture(this.pumpCanvas));
     this.pumpTex.colorSpace = THREE.SRGBColorSpace;
-    this.pumpTex.anisotropy = Math.max(1, Math.min(8, maxAnisotropy));
+    this.pumpTex.anisotropy = this.maxAnisotropy;
 
-    this.buildCabShellAndGlass();
     this.buildSeatsAndControls();
     this.buildDashboardAndWheel();
 
@@ -91,7 +107,6 @@ export class Ac40CabCockpit {
     this.switchBeacons = switches.beacons;
     this.switchComms = switches.comms;
 
-    // Первичная отрисовка шкал при инициализации
     this.drawScreens(
       {
         isSeated: false,
@@ -158,12 +173,10 @@ export class Ac40CabCockpit {
       })
     );
     const windshieldGlassMat = this.track(
-      new THREE.MeshPhysicalMaterial({
+      new THREE.MeshStandardMaterial({
         color: cfg.windshield.tintHex,
-        roughness: 0.06,
-        metalness: 0.08,
-        clearcoat: 0.9,
-        clearcoatRoughness: 0.08,
+        roughness: 0.08,
+        metalness: 0.14,
         transparent: true,
         opacity: cfg.windshield.opacity,
         depthWrite: false,
@@ -505,8 +518,8 @@ export class Ac40CabCockpit {
     );
     const screenMat = this.track(
       new THREE.MeshStandardMaterial({
-        map: this.clusterTex,
-        emissiveMap: this.clusterTex,
+        map: this.clusterTex!,
+        emissiveMap: this.clusterTex!,
         emissive: new THREE.Color(0xffffff),
         emissiveIntensity: 0.92,
         roughness: 0.35,
@@ -670,8 +683,8 @@ export class Ac40CabCockpit {
     );
     const screenMat = this.track(
       new THREE.MeshStandardMaterial({
-        map: this.pumpTex,
-        emissiveMap: this.pumpTex,
+        map: this.pumpTex!,
+        emissiveMap: this.pumpTex!,
         emissive: new THREE.Color(0xffffff),
         emissiveIntensity: 0.9,
         roughness: 0.32,
@@ -793,28 +806,41 @@ export class Ac40CabCockpit {
   }
 
   public update(telemetry: Ac40CockpitTelemetry, nowMs: number): void {
+    if (!this.interiorBuilt) {
+      if (!telemetry.isSeated) return;
+      this.ensureInteriorBuilt();
+    }
+
     // 1. Поворот рулевого колеса пропорционально углу руления (работает и в ручном режиме, и на автопилоте)
     this.steeringWheelSpinGroup.rotation.z =
       -telemetry.steerAngleRad * AC40_CAB_CONFIG.steeringWheel.maxVisualTurnRad;
 
     // 2. Обновление положений и подсветки 3D-тумблеров на пульте МЧС
     const beaconBlink = telemetry.beaconsOn && Math.floor(nowMs / 280) % 2 === 0;
-    this.setSwitchVisual(
-      this.switchPump,
-      telemetry.isSpraying || telemetry.isHoseAttached,
-      telemetry.isSpraying ? 0x10b981 : 0x0ea5e9
-    );
-    this.setSwitchVisual(
-      this.switchHose,
-      telemetry.isHoseAttached,
-      telemetry.hoseOverstretched ? 0xf59e0b : 0x14b8a6
-    );
-    this.setSwitchVisual(
-      this.switchBeacons,
-      telemetry.beaconsOn,
-      beaconBlink ? 0x0ea5e9 : 0xf59e0b
-    );
-    this.setSwitchVisual(this.switchComms, telemetry.commsActive, 0x14b8a6);
+    if (this.switchPump) {
+      this.setSwitchVisual(
+        this.switchPump,
+        telemetry.isSpraying || telemetry.isHoseAttached,
+        telemetry.isSpraying ? 0x10b981 : 0x0ea5e9
+      );
+    }
+    if (this.switchHose) {
+      this.setSwitchVisual(
+        this.switchHose,
+        telemetry.isHoseAttached,
+        telemetry.hoseOverstretched ? 0xf59e0b : 0x14b8a6
+      );
+    }
+    if (this.switchBeacons) {
+      this.setSwitchVisual(
+        this.switchBeacons,
+        telemetry.beaconsOn,
+        beaconBlink ? 0x0ea5e9 : 0xf59e0b
+      );
+    }
+    if (this.switchComms) {
+      this.setSwitchVisual(this.switchComms, telemetry.commsActive, 0x14b8a6);
+    }
 
     // 3. Оптимизированное обновление CanvasTexture (<= 12.5 Гц и только при изменении показаний)
     this.drawScreens(telemetry, nowMs, false);
@@ -867,6 +893,10 @@ export class Ac40CabCockpit {
       return;
     }
 
+    if (!this.clusterTex || !this.pumpTex || !this.clusterCtx || !this.pumpCtx) {
+      return;
+    }
+
     this.lastDrawMs = nowMs;
     this.lastStateKey = stateKey;
 
@@ -884,7 +914,7 @@ export class Ac40CabCockpit {
     gear: string,
     beaconPhase: number
   ): void {
-    const ctx = this.clusterCtx;
+    const ctx = this.clusterCtx!;
     const w = 512;
     const h = 256;
 
@@ -1098,7 +1128,7 @@ export class Ac40CabCockpit {
     hoseM: number,
     beaconPhase: number
   ): void {
-    const ctx = this.pumpCtx;
+    const ctx = this.pumpCtx!;
     const w = 512;
     const h = 384;
 

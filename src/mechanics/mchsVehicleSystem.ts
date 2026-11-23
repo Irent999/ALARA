@@ -431,6 +431,7 @@ export class MchsVehicleSystem {
 
   public boardVehicle(): boolean {
     if (this.isSeated) return false;
+    this.cabCockpit.ensureInteriorBuilt();
     this.isSeated = true;
     this.autopilotTargetIndex = null;
     this.doorHaloMesh.visible = false;
@@ -689,28 +690,37 @@ export class MchsVehicleSystem {
       this.beaconAmberMat.emissiveIntensity = 0.05;
     }
 
-    this.cabCockpit.update(
-      {
-        isSeated: this.isSeated,
-        speedKmh: Math.round(Math.abs(this.currentSpeedMps) * 3.6),
-        steerAngleRad: this.currentSteerAngle,
-        throttle: this.currentThrottle,
-        isAutopilot: this.autopilotTargetIndex !== null,
-        autopilotTargetName:
-          this.autopilotTargetIndex !== null
-            ? this.driveTargets[this.autopilotTargetIndex]?.name ?? null
-            : null,
-        isHoseAttached: this.isHoseAttached,
-        isSpraying: Boolean(params.isSpraying && this.isHoseAttached),
-        hoseLengthM: this.hoseLengthM,
-        maxHoseLengthM: SCENARIO_4_CONFIG.HOSE.maxLengthM,
-        hoseOverstretched: this.hoseOverstretched,
-        beaconsOn: this.beaconsOn,
-        commsActive: true,
-        hasAlert: Boolean(params.hasAlert)
-      },
-      nowMs
-    );
+    if (
+      !this.cabCockpit.isInteriorBuilt() &&
+      (this.isSeated || params.playerPos.distanceToSquared(this.vehiclePos) <= 100)
+    ) {
+      this.cabCockpit.ensureInteriorBuilt();
+    }
+
+    if (this.cabCockpit.isInteriorBuilt()) {
+      this.cabCockpit.update(
+        {
+          isSeated: this.isSeated,
+          speedKmh: Math.round(Math.abs(this.currentSpeedMps) * 3.6),
+          steerAngleRad: this.currentSteerAngle,
+          throttle: this.currentThrottle,
+          isAutopilot: this.autopilotTargetIndex !== null,
+          autopilotTargetName:
+            this.autopilotTargetIndex !== null
+              ? this.driveTargets[this.autopilotTargetIndex]?.name ?? null
+              : null,
+          isHoseAttached: this.isHoseAttached,
+          isSpraying: Boolean(params.isSpraying && this.isHoseAttached),
+          hoseLengthM: this.hoseLengthM,
+          maxHoseLengthM: SCENARIO_4_CONFIG.HOSE.maxLengthM,
+          hoseOverstretched: this.hoseOverstretched,
+          beaconsOn: this.beaconsOn,
+          commsActive: true,
+          hasAlert: Boolean(params.hasAlert)
+        },
+        nowMs
+      );
+    }
 
     return { arrivedBuildingName };
   }

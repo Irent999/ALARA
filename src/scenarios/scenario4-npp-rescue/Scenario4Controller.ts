@@ -15,9 +15,16 @@ import {
   SCENARIO_4_CONFIG,
   type WallColliderBox
 } from '../../npp/nppNodeConfig';
-import { disposeGlbSceneHierarchy, NppAssemblyLoader } from '../../npp/nppAssemblyLoader';
 import {
+  disposeGlbSceneHierarchy,
+  isSessionCachedGlbRoot,
+  NppAssemblyLoader,
+  type NppLoadResult
+} from '../../npp/nppAssemblyLoader';
+import {
+  createFrameYieldBudget,
   throwIfAborted,
+  yieldIfBudgetExceeded,
   yieldToBrowser,
   type NppInspectionReport
 } from '../../npp/nppSceneInspector';
@@ -145,6 +152,7 @@ export class Scenario4Controller {
   private emergencyOps: EmergencyOpsSystem | null = null;
 
   private inspectionReport: NppInspectionReport | null = null;
+  private mountedWorldRoot: THREE.Group | null = null;
   private wallColliders: WallColliderBox[] = [];
   private readonly modelBounds = new THREE.Box3(
     new THREE.Vector3(-45, 0, -45),
@@ -290,8 +298,9 @@ export class Scenario4Controller {
   public async loadCustomGlbFile(file: File): Promise<void> {
     if (this.isDisposed) return;
     const blobUrl = URL.createObjectURL(file);
+    const cacheKey = `upload::${file.name}::${file.size}::${file.lastModified}`;
     try {
-      await this.loadComplexGlb(blobUrl, true);
+      await this.loadComplexGlb(blobUrl, true, false, cacheKey);
     } finally {
       URL.revokeObjectURL(blobUrl);
     }
@@ -307,7 +316,7 @@ export class Scenario4Controller {
 
   public retryLoadGlb(): void {
     if (this.isDisposed) return;
-    void this.loadComplexGlb();
+    void this.loadComplexGlb(undefined, false, true);
   }
 
   public focusCameraOnModel(): boolean {
@@ -329,7 +338,12 @@ export class Scenario4Controller {
     return true;
   }
 
-  private async loadComplexGlb(customUrl?: string, isCustomUpload = false): Promise<void> {
+  private async loadComplexGlb(
+    customUrl?: string,
+    isCustomUpload = false,
+    forceReload = false,
+    customCacheKey?: string
+  ): Promise<void> {
     if (this.isDisposed) return;
 
     this.cancelLoading();
@@ -348,7 +362,7 @@ export class Scenario4Controller {
       ? 'Чтение пользовательской 3D-модели АЭС (.glb)...'
       : `Загрузка 3D-комплекса АЭС (${NPP_NODE_CONFIG.glbUrl})...`;
 
-    // Уступаем один кадр браузеру, чтобы UI загрузки гарантированно отрисовался до старта сетевого запроса
+    // Уступаем один кадр браузеру, чтобы UI загрузки гарантированно отрисовался до старта
     await yieldToBrowser();
     if (this.isDisposed || this.activeLoadToken !== loadToken || signal.aborted) return;
 
@@ -359,6 +373,8 @@ export class Scenario4Controller {
         isCustomUpload ? 'custom_upload' : 'glb_file',
         {
           signal,
+          forceReload,
+          cacheKey: customCacheKey,
           onProgress: (pct, textRu) => {
             if (!this.isDisposed && this.activeLoadToken === loadToken && !signal.aborted) {
               this.loadProgressPct = pct;
@@ -369,11 +385,13 @@ export class Scenario4Controller {
       );
 
       if (this.isDisposed || this.activeLoadToken !== loadToken || signal.aborted) {
-        disposeGlbSceneHierarchy(result.sceneRoot);
+        if (!result.fromCache && !isSessionCachedGlbRoot(result.sceneRoot)) {
+          disposeGlbSceneHierarchy(result.sceneRoot);
+        }
         return;
       }
 
-      await this.mountLoadedWorldAsync(result.sceneRoot, result.report, loadToken, signal);
+      await this.mountLoadedWorldAsync(result, loadToken, signal);
 
       if (this.isDisposed || this.activeLoadToken !== loadToken || signal.aborted) {
         this.clearCurrentWorldSystems();
@@ -382,7 +400,7 @@ export class Scenario4Controller {
 
       this.onToast(
         'success',
-        'МОДЕЛЬ АЭС ЗАГРУЖЕНА (.GLB)',
+        result.fromCache ? 'МОДЕЛЬ АЭС ВОССТАНОВЛЕНА ИЗ КЭША' : 'МОДЕЛЬ АЭС ЗАГРУЖЕНА (.GLB)',
         `${result.resolvedUrl} • Корпусов: ${result.report.buildingVolumes.length}, узлов: ${result.report.totalNodes}, Box3: ${result.report.boundingBoxSize.join('×')} м.`
       );
     } catch (err) {
@@ -425,12 +443,14 @@ export class Scenario4Controller {
   }
 
   private async mountLoadedWorldAsync(
-    worldRoot: THREE.Group,
-    report: NppInspectionReport,
+    result: NppLoadResult,
     loadToken: number,
     signal: AbortSignal
   ): Promise<void> {
     this.assertLoadStillValid(loadToken, signal);
+    const { sceneRoot: worldRoot, report, groundMeshes } = result;
+    const budget = createFrameYieldBudget();
+
     const updateProgress = (pct: number, textRu: string) => {
       if (!this.isDisposed && this.activeLoadToken === loadToken) {
         this.loadProgressPct = pct;
@@ -440,13 +460,14 @@ export class Scenario4Controller {
 
     // Шаг 1: Добавление модели АЭС в сцену и расстановка технического оборудования корпусов
     updateProgress(97.8, 'Размещение оборудования внутри корпусов АЭС...');
-    await yieldToBrowser();
+    await yieldIfBudgetExceeded(budget, 14, signal);
     this.assertLoadStillValid(loadToken, signal);
 
     console.time('[ALARA S4] Этап 1: Оборудование корпусов');
     this.loadErrorRu = null;
     this.inspectionReport = report;
     this.deckSurfaceY = report.deckSurfaceY;
+    this.mountedWorldRoot = worldRoot;
     this.modelContainer.add(worldRoot);
     this.modelContainer.updateMatrixWorld(true);
     this.modelBounds.min.set(
@@ -504,19 +525,12 @@ export class Scenario4Controller {
     }
     console.timeEnd('[ALARA S4] Этап 1: Оборудование корпусов');
 
-    // Шаг 2: Пожарный автомобиль АЦ-40 (кабина, приборы, рукав) и аварийные посты МЧС
+    // Шаг 2: Пожарный автомобиль АЦ-40 (лёгкий внешний каркас) и аварийные посты МЧС
     updateProgress(98.5, 'Сборка пожарного автомобиля АЦ-40 и аварийных постов...');
-    await yieldToBrowser();
+    await yieldIfBudgetExceeded(budget, 14, signal);
     this.assertLoadStillValid(loadToken, signal);
 
     console.time('[ALARA S4] Этап 2: АЦ-40 МЧС и аварийные посты');
-    const groundMeshes: THREE.Mesh[] = [];
-    worldRoot.traverse(obj => {
-      if ((obj as THREE.Mesh).isMesh) {
-        groundMeshes.push(obj as THREE.Mesh);
-      }
-    });
-
     this.vehicleSys = new MchsVehicleSystem({
       spawnPos: m.vehicleSpawn.pos,
       lookTarget: this.entrancePos,
@@ -538,7 +552,7 @@ export class Scenario4Controller {
 
     // Шаг 3: Очаги пожара + яркие мигающие оранжевые PointLight и дым у порталов входа
     updateProgress(99.2, 'Активация очагов возгорания и дымовых порталов...');
-    await yieldToBrowser();
+    await yieldIfBudgetExceeded(budget, 14, signal);
     this.assertLoadStillValid(loadToken, signal);
 
     console.time('[ALARA S4] Этап 3: Очаги, портальные огни и дым');
@@ -571,7 +585,7 @@ export class Scenario4Controller {
 
     // Шаг 4: Персонал для эвакуации и источники ИИИ
     updateProgress(99.7, 'Размещение персонала эвакуации и радиационных маркеров...');
-    await yieldToBrowser();
+    await yieldIfBudgetExceeded(budget, 14, signal);
     this.assertLoadStillValid(loadToken, signal);
 
     console.time('[ALARA S4] Этап 4: Эвакуация NPC и финализация');
@@ -1613,6 +1627,11 @@ export class Scenario4Controller {
       this.emergencyOps.dispose();
       this.emergencyOps = null;
     }
+    // Отцепляем кэшированную сборку .glb без освобождения GPU-ресурсов, чтобы повторный запуск был мгновенным
+    if (this.mountedWorldRoot && isSessionCachedGlbRoot(this.mountedWorldRoot)) {
+      this.mountedWorldRoot.parent?.remove(this.mountedWorldRoot);
+    }
+    this.mountedWorldRoot = null;
     this.disposeObjectTree(this.modelContainer);
     while (this.modelContainer.children.length > 0) {
       this.modelContainer.remove(this.modelContainer.children[0]);

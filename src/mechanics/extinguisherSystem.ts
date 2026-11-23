@@ -63,7 +63,7 @@ export interface SprayHitResult {
 }
 
 const SPRAY_PARTICLE_COUNT = 120;
-const PORTAL_SMOKE_PARTICLE_COUNT = 44;
+const PORTAL_SMOKE_PARTICLE_COUNT = 24;
 
 export class ExtinguisherSystem {
   public readonly rootGroup = new THREE.Group();
@@ -203,9 +203,8 @@ export class ExtinguisherSystem {
       metalness: 0.8
     });
 
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.082, 0.082, 0.46, 16), bodyMat);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.082, 0.082, 0.46, 14), bodyMat);
     body.position.y = 0.25;
-    body.castShadow = true;
     g.add(body);
 
     const dome = new THREE.Mesh(
@@ -367,7 +366,13 @@ export class ExtinguisherSystem {
     const beaconPoleGeo = new THREE.CylinderGeometry(0.055, 0.075, 3.2, 8);
     const beaconDomeGeo = new THREE.SphereGeometry(0.24, 12, 10);
     const beaconBeamGeo = new THREE.CylinderGeometry(0.14, 0.36, 7.5, 12, 1, true);
-    const beaconRingGeo = new THREE.RingGeometry(1.1, 1.42, 32);
+    const beaconRingGeo = new THREE.RingGeometry(1.1, 1.42, 24);
+    const sharedBeaconPoleMat = new THREE.MeshStandardMaterial({
+      color: 0x334155,
+      roughness: 0.55,
+      metalness: 0.6
+    });
+    const sharedBaseMat = new THREE.MeshBasicMaterial({ color: 0x1c1917 });
 
     fireSpecs.forEach((cfg, idx) => {
       const matched =
@@ -387,8 +392,8 @@ export class ExtinguisherSystem {
 
       const padRadius = cfg.radiusM * 0.62 * es;
       const baseMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(padRadius * 0.85, padRadius, 0.05, 16),
-        new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.92 })
+        new THREE.CylinderGeometry(padRadius * 0.85, padRadius, 0.05, 14),
+        sharedBaseMat
       );
       baseMesh.position.y = 0.025;
       group.add(baseMesh);
@@ -430,9 +435,8 @@ export class ExtinguisherSystem {
 
       const smokePuffs: THREE.Mesh[] = [];
       for (let s = 0; s < 6; s++) {
-        const smokeMat = new THREE.MeshStandardMaterial({
+        const smokeMat = new THREE.MeshBasicMaterial({
           color: 0x1e293b,
-          roughness: 1.0,
           transparent: true,
           opacity: 0.52 * cfg.smokeDensity,
           depthWrite: false
@@ -454,9 +458,8 @@ export class ExtinguisherSystem {
         : 6.5;
       const tallSmokePuffs: THREE.Mesh[] = [];
       for (let ts = 0; ts < 5; ts++) {
-        const tallMat = new THREE.MeshStandardMaterial({
+        const tallMat = new THREE.MeshBasicMaterial({
           color: 0x334155,
-          roughness: 1.0,
           transparent: true,
           opacity: 0.42,
           depthWrite: false
@@ -484,8 +487,7 @@ export class ExtinguisherSystem {
       // Сдвигаем стойку маяка чуть вбок от центра входа, чтобы не мешать проходу
       beaconGroup.position.set(beaconPos.x + beaconPoleOffsetX, beaconPos.y, beaconPos.z);
 
-      const poleMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.55, metalness: 0.6 });
-      const pole = new THREE.Mesh(beaconPoleGeo, poleMat);
+      const pole = new THREE.Mesh(beaconPoleGeo, sharedBeaconPoleMat);
       pole.position.y = 1.6;
       beaconGroup.add(pole);
 
@@ -543,7 +545,7 @@ export class ExtinguisherSystem {
       const portalSmokeMat = new THREE.PointsMaterial({
         color: 0x475569,
         map: this.portalSmokeTexture,
-        size: 2.35,
+        size: 2.6,
         transparent: true,
         opacity: 0.72,
         depthWrite: false,
@@ -1088,7 +1090,7 @@ export class ExtinguisherSystem {
           const steamRatio = fire.steamTimer / 3.2;
           fire.smokePuffs.forEach((p, idx) => {
             p.visible = true;
-            const mat = p.material as THREE.MeshStandardMaterial;
+            const mat = p.material as THREE.MeshBasicMaterial;
             mat.color.setHex(0xe2e8f0);
             mat.opacity = 0.28 * steamRatio;
             p.position.y = 0.9 + ((this.elapsedAnimSec * 1.1 + idx * 0.5) % 2.4);
@@ -1136,7 +1138,7 @@ export class ExtinguisherSystem {
         const cycle = (this.elapsedAnimSec * 0.9 + ph) % 2.4;
         p.position.y = (0.8 + cycle) * this.effectScale;
         p.scale.setScalar(0.6 + cycle * 0.32);
-        const mat = p.material as THREE.MeshStandardMaterial;
+        const mat = p.material as THREE.MeshBasicMaterial;
         mat.color.setHex(isSteamTransition ? 0xcbd5e1 : 0x1e293b);
         mat.opacity = Math.min(
           0.6,
@@ -1152,7 +1154,7 @@ export class ExtinguisherSystem {
         const cycle = (this.elapsedAnimSec * 0.85 + ph) % 6.0;
         p.position.y = baseH + cycle * 1.45;
         p.scale.setScalar(0.75 + cycle * 0.24);
-        const mat = p.material as THREE.MeshStandardMaterial;
+        const mat = p.material as THREE.MeshBasicMaterial;
         mat.color.setHex(isSteamTransition ? 0xcbd5e1 : 0x334155);
         mat.opacity = Math.min(0.45, (0.2 + fire.intensity * 0.35) * (1 - cycle / 6.3));
       });
@@ -1272,14 +1274,20 @@ export class ExtinguisherSystem {
     for (let i = 0; i < this.fires.length; i++) {
       this.fires[i].markerSprite.dispose();
     }
+    const geos = new Set<THREE.BufferGeometry>();
+    const mats = new Set<THREE.Material>();
     this.rootGroup.traverse(obj => {
       if ((obj as THREE.Mesh).isMesh || (obj as THREE.Points).isPoints) {
         const mesh = obj as THREE.Mesh;
-        mesh.geometry?.dispose();
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        mats.forEach(m => m?.dispose());
+        if (mesh.geometry) geos.add(mesh.geometry);
+        const mList = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mList.forEach(m => {
+          if (m) mats.add(m);
+        });
       }
     });
+    geos.forEach(g => g.dispose());
+    mats.forEach(m => m.dispose());
     if (this.portalSmokeTexture) {
       this.portalSmokeTexture.dispose();
       this.portalSmokeTexture = null;

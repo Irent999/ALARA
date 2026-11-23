@@ -1,7 +1,7 @@
 /**
  * ALARA — Загрузчик оригинальной 3D-модели АЭС (/assembly.glb) через GLTFLoader
- * с поддержкой Draco + Meshopt компрессии, потоковым скачиванием с AbortSignal,
- * неблокирующей поэтапной нормализацией мешей/материалов и таймингом этапов.
+ * с синглтон-декодерами (условное подключение Draco / Meshopt), потоковым скачиванием с AbortSignal,
+ * кэшированием нормализованной сборки в памяти на время сессии и временны́м бюджетом кадров (14 мс).
  *
  * ВАЖНО: Никакой подмены процедурной комнатой/примитивами!
  * При ошибке загрузки возвращается явная ошибка в консоль и HUD.
@@ -11,12 +11,15 @@ import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import { NPP_NODE_CONFIG, NppAssemblyConfig } from './nppNodeConfig';
+import { NPP_NODE_CONFIG, NppAssemblyConfig, SCENARIO_4_CONFIG } from './nppNodeConfig';
 import {
+  createFrameYieldBudget,
+  FrameYieldBudget,
   inspectNppSceneGraphAsync,
   NppInspectionReport,
   NppSceneSourceKind,
   throwIfAborted,
+  yieldIfBudgetExceeded,
   yieldToBrowser
 } from './nppSceneInspector';
 
@@ -24,11 +27,118 @@ export interface NppLoadResult {
   readonly sceneRoot: THREE.Group;
   readonly report: NppInspectionReport;
   readonly resolvedUrl: string;
+  readonly groundMeshes: ReadonlyArray<THREE.Mesh>;
+  readonly fromCache: boolean;
 }
 
 export interface NppLoadCallbacks {
   readonly signal?: AbortSignal;
+  readonly forceReload?: boolean;
+  readonly cacheKey?: string;
   readonly onProgress?: (progressPct: number, statusTextRu: string) => void;
+}
+
+interface CachedNppAsset {
+  readonly cacheKey: string;
+  readonly resolvedUrl: string;
+  readonly sceneRoot: THREE.Group;
+  readonly report: NppInspectionReport;
+  readonly groundMeshes: THREE.Mesh[];
+}
+
+const DEFAULT_NPP_CACHE_KEY = 'default::assembly.glb';
+
+// Синглтон-декодеры и загрузчики переиспользуются между повторными запусками Сценария №4
+let sharedPlainGltfLoader: GLTFLoader | null = null;
+let sharedCompressedGltfLoader: GLTFLoader | null = null;
+let sharedDracoLoader: DRACOLoader | null = null;
+let sharedDracoDecoderPath = '';
+
+// Сессионный кэш нормализованного /assembly.glb (максимум 1 активная модель в памяти)
+let sessionGlbCache: CachedNppAsset | null = null;
+
+export function isSessionCachedGlbRoot(root: THREE.Object3D | null): boolean {
+  return Boolean(root && sessionGlbCache && sessionGlbCache.sceneRoot === root);
+}
+
+export function clearNppSessionCache(): void {
+  if (!sessionGlbCache) return;
+  disposeGlbSceneHierarchy(sessionGlbCache.sceneRoot);
+  sessionGlbCache = null;
+}
+
+function getPlainGltfLoader(): GLTFLoader {
+  if (!sharedPlainGltfLoader) {
+    sharedPlainGltfLoader = new GLTFLoader();
+  }
+  return sharedPlainGltfLoader;
+}
+
+function getCompressedGltfLoader(dracoPath: string, needsDraco: boolean, needsMeshopt: boolean): GLTFLoader {
+  if (needsDraco && (!sharedDracoLoader || sharedDracoDecoderPath !== dracoPath)) {
+    if (sharedDracoLoader) {
+      sharedDracoLoader.dispose();
+    }
+    sharedDracoLoader = new DRACOLoader();
+    sharedDracoLoader.setDecoderPath(dracoPath);
+    sharedDracoDecoderPath = dracoPath;
+  }
+
+  if (!sharedCompressedGltfLoader) {
+    sharedCompressedGltfLoader = new GLTFLoader();
+  }
+  if (needsDraco && sharedDracoLoader) {
+    sharedCompressedGltfLoader.setDRACOLoader(sharedDracoLoader);
+  }
+  if (needsMeshopt) {
+    sharedCompressedGltfLoader.setMeshoptDecoder(MeshoptDecoder);
+  }
+  return sharedCompressedGltfLoader;
+}
+
+/**
+ * Быстро читает заголовок бинарного .glb (JSON-чанк) за O(1),
+ * чтобы не поднимать WASM-декодеры Draco/Meshopt, если модель в них не нуждается.
+ */
+function inspectGlbDecoderRequirements(buffer: ArrayBuffer): {
+  needsDraco: boolean;
+  needsMeshopt: boolean;
+} {
+  if (buffer.byteLength < 20) {
+    return { needsDraco: true, needsMeshopt: true };
+  }
+  const view = new DataView(buffer);
+  const magic = view.getUint32(0, true);
+  // 0x46546C67 === 'glTF'
+  if (magic !== 0x46546c67) {
+    return { needsDraco: true, needsMeshopt: true };
+  }
+
+  const chunkLen = view.getUint32(12, true);
+  const chunkType = view.getUint32(16, true);
+  // 0x4E4F534A === 'JSON'
+  if (chunkType !== 0x4e4f534a || 20 + chunkLen > buffer.byteLength) {
+    return { needsDraco: true, needsMeshopt: true };
+  }
+
+  try {
+    const jsonBytes = new Uint8Array(buffer, 20, chunkLen);
+    const jsonStr = new TextDecoder().decode(jsonBytes);
+    const parsed = JSON.parse(jsonStr) as {
+      extensionsUsed?: string[];
+      extensionsRequired?: string[];
+    };
+    const used = new Set<string>([
+      ...(parsed.extensionsUsed ?? []),
+      ...(parsed.extensionsRequired ?? [])
+    ]);
+    return {
+      needsDraco: used.has('KHR_draco_mesh_compression'),
+      needsMeshopt: used.has('EXT_meshopt_compression')
+    };
+  } catch {
+    return { needsDraco: true, needsMeshopt: true };
+  }
 }
 
 /**
@@ -69,16 +179,9 @@ export function disposeGlbSceneHierarchy(tree: THREE.Object3D): void {
 
 export class NppAssemblyLoader {
   private readonly config: NppAssemblyConfig;
-  private dracoLoader: DRACOLoader | null = null;
-  private gltfLoader: GLTFLoader | null = null;
 
   constructor(config: NppAssemblyConfig = NPP_NODE_CONFIG) {
     this.config = config;
-    this.dracoLoader = new DRACOLoader();
-    this.dracoLoader.setDecoderPath(this.config.dracoDecoderPath);
-    this.gltfLoader = new GLTFLoader();
-    this.gltfLoader.setDRACOLoader(this.dracoLoader);
-    this.gltfLoader.setMeshoptDecoder(MeshoptDecoder);
   }
 
   public getConfig(): NppAssemblyConfig {
@@ -98,46 +201,27 @@ export class NppAssemblyLoader {
     return Array.from(new Set(candidates.filter(Boolean)));
   }
 
-  private async diagnoseNetworkUrl(url: string, signal?: AbortSignal): Promise<string | null> {
-    if (url.startsWith('blob:') || url.startsWith('data:')) return null;
-    try {
-      const res = await fetch(url, { method: 'HEAD', signal });
-      const ct = res.headers.get('content-type') ?? 'unknown';
-      if (!res.ok) {
-        return `HTTP ${res.status} (${res.statusText || 'Not Found'}) по адресу "${url}"`;
-      }
-      if (ct.toLowerCase().includes('text/html')) {
-        return `Сервер вернул HTML-страницу (SPA fallback, content-type: ${ct}) вместо бинарного .glb — проверьте наличие файла public/assembly.glb`;
-      }
-      return null;
-    } catch (err) {
-      if ((err as { name?: string })?.name === 'AbortError' || signal?.aborted) {
-        throw err;
-      }
-      return null;
-    }
-  }
-
   private async fetchBinaryWithProgress(
     url: string,
     callbacks?: NppLoadCallbacks
   ): Promise<ArrayBuffer> {
     throwIfAborted(callbacks?.signal);
-    console.info(`[ALARA GLB] Старт загрузки: "${url}" (Draco: "${this.config.dracoDecoderPath}")`);
+    console.info(`[ALARA GLB] Старт загрузки: "${url}"`);
     console.time('[ALARA GLB] 1. Скачивание .glb');
-    callbacks?.onProgress?.(5, `Подключение к ${url}...`);
+    callbacks?.onProgress?.(5, `Загрузка ${url}...`);
 
+    // Объединяем проверку заголовка и скачивание в один fetch без лишнего предварительного HEAD-запроса
     const response = await fetch(url, { signal: callbacks?.signal });
     if (!response.ok) {
       console.timeEnd('[ALARA GLB] 1. Скачивание .glb');
-      throw new Error(`HTTP ${response.status} (${response.statusText || 'Error'}) по адресу "${url}"`);
+      throw new Error(`HTTP ${response.status} (${response.statusText || 'Not Found'}) по адресу "${url}"`);
     }
 
     const contentType = (response.headers.get('content-type') ?? '').toLowerCase();
     if (contentType.includes('text/html')) {
       console.timeEnd('[ALARA GLB] 1. Скачивание .glb');
       throw new Error(
-        `По пути "${url}" получен HTML (${contentType}) вместо бинарного .glb (проверьте public/assembly.glb)`
+        `Сервер вернул HTML-страницу (${contentType}) вместо бинарного .glb — проверьте наличие public/assembly.glb`
       );
     }
 
@@ -149,7 +233,6 @@ export class NppAssemblyLoader {
       const reader = response.body.getReader();
       const chunks: Uint8Array[] = [];
       let loadedBytes = 0;
-      let lastLoggedBucket = -1;
       let lastUiUpdateMs = 0;
 
       try {
@@ -163,16 +246,9 @@ export class NppAssemblyLoader {
 
             const now = performance.now();
             if (totalBytes > 0) {
-              const pct = Math.min(94, Math.max(5, Math.round((loadedBytes / totalBytes) * 94)));
-              const bucket = Math.floor(pct / 15);
-              if (bucket !== lastLoggedBucket) {
-                lastLoggedBucket = bucket;
-                console.info(
-                  `[ALARA GLB] onProgress (${url}): ${pct}% (${(loadedBytes / (1024 * 1024)).toFixed(1)} / ${(totalBytes / (1024 * 1024)).toFixed(1)} МБ)`
-                );
-              }
-              if (now - lastUiUpdateMs >= 80 || loadedBytes >= totalBytes) {
+              if (now - lastUiUpdateMs >= 85 || loadedBytes >= totalBytes) {
                 lastUiUpdateMs = now;
+                const pct = Math.min(94, Math.max(5, Math.round((loadedBytes / totalBytes) * 94)));
                 callbacks?.onProgress?.(
                   pct,
                   `Загрузка 3D-модели АЭС (${(loadedBytes / (1024 * 1024)).toFixed(1)} / ${(totalBytes / (1024 * 1024)).toFixed(1)} МБ)...`
@@ -209,7 +285,6 @@ export class NppAssemblyLoader {
     console.timeEnd('[ALARA GLB] 1. Скачивание .glb');
     throwIfAborted(callbacks?.signal);
 
-    // Быстрая проверка на случай если сервер отдал HTML без корректного заголовка
     if (arrayBuffer.byteLength > 0) {
       const head = new Uint8Array(arrayBuffer, 0, Math.min(16, arrayBuffer.byteLength));
       const headAscii = String.fromCharCode(...head).trimStart();
@@ -227,13 +302,17 @@ export class NppAssemblyLoader {
     url: string,
     callbacks?: NppLoadCallbacks
   ): Promise<GLTF> {
-    if (!this.gltfLoader) {
-      throw new Error('GLTFLoader не инициализирован');
-    }
-
     const arrayBuffer = await this.fetchBinaryWithProgress(url, callbacks);
 
-    // Отдаём кадр браузеру перед тяжёлым парсингом .glb (~55 МБ), чтобы прогресс 95% успел отрисоваться
+    const { needsDraco, needsMeshopt } = inspectGlbDecoderRequirements(arrayBuffer);
+    const loader =
+      needsDraco || needsMeshopt
+        ? getCompressedGltfLoader(this.config.dracoDecoderPath, needsDraco, needsMeshopt)
+        : getPlainGltfLoader();
+
+    console.info(`[ALARA GLB] Декодеры: Draco=${needsDraco}, Meshopt=${needsMeshopt}`);
+
+    // Единичная уступка кадру, чтобы HUD успел показать "Распаковка" перед парсингом
     callbacks?.onProgress?.(95, 'Распаковка 3D-геометрии и текстур .glb...');
     await yieldToBrowser();
     throwIfAborted(callbacks?.signal);
@@ -243,7 +322,6 @@ export class NppAssemblyLoader {
         ? ''
         : url.substring(0, url.lastIndexOf('/') + 1);
 
-    const loader = this.gltfLoader;
     console.time('[ALARA GLB] 2. GLTFLoader.parse');
 
     const gltf = await new Promise<GLTF>((resolve, reject) => {
@@ -266,24 +344,40 @@ export class NppAssemblyLoader {
       throwIfAborted(callbacks.signal);
     }
 
-    console.info('[ALARA GLB] Распакована gltf.scene:', {
-      url,
-      children: gltf.scene.children.length,
-      animations: gltf.animations.length
-    });
     return gltf;
   }
 
   /**
-   * Гарантированно загружает реальный .glb через GLTFLoader без подмены процедурными примитивами.
+   * Загружает реальный .glb с поддержкой сессионного кэша в памяти для мгновенного повторного запуска.
    */
   public async load(
     customUrl?: string,
     sourceKindOverride?: NppSceneSourceKind,
     callbacks?: NppLoadCallbacks
   ): Promise<NppLoadResult> {
-    const candidateUrls = this.buildCandidateUrls(customUrl);
     const isCustom = Boolean(customUrl);
+    const cacheKey = callbacks?.cacheKey ?? (customUrl ? `custom::${customUrl}` : DEFAULT_NPP_CACHE_KEY);
+
+    if (!callbacks?.forceReload && sessionGlbCache && sessionGlbCache.cacheKey === cacheKey) {
+      throwIfAborted(callbacks?.signal);
+      callbacks?.onProgress?.(97.5, 'Модель АЭС восстановлена из кэша сессии...');
+      console.info(`[ALARA GLB] Мгновенная загрузка из сессионного кэша (${sessionGlbCache.resolvedUrl})`);
+      sessionGlbCache.sceneRoot.visible = true;
+      return {
+        sceneRoot: sessionGlbCache.sceneRoot,
+        report: sessionGlbCache.report,
+        resolvedUrl: sessionGlbCache.resolvedUrl,
+        groundMeshes: sessionGlbCache.groundMeshes,
+        fromCache: true
+      };
+    }
+
+    // Освобождаем предыдущий сессионный кэш при загрузке другой модели или принудительном обновлении
+    if (sessionGlbCache && (sessionGlbCache.cacheKey !== cacheKey || callbacks?.forceReload)) {
+      clearNppSessionCache();
+    }
+
+    const candidateUrls = this.buildCandidateUrls(customUrl);
     const sourceKind: NppSceneSourceKind =
       sourceKindOverride ?? (isCustom ? 'custom_upload' : 'glb_file');
 
@@ -291,17 +385,19 @@ export class NppAssemblyLoader {
 
     for (const url of candidateUrls) {
       throwIfAborted(callbacks?.signal);
-      const preDiag = await this.diagnoseNetworkUrl(url, callbacks?.signal);
-      if (preDiag) {
-        console.error(`[ALARA GLB] Предварительная проверка не пройдена для "${url}": ${preDiag}`);
-        errors.push(preDiag);
-        continue;
-      }
-
       try {
         const gltf = await this.loadViaGltfParse(url, callbacks);
         try {
-          return await this.finalizeWorldRootAsync(gltf.scene, sourceKind, url, callbacks);
+          const result = await this.finalizeWorldRootAsync(gltf.scene, sourceKind, url, callbacks);
+          // Сохраняем нормализованный корень и отчёт в сессионный кэш
+          sessionGlbCache = {
+            cacheKey,
+            resolvedUrl: result.resolvedUrl,
+            sceneRoot: result.sceneRoot,
+            report: result.report,
+            groundMeshes: [...result.groundMeshes]
+          };
+          return result;
         } catch (err) {
           disposeGlbSceneHierarchy(gltf.scene);
           throw err;
@@ -333,16 +429,15 @@ export class NppAssemblyLoader {
     callbacks?: NppLoadCallbacks
   ): Promise<NppLoadResult> {
     const signal = callbacks?.signal;
+    const budget: FrameYieldBudget = createFrameYieldBudget();
     throwIfAborted(signal);
 
-    callbacks?.onProgress?.(95.5, 'Подготовка материалов и границ 3D-модели...');
-    await yieldToBrowser();
-    throwIfAborted(signal);
+    callbacks?.onProgress?.(95.5, 'Нормализация материалов и границ 3D-модели...');
 
     console.time('[ALARA GLB] 3. Нормализация мешей и Box3');
     const tf = this.config.transform;
 
-    // 1. Гарантируем видимость всей иерархии и собираем меши за один быстрый проход
+    // 1. Гарантируем видимость иерархии и собираем меши за один проход
     worldRoot.visible = true;
     worldRoot.layers.enableAll();
     worldRoot.position.set(0, 0, 0);
@@ -371,9 +466,8 @@ export class NppAssemblyLoader {
     const tmpSize = new THREE.Vector3();
 
     let fixedOpacityCount = 0;
-    let sliceStartMs = performance.now();
 
-    // 2. Пошаговая обработка мешей и уникальных материалов с уступкой кадру (чтобы не вешать UI)
+    // 2. Пошаговая нормализация с временны́м бюджетом 14 мс (без холостых rAF-пауз)
     for (let i = 0; i < meshCount; i++) {
       const mesh = allMeshes[i];
       mesh.visible = true;
@@ -395,8 +489,8 @@ export class NppAssemblyLoader {
         }
       }
 
-      // Не нагружаем shadow map тысячами мелких крепёжных/кабельных сабмешей в 55 МБ модели
-      mesh.castShadow = meshCount <= 350 || diag >= 1.4;
+      // Тени только на крупных строительных элементах, без мелких крепёжных деталей
+      mesh.castShadow = meshCount <= 300 || diag >= 1.8;
 
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (let mi = 0; mi < mats.length; mi++) {
@@ -438,14 +532,12 @@ export class NppAssemblyLoader {
         }
       }
 
-      if (i > 0 && (i % 240 === 0 || performance.now() - sliceStartMs > 12)) {
-        await yieldToBrowser();
-        throwIfAborted(signal);
-        sliceStartMs = performance.now();
+      if ((i & 63) === 63) {
+        await yieldIfBudgetExceeded(budget, 14, signal);
       }
     }
 
-    // 3. Единое вычисление поворота, масштаба и центрирования (без лишних обходов Box3.setFromObject)
+    // 3. Единое вычисление поворота, масштаба и центрирования
     const rawSize = new THREE.Vector3();
     let rawMinArr: readonly [number, number, number] = [0, 0, 0];
     let rawMaxArr: readonly [number, number, number] = [0, 0, 0];
@@ -470,15 +562,6 @@ export class NppAssemblyLoader {
         Number(rawSize.y.toFixed(2)),
         Number(rawSize.z.toFixed(2))
       ];
-
-      console.info('[ALARA GLB] Исходный Box3 до нормализации:', {
-        min: rawMinArr,
-        max: rawMaxArr,
-        size: rawSizeArr,
-        meshCount,
-        uniqueMaterials: seenMaterials.size,
-        fixedOpacityCount
-      });
 
       const isFlatVerticalPanel =
         rawSize.y > 0.001 &&
@@ -509,9 +592,6 @@ export class NppAssemblyLoader {
           );
         }
         rotated = true;
-        console.info(
-          `[ALARA GLB] Применён поворот ориентации (${tf.orientationMode}): X=${tf.rotationDeg[0]}°, Yaw=${tf.yawDeg}°`
-        );
       } else if (Math.abs(tf.yawDeg) > 0.01) {
         appliedRotationDeg = [0, tf.yawDeg, 0];
         worldRoot.rotateOnWorldAxis(
@@ -545,7 +625,6 @@ export class NppAssemblyLoader {
       }
       worldRoot.scale.setScalar(appliedScale);
 
-      // Вычисляем масштабированный Box3 аналитически без повторного обхода сцены
       const scaledBox = orientedBox.clone();
       scaledBox.min.multiplyScalar(appliedScale);
       scaledBox.max.multiplyScalar(appliedScale);
@@ -564,18 +643,12 @@ export class NppAssemblyLoader {
       worldRoot.position.z += tf.positionOffset[2];
       worldRoot.updateMatrixWorld(true);
 
-      const finalBox = scaledBox.clone().translate(worldRoot.position);
-      const finalSize = new THREE.Vector3();
-      finalBox.getSize(finalSize);
-      console.info('[ALARA GLB] Итоговый Box3 после нормализации:', {
-        appliedRotationDeg,
-        appliedScale: Number(appliedScale.toFixed(4)),
-        min: finalBox.min.toArray().map(n => Number(n.toFixed(2))),
-        max: finalBox.max.toArray().map(n => Number(n.toFixed(2))),
-        size: finalSize.toArray().map(n => Number(n.toFixed(2)))
+      console.info('[ALARA GLB] Нормализация завершена:', {
+        meshCount,
+        uniqueMaterials: seenMaterials.size,
+        fixedOpacityCount,
+        appliedScale: Number(appliedScale.toFixed(4))
       });
-    } else {
-      console.warn('[ALARA GLB] Загруженный gltf.scene имеет пустой Box3 (нет видимой геометрии).');
     }
 
     if (!hasEmbeddedLights) {
@@ -585,10 +658,9 @@ export class NppAssemblyLoader {
     }
     console.timeEnd('[ALARA GLB] 3. Нормализация мешей и Box3');
 
-    // 4. Асинхронная инспекция графа сцены с AABB-индексом и уступками кадру
-    callbacks?.onProgress?.(96, 'Анализ узлов, зданий и входов модели АЭС...');
-    await yieldToBrowser();
-    throwIfAborted(signal);
+    // 4. Асинхронная инспекция графа сцены с общим бюджетом кадра
+    callbacks?.onProgress?.(96, 'Анализ узлов и корпусов модели АЭС...');
+    await yieldIfBudgetExceeded(budget, 14, signal);
 
     console.time('[ALARA GLB] 4. Инспекция графа АЭС');
     const report = await inspectNppSceneGraphAsync(
@@ -605,24 +677,40 @@ export class NppAssemblyLoader {
       },
       {
         signal,
+        budget,
         onStepProgress: callbacks?.onProgress
       }
     );
     console.timeEnd('[ALARA GLB] 4. Инспекция графа АЭС');
 
+    // 5. Предварительная фильтрация напольных/площадочных мешей для быстрого Raycast АЦ-40
+    const maxStep = SCENARIO_4_CONFIG.VEHICLE.driveBounds.maxDeckStepHeightM;
+    const minGroundY = report.deckSurfaceY - 2.0;
+    const maxGroundY = report.deckSurfaceY + maxStep + 1.0;
+    const groundMeshes: THREE.Mesh[] = [];
+    for (let i = 0; i < meshCount; i++) {
+      const mesh = allMeshes[i];
+      const bb = mesh.geometry?.boundingBox;
+      if (!bb) continue;
+      tmpBox.copy(bb).applyMatrix4(mesh.matrixWorld);
+      if (tmpBox.min.y > maxGroundY || tmpBox.max.y < minGroundY) continue;
+      tmpBox.getSize(tmpSize);
+      if (Math.max(tmpSize.x, tmpSize.z) >= 1.2) {
+        groundMeshes.push(mesh);
+      }
+    }
+
     callbacks?.onProgress?.(97.5, 'Подготовка игровых систем АЭС...');
     return {
       sceneRoot: worldRoot,
       report,
-      resolvedUrl: sourceUrl
+      resolvedUrl: sourceUrl,
+      groundMeshes: groundMeshes.length > 0 ? groundMeshes : allMeshes,
+      fromCache: false
     };
   }
 
   public dispose(): void {
-    if (this.dracoLoader) {
-      this.dracoLoader.dispose();
-      this.dracoLoader = null;
-    }
-    this.gltfLoader = null;
+    // Синглтон-декодеры DRACOLoader/GLTFLoader и sessionGlbCache сохраняются между переключениями сценариев
   }
 }

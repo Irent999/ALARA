@@ -23,25 +23,50 @@ export interface EquipmentBuildResult {
 
 function createSwitchgearPlateTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 128;
+  canvas.width = 128;
+  canvas.height = 64;
   const ctx = canvas.getContext('2d')!;
   ctx.fillStyle = '#0f172a';
-  ctx.fillRect(0, 0, 256, 128);
+  ctx.fillRect(0, 0, 128, 64);
   ctx.strokeStyle = '#f59e0b';
-  ctx.lineWidth = 6;
-  ctx.strokeRect(4, 4, 248, 120);
+  ctx.lineWidth = 3;
+  ctx.strokeRect(2, 2, 124, 60);
   ctx.fillStyle = '#facc15';
-  ctx.font = 'bold 26px monospace';
+  ctx.font = 'bold 13px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('КРУ-6 кВ · РТЗО', 128, 56);
+  ctx.fillText('КРУ-6 кВ · РТЗО', 64, 28);
   ctx.fillStyle = '#38bdf8';
-  ctx.font = '18px monospace';
-  ctx.fillText('ОПАСНОЕ НАПРЯЖЕНИЕ', 128, 92);
+  ctx.font = '9px monospace';
+  ctx.fillText('ОПАСНОЕ НАПРЯЖЕНИЕ', 64, 46);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+interface EquipmentGeometryPalette {
+  readonly turbBed: THREE.BoxGeometry;
+  readonly turbRotor: THREE.CylinderGeometry;
+  readonly turbGen: THREE.BoxGeometry;
+  readonly turbPipe: THREE.CylinderGeometry;
+  readonly turbHeader: THREE.CylinderGeometry;
+  readonly turbFlange: THREE.CylinderGeometry;
+  readonly turbRail: THREE.BoxGeometry;
+  readonly turbPost: THREE.CylinderGeometry;
+  readonly pumpSkid: THREE.BoxGeometry;
+  readonly pumpMotor: THREE.CylinderGeometry;
+  readonly pumpVolute: THREE.CylinderGeometry;
+  readonly pumpRiser: THREE.CylinderGeometry;
+  readonly pumpFlange: THREE.CylinderGeometry;
+  readonly sgPlinth: THREE.BoxGeometry;
+  readonly sgBay: THREE.BoxGeometry;
+  readonly sgLed: THREE.BoxGeometry;
+  readonly sgBusDuct: THREE.BoxGeometry;
+  readonly sgPlate: THREE.PlaneGeometry;
+  readonly platDeck: THREE.BoxGeometry;
+  readonly platLeg: THREE.BoxGeometry;
+  readonly platRail: THREE.BoxGeometry;
+  readonly platPost: THREE.CylinderGeometry;
 }
 
 export class NppEquipmentBuilder {
@@ -52,6 +77,7 @@ export class NppEquipmentBuilder {
   private readonly sharedMaterials: THREE.Material[] = [];
   private readonly sharedGeometries: THREE.BufferGeometry[] = [];
   private readonly sharedTextures: THREE.Texture[] = [];
+  private readonly geoPalette: EquipmentGeometryPalette;
 
   constructor(params: {
     buildings: ReadonlyArray<BuildingVolumeInfo>;
@@ -115,6 +141,39 @@ export class NppEquipmentBuilder {
       plateMat
     );
     this.sharedTextures.push(plateTex);
+
+    // Палитра общих геометрий создаётся один раз и переиспользуется во всех корпусах
+    const turbRotor = this.trackGeo(new THREE.CylinderGeometry(0.68, 0.74, 2.7, 14));
+    turbRotor.rotateZ(Math.PI / 2);
+    const turbHeader = this.trackGeo(new THREE.CylinderGeometry(0.18, 0.18, 2.6, 10));
+    turbHeader.rotateZ(Math.PI / 2);
+    const pumpMotor = this.trackGeo(new THREE.CylinderGeometry(0.36, 0.36, 1.05, 12));
+    pumpMotor.rotateZ(Math.PI / 2);
+
+    this.geoPalette = {
+      turbBed: this.trackGeo(new THREE.BoxGeometry(4.2, 0.36, 2.1)),
+      turbRotor,
+      turbGen: this.trackGeo(new THREE.BoxGeometry(1.3, 1.25, 1.35)),
+      turbPipe: this.trackGeo(new THREE.CylinderGeometry(0.16, 0.16, 2.1, 10)),
+      turbHeader,
+      turbFlange: this.trackGeo(new THREE.CylinderGeometry(0.28, 0.28, 0.1, 10)),
+      turbRail: this.trackGeo(new THREE.BoxGeometry(4.1, 0.06, 0.06)),
+      turbPost: this.trackGeo(new THREE.CylinderGeometry(0.03, 0.03, 1.05, 6)),
+      pumpSkid: this.trackGeo(new THREE.BoxGeometry(2.4, 0.22, 1.5)),
+      pumpMotor,
+      pumpVolute: this.trackGeo(new THREE.CylinderGeometry(0.46, 0.46, 0.34, 12)),
+      pumpRiser: this.trackGeo(new THREE.CylinderGeometry(0.13, 0.13, 1.35, 10)),
+      pumpFlange: this.trackGeo(new THREE.CylinderGeometry(0.22, 0.22, 0.08, 10)),
+      sgPlinth: this.trackGeo(new THREE.BoxGeometry(2.9, 0.16, 0.96)),
+      sgBay: this.trackGeo(new THREE.BoxGeometry(0.9, 2.05, 0.88)),
+      sgLed: this.trackGeo(new THREE.BoxGeometry(0.14, 0.05, 0.04)),
+      sgBusDuct: this.trackGeo(new THREE.BoxGeometry(2.86, 0.24, 0.55)),
+      sgPlate: this.trackGeo(new THREE.PlaneGeometry(0.84, 0.42)),
+      platDeck: this.trackGeo(new THREE.BoxGeometry(2.6, 0.14, 1.6)),
+      platLeg: this.trackGeo(new THREE.BoxGeometry(0.1, 0.42, 0.1)),
+      platRail: this.trackGeo(new THREE.BoxGeometry(2.6, 0.06, 0.06)),
+      platPost: this.trackGeo(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 6))
+    };
 
     let placedCount = 0;
 
@@ -211,53 +270,39 @@ export class NppEquipmentBuilder {
   ): THREE.Group {
     const g = new THREE.Group();
     g.name = 'equip_turbogenerator';
+    const gp = this.geoPalette;
 
-    // 1. Стальная опорная рама
-    const bed = new THREE.Mesh(this.trackGeo(new THREE.BoxGeometry(4.2, 0.36, 2.1)), darkMat);
+    const bed = new THREE.Mesh(gp.turbBed, darkMat);
     bed.position.y = 0.18;
-    bed.castShadow = true;
     bed.receiveShadow = true;
     g.add(bed);
 
-    // 2. Цилиндр высокого/низкого давления турбины
-    const rotorGeo = this.trackGeo(new THREE.CylinderGeometry(0.68, 0.74, 2.7, 18));
-    rotorGeo.rotateZ(Math.PI / 2);
-    const rotor = new THREE.Mesh(rotorGeo, turbineMat);
+    const rotor = new THREE.Mesh(gp.turbRotor, turbineMat);
     rotor.position.set(-0.4, 1.05, 0);
-    rotor.castShadow = true;
     g.add(rotor);
 
-    // 3. Генераторный блок справа
-    const gen = new THREE.Mesh(this.trackGeo(new THREE.BoxGeometry(1.3, 1.25, 1.35)), steelMat);
+    const gen = new THREE.Mesh(gp.turbGen, steelMat);
     gen.position.set(1.25, 0.98, 0);
-    gen.castShadow = true;
     g.add(gen);
 
-    // 4. Паропровод верхний с фланцами
-    const pipeGeo = this.trackGeo(new THREE.CylinderGeometry(0.16, 0.16, 2.1, 12));
-    const pipe = new THREE.Mesh(pipeGeo, pipeMat);
+    const pipe = new THREE.Mesh(gp.turbPipe, pipeMat);
     pipe.position.set(-0.9, 1.9, -0.35);
     g.add(pipe);
 
-    const headerGeo = this.trackGeo(new THREE.CylinderGeometry(0.18, 0.18, 2.6, 12));
-    headerGeo.rotateZ(Math.PI / 2);
-    const header = new THREE.Mesh(headerGeo, pipeMat);
+    const header = new THREE.Mesh(gp.turbHeader, pipeMat);
     header.position.set(-0.1, 2.45, -0.35);
     g.add(header);
 
-    // 5. Фланец и запорная стойка
-    const flange = new THREE.Mesh(this.trackGeo(new THREE.CylinderGeometry(0.28, 0.28, 0.1, 14)), railMat);
+    const flange = new THREE.Mesh(gp.turbFlange, railMat);
     flange.position.set(-0.9, 1.72, -0.35);
     g.add(flange);
 
-    // 6. Боковой поручень безопасности
-    const rail = new THREE.Mesh(this.trackGeo(new THREE.BoxGeometry(4.1, 0.06, 0.06)), railMat);
+    const rail = new THREE.Mesh(gp.turbRail, railMat);
     rail.position.set(0, 1.08, 1.02);
     g.add(rail);
 
-    const postGeo = this.trackGeo(new THREE.CylinderGeometry(0.03, 0.03, 1.05, 8));
     for (let px = -1.9; px <= 1.95; px += 1.25) {
-      const post = new THREE.Mesh(postGeo, railMat);
+      const post = new THREE.Mesh(gp.turbPost, railMat);
       post.position.set(px, 0.54, 1.02);
       g.add(post);
     }
@@ -273,29 +318,27 @@ export class NppEquipmentBuilder {
   ): THREE.Group {
     const g = new THREE.Group();
     g.name = 'equip_pump_skid';
+    const gp = this.geoPalette;
 
-    const skid = new THREE.Mesh(this.trackGeo(new THREE.BoxGeometry(2.4, 0.22, 1.5)), darkMat);
+    const skid = new THREE.Mesh(gp.pumpSkid, darkMat);
     skid.position.y = 0.11;
     skid.receiveShadow = true;
     g.add(skid);
 
-    const motorGeo = this.trackGeo(new THREE.CylinderGeometry(0.36, 0.36, 1.05, 16));
-    motorGeo.rotateZ(Math.PI / 2);
-    const motor = new THREE.Mesh(motorGeo, steelMat);
+    const motor = new THREE.Mesh(gp.pumpMotor, steelMat);
     motor.position.set(-0.45, 0.65, 0);
-    motor.castShadow = true;
     g.add(motor);
 
-    const volute = new THREE.Mesh(this.trackGeo(new THREE.CylinderGeometry(0.46, 0.46, 0.34, 16)), steelMat);
+    const volute = new THREE.Mesh(gp.pumpVolute, steelMat);
     volute.rotation.x = Math.PI / 2;
     volute.position.set(0.42, 0.68, 0);
     g.add(volute);
 
-    const riser = new THREE.Mesh(this.trackGeo(new THREE.CylinderGeometry(0.13, 0.13, 1.35, 12)), pipeMat);
+    const riser = new THREE.Mesh(gp.pumpRiser, pipeMat);
     riser.position.set(0.42, 1.35, 0);
     g.add(riser);
 
-    const flange = new THREE.Mesh(this.trackGeo(new THREE.CylinderGeometry(0.22, 0.22, 0.08, 12)), accentMat);
+    const flange = new THREE.Mesh(gp.pumpFlange, accentMat);
     flange.position.set(0.42, 1.12, 0);
     g.add(flange);
 
@@ -311,28 +354,27 @@ export class NppEquipmentBuilder {
   ): THREE.Group {
     const g = new THREE.Group();
     g.name = 'equip_switchgear';
+    const gp = this.geoPalette;
 
-    const plinth = new THREE.Mesh(this.trackGeo(new THREE.BoxGeometry(2.9, 0.16, 0.96)), darkMat);
+    const plinth = new THREE.Mesh(gp.sgPlinth, darkMat);
     plinth.position.y = 0.08;
     g.add(plinth);
 
-    const bayGeo = this.trackGeo(new THREE.BoxGeometry(0.9, 2.05, 0.88));
     for (let i = -1; i <= 1; i++) {
-      const bay = new THREE.Mesh(bayGeo, cabinetMat);
+      const bay = new THREE.Mesh(gp.sgBay, cabinetMat);
       bay.position.set(i * 0.94, 1.18, 0);
-      bay.castShadow = true;
       g.add(bay);
 
-      const led = new THREE.Mesh(this.trackGeo(new THREE.BoxGeometry(0.14, 0.05, 0.04)), ledMat);
+      const led = new THREE.Mesh(gp.sgLed, ledMat);
       led.position.set(i * 0.94 + 0.25, 1.92, 0.44);
       g.add(led);
     }
 
-    const busDuct = new THREE.Mesh(this.trackGeo(new THREE.BoxGeometry(2.86, 0.24, 0.55)), yellowMat);
+    const busDuct = new THREE.Mesh(gp.sgBusDuct, yellowMat);
     busDuct.position.set(0, 2.32, 0);
     g.add(busDuct);
 
-    const plate = new THREE.Mesh(this.trackGeo(new THREE.PlaneGeometry(0.84, 0.42)), plateMat);
+    const plate = new THREE.Mesh(gp.sgPlate, plateMat);
     plate.position.set(0, 1.48, 0.45);
     g.add(plate);
 
@@ -346,28 +388,27 @@ export class NppEquipmentBuilder {
   ): THREE.Group {
     const g = new THREE.Group();
     g.name = 'equip_service_platform';
+    const gp = this.geoPalette;
 
-    const deck = new THREE.Mesh(this.trackGeo(new THREE.BoxGeometry(2.6, 0.14, 1.6)), steelMat);
+    const deck = new THREE.Mesh(gp.platDeck, steelMat);
     deck.position.y = 0.42;
     deck.receiveShadow = true;
     g.add(deck);
 
-    const legGeo = this.trackGeo(new THREE.BoxGeometry(0.1, 0.42, 0.1));
     for (const lx of [-1.18, 1.18]) {
       for (const lz of [-0.68, 0.68]) {
-        const leg = new THREE.Mesh(legGeo, darkMat);
+        const leg = new THREE.Mesh(gp.platLeg, darkMat);
         leg.position.set(lx, 0.21, lz);
         g.add(leg);
       }
     }
 
-    const railBack = new THREE.Mesh(this.trackGeo(new THREE.BoxGeometry(2.6, 0.06, 0.06)), yellowMat);
+    const railBack = new THREE.Mesh(gp.platRail, yellowMat);
     railBack.position.set(0, 1.32, -0.75);
     g.add(railBack);
 
-    const postGeo = this.trackGeo(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 8));
     for (const px of [-1.22, 0, 1.22]) {
-      const p = new THREE.Mesh(postGeo, yellowMat);
+      const p = new THREE.Mesh(gp.platPost, yellowMat);
       p.position.set(px, 0.88, -0.75);
       g.add(p);
     }

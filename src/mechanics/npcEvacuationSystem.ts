@@ -95,6 +95,18 @@ export class NpcEvacuationSystem {
   private targetMarkersVisible = true;
   private readonly assemblyMarkerSprite: TargetMarkerSprite;
 
+  // Переиспользуемая палитра геометрий и материалов для всех рабочих NPC
+  private readonly workerMatCache = new Map<number, THREE.MeshStandardMaterial>();
+  private readonly workerLegGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.78, 8);
+  private readonly workerTorsoGeo = new THREE.CylinderGeometry(0.19, 0.16, 0.62, 10);
+  private readonly workerVestGeo = new THREE.CylinderGeometry(0.198, 0.192, 0.1, 10);
+  private readonly workerArmGeo = new THREE.CylinderGeometry(0.055, 0.05, 0.54, 8);
+  private readonly workerHeadGeo = new THREE.SphereGeometry(0.125, 10, 10);
+  private readonly workerHelmetGeo = new THREE.SphereGeometry(0.145, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.58);
+  private readonly workerDarkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+  private readonly workerVestMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+  private readonly workerSkinMat = new THREE.MeshStandardMaterial({ color: 0xe2c7b3, roughness: 0.65 });
+
   public setTargetMarkersVisible(visible: boolean): void {
     this.targetMarkersVisible = visible;
     for (let i = 0; i < this.npcGroups.length; i++) {
@@ -245,12 +257,15 @@ export class NpcEvacuationSystem {
     buildingAnchors: ReadonlyArray<BuildingBeaconAnchor>
   ): void {
     const ms = this.markerScale;
+    const sharedSignPoleMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
+    const sharedPoleGeo = new THREE.CylinderGeometry(0.04 * ms, 0.045 * ms, 2.25 * ms, 8);
+
     entrances.forEach((ent, eIdx) => {
       const entGroup = new THREE.Group();
       entGroup.position.copy(ent.pos);
 
       const entRing = new THREE.Mesh(
-        new THREE.RingGeometry(0.95 * ms, 1.15 * ms, 32),
+        new THREE.RingGeometry(0.95 * ms, 1.15 * ms, 24),
         new THREE.MeshBasicMaterial({
           color: 0x0ea5e9,
           side: THREE.DoubleSide,
@@ -271,11 +286,8 @@ export class NpcEvacuationSystem {
       );
       const entSign = this.createDoubleSidedSignBoard(2.1 * ms, 0.78 * ms, entTex);
       entSign.position.set(0, 2.75 * ms, 0);
-      const entPole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.04 * ms, 0.045 * ms, 2.35 * ms, 8),
-        new THREE.MeshStandardMaterial({ color: 0x334155 })
-      );
-      entPole.position.set(0, 1.18 * ms, 0);
+      const entPole = new THREE.Mesh(sharedPoleGeo, sharedSignPoleMat);
+      entPole.position.set(0, 1.15 * ms, 0);
       entGroup.add(entPole, entSign);
       this.rootGroup.add(entGroup);
     });
@@ -286,6 +298,13 @@ export class NpcEvacuationSystem {
       '#052e16',
       '#22c55e'
     );
+    const sharedExitRingGeo = new THREE.RingGeometry(0.85 * ms, 1.05 * ms, 24);
+    const sharedExitRingMat = new THREE.MeshBasicMaterial({
+      color: 0x22c55e,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.75
+    });
 
     exits.forEach(ex => {
       const g = new THREE.Group();
@@ -293,29 +312,14 @@ export class NpcEvacuationSystem {
 
       const sign = this.createDoubleSidedSignBoard(1.95 * ms, 0.72 * ms, exitTex);
       sign.position.set(0, 2.55 * ms, 0);
-      const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.04 * ms, 0.045 * ms, 2.2 * ms, 8),
-        new THREE.MeshStandardMaterial({ color: 0x334155 })
-      );
-      pole.position.set(0, 1.1 * ms, 0);
+      const pole = new THREE.Mesh(sharedPoleGeo, sharedSignPoleMat);
+      pole.position.set(0, 1.12 * ms, 0);
       g.add(pole, sign);
 
-      const portalGlow = new THREE.Mesh(
-        new THREE.RingGeometry(0.85 * ms, 1.05 * ms, 28),
-        new THREE.MeshBasicMaterial({
-          color: 0x22c55e,
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.75
-        })
-      );
+      const portalGlow = new THREE.Mesh(sharedExitRingGeo, sharedExitRingMat);
       portalGlow.rotation.x = -Math.PI / 2;
       portalGlow.position.y = 0.025;
       g.add(portalGlow);
-
-      const exitLight = new THREE.PointLight(0x22c55e, 1.4, 6.5 * ms);
-      exitLight.position.set(0, 2.2 * ms, 0);
-      g.add(exitLight);
 
       this.rootGroup.add(g);
     });
@@ -374,51 +378,48 @@ export class NpcEvacuationSystem {
     });
   }
 
+  private getSharedWorkerMat(colorHex: number, roughness: number): THREE.MeshStandardMaterial {
+    const key = colorHex * 100 + Math.round(roughness * 100);
+    let mat = this.workerMatCache.get(key);
+    if (!mat) {
+      mat = new THREE.MeshStandardMaterial({ color: colorHex, roughness });
+      this.workerMatCache.set(key, mat);
+    }
+    return mat;
+  }
+
   private createStylizedWorkerMesh(suitColorHex: number, helmetColorHex: number): THREE.Group {
     const person = new THREE.Group();
-    const suitMat = new THREE.MeshStandardMaterial({ color: suitColorHex, roughness: 0.7 });
-    const helmetMat = new THREE.MeshStandardMaterial({ color: helmetColorHex, roughness: 0.35 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+    const suitMat = this.getSharedWorkerMat(suitColorHex, 0.7);
+    const helmetMat = this.getSharedWorkerMat(helmetColorHex, 0.35);
 
-    const legGeo = new THREE.CylinderGeometry(0.08, 0.07, 0.78, 8);
-    const legL = new THREE.Mesh(legGeo, darkMat);
+    const legL = new THREE.Mesh(this.workerLegGeo, this.workerDarkMat);
     legL.position.set(-0.11, 0.39, 0);
-    const legR = new THREE.Mesh(legGeo, darkMat);
+    const legR = new THREE.Mesh(this.workerLegGeo, this.workerDarkMat);
     legR.position.set(0.11, 0.39, 0);
     person.add(legL, legR);
 
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.16, 0.62, 10), suitMat);
+    const torso = new THREE.Mesh(this.workerTorsoGeo, suitMat);
     torso.position.y = 1.08;
-    torso.castShadow = true;
     person.add(torso);
 
-    const vestStripe = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.198, 0.192, 0.1, 10),
-      new THREE.MeshBasicMaterial({ color: 0xfacc15 })
-    );
+    const vestStripe = new THREE.Mesh(this.workerVestGeo, this.workerVestMat);
     vestStripe.position.y = 1.1;
     person.add(vestStripe);
 
-    const armGeo = new THREE.CylinderGeometry(0.055, 0.05, 0.54, 8);
-    const armL = new THREE.Mesh(armGeo, suitMat);
+    const armL = new THREE.Mesh(this.workerArmGeo, suitMat);
     armL.position.set(-0.25, 1.08, 0);
     armL.rotation.z = 0.14;
-    const armR = new THREE.Mesh(armGeo, suitMat);
+    const armR = new THREE.Mesh(this.workerArmGeo, suitMat);
     armR.position.set(0.25, 1.08, 0);
     armR.rotation.z = -0.14;
     person.add(armL, armR);
 
-    const head = new THREE.Mesh(
-      new THREE.SphereGeometry(0.125, 10, 10),
-      new THREE.MeshStandardMaterial({ color: 0xe2c7b3, roughness: 0.65 })
-    );
+    const head = new THREE.Mesh(this.workerHeadGeo, this.workerSkinMat);
     head.position.y = 1.52;
     person.add(head);
 
-    const helmet = new THREE.Mesh(
-      new THREE.SphereGeometry(0.145, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.58),
-      helmetMat
-    );
+    const helmet = new THREE.Mesh(this.workerHelmetGeo, helmetMat);
     helmet.position.y = 1.55;
     person.add(helmet);
 
@@ -897,20 +898,40 @@ export class NpcEvacuationSystem {
     for (let i = 0; i < this.npcGroups.length; i++) {
       this.npcGroups[i].markerSprite.dispose();
     }
+    const geos = new Set<THREE.BufferGeometry>([
+      this.workerLegGeo,
+      this.workerTorsoGeo,
+      this.workerVestGeo,
+      this.workerArmGeo,
+      this.workerHeadGeo,
+      this.workerHelmetGeo
+    ]);
+    const mats = new Set<THREE.Material>([
+      this.workerDarkMat,
+      this.workerVestMat,
+      this.workerSkinMat,
+      ...this.workerMatCache.values()
+    ]);
+    const textures = new Set<THREE.Texture>();
+
     this.rootGroup.traverse(obj => {
       if ((obj as THREE.Mesh).isMesh || (obj as THREE.InstancedMesh).isInstancedMesh) {
         const mesh = obj as THREE.Mesh;
-        mesh.geometry?.dispose();
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        mats.forEach(m => {
+        if (mesh.geometry) geos.add(mesh.geometry);
+        const mList = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mList.forEach(m => {
           if (m) {
+            mats.add(m);
             const std = m as THREE.MeshStandardMaterial;
-            std.map?.dispose();
-            m.dispose();
+            if (std.map) textures.add(std.map);
           }
         });
       }
     });
+    geos.forEach(g => g.dispose());
+    textures.forEach(t => t.dispose());
+    mats.forEach(m => m.dispose());
+    this.workerMatCache.clear();
     this.rootGroup.parent?.remove(this.rootGroup);
   }
 }
