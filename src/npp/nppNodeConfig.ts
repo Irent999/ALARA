@@ -364,8 +364,76 @@ export const SCENARIO_4_CONFIG = {
     loopIsolationRadiusM: 3.5,
     smokeReductionFactor: 0.35,
     casualtyTriageRadiusM: 3.5
+  },
+
+  // --- 11. Качество и бюджет производительности эффектов дыма и пламени (Desktop / VR Lite) ---
+  FIRE_SMOKE_QUALITY: {
+    /** Принудительный режим для слабых GPU; при входе в WebXR (HTC Vive) vrLite включается автоматически */
+    vrLiteMode: false,
+    desktop: {
+      flameConesPerFire: 3,
+      smokePuffsPerFire: 3,
+      tallSmokePuffsPerFire: 2,
+      portalSmokeParticlesPerFire: 10,
+      maxTotalSceneFireSmokeUnits: 54,
+      sprayParticleCount: 64,
+      spraySpawnRateHz: 150,
+      portalSmokeSizeM: 1.35,
+      smokeMaxScale: 1.15,
+      smokeCycleSpeed: 0.85,
+      particleUpdateIntervalSec: 0.033,
+      effectCullDistanceM: 95,
+      enableFirePointLight: false,
+      enablePortalPointLight: false,
+      maxActivePointLights: 0,
+      useUnlitPortalGlow: true
+    },
+    vrLite: {
+      flameConesPerFire: 2,
+      smokePuffsPerFire: 2,
+      tallSmokePuffsPerFire: 1,
+      portalSmokeParticlesPerFire: 6,
+      maxTotalSceneFireSmokeUnits: 33,
+      sprayParticleCount: 40,
+      spraySpawnRateHz: 90,
+      portalSmokeSizeM: 1.05,
+      smokeMaxScale: 1.0,
+      smokeCycleSpeed: 0.75,
+      particleUpdateIntervalSec: 0.05,
+      effectCullDistanceM: 75,
+      enableFirePointLight: false,
+      enablePortalPointLight: false,
+      maxActivePointLights: 0,
+      useUnlitPortalGlow: true
+    }
   }
 } as const;
+
+export type FireSmokeQualityMode = 'desktop' | 'vrLite';
+
+export interface FireSmokeQualityPreset {
+  readonly flameConesPerFire: number;
+  readonly smokePuffsPerFire: number;
+  readonly tallSmokePuffsPerFire: number;
+  readonly portalSmokeParticlesPerFire: number;
+  readonly maxTotalSceneFireSmokeUnits: number;
+  readonly sprayParticleCount: number;
+  readonly spraySpawnRateHz: number;
+  readonly portalSmokeSizeM: number;
+  readonly smokeMaxScale: number;
+  readonly smokeCycleSpeed: number;
+  readonly particleUpdateIntervalSec: number;
+  readonly effectCullDistanceM: number;
+  readonly enableFirePointLight: boolean;
+  readonly enablePortalPointLight: boolean;
+  readonly maxActivePointLights: number;
+  readonly useUnlitPortalGlow: boolean;
+}
+
+export function getFireSmokeQualityPreset(isVrOrLite: boolean): FireSmokeQualityPreset {
+  const cfg = SCENARIO_4_CONFIG.FIRE_SMOKE_QUALITY;
+  return cfg.vrLiteMode || isVrOrLite ? cfg.vrLite : cfg.desktop;
+}
 
 export interface Scenario4TransformConfig {
   readonly rotationDeg: readonly [number, number, number];

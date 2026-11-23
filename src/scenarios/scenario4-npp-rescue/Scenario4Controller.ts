@@ -550,7 +550,7 @@ export class Scenario4Controller {
     this.rootGroup.add(this.emergencyOps.rootGroup);
     console.timeEnd('[ALARA S4] Этап 2: АЦ-40 МЧС и аварийные посты');
 
-    // Шаг 3: Очаги пожара + яркие мигающие оранжевые PointLight и дым у порталов входа
+    // Шаг 3: Очаги пожара + облегчённое unlit-свечение и дым у порталов входа (согласно конфигу качества)
     updateProgress(99.2, 'Активация очагов возгорания и дымовых порталов...');
     await yieldIfBudgetExceeded(budget, 14, signal);
     this.assertLoadStillValid(loadToken, signal);
@@ -566,7 +566,7 @@ export class Scenario4Controller {
       m.fireZoneBuildingIndices
     );
 
-    // Явно инжектируем мигающие оранжевые PointLight и частицы дыма на каждый активный проём пожарного портала
+    // Явно привязываем оранжевое свечение порталов и частицы дыма к каждому активному входу корпуса
     const portalDoorways: FirePortalDoorwaySpec[] = NPP_NODE_CONFIG.fireZones.map((cfg, idx) => {
       const bldIdx = m.fireZoneBuildingIndices[idx] ?? idx;
       const anchor = m.buildingAnchors[bldIdx] ?? m.buildingAnchors[0];
@@ -990,6 +990,7 @@ export class Scenario4Controller {
     vehicleDriveInput?: { throttle: number; steer: number };
   }): Scenario4HudSnapshot {
     const sample = this.viveAdapter.sampleAim(params.viveInput);
+    this.fireMgr?.setVrLiteMode(params.viveInput.isVR);
     this.activeInputLabelRu = this.vehicleSys?.isSeated
       ? 'АЦ-40 МЧС • [WASD]/Л.Стик: движение • [L]: маяки • [B]: автопилот • [Enter]/Наж. стика: выйти'
       : sample.inputHintLabelRu;

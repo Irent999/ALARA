@@ -805,40 +805,50 @@ export const SCENARIOS: ScenarioDefinition[] = [
       trayGroup.add(traySign);
       envGroup.add(trayGroup);
 
-      // Процедурное 3D-пламя и дым на горящей кабельной полке
+      // Оптимизированное 3D-пламя и дым на горящей кабельной полке (общая геометрия, depthWrite: false)
       const fireGroup = new THREE.Group();
       fireGroup.position.set(0.3, 1.25, -3.0);
       const flameFlames: THREE.Mesh[] = [];
-      const flameColors = [0xf97316, 0xfacc15, 0xef4444, 0xfb923c, 0xfde047];
-      for (let i = 0; i < 8; i++) {
-        const cone = new THREE.Mesh(
-          new THREE.ConeGeometry(0.18 + (i % 3) * 0.07, 0.75 + (i % 4) * 0.24, 12),
-          new THREE.MeshBasicMaterial({
-            color: flameColors[i % flameColors.length],
-            transparent: true,
-            opacity: 0.85
-          })
-        );
-        cone.position.set((i - 3.5) * 0.28, 0.35 + (i % 2) * 0.18, (i % 2 === 0 ? 0.1 : -0.1));
+      const sharedFlameGeo = new THREE.ConeGeometry(0.22, 0.9, 7);
+      const sharedFlameMats = [
+        new THREE.MeshBasicMaterial({
+          color: 0xf97316,
+          transparent: true,
+          opacity: 0.86,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        }),
+        new THREE.MeshBasicMaterial({
+          color: 0xfacc15,
+          transparent: true,
+          opacity: 0.84,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        })
+      ];
+      for (let i = 0; i < 5; i++) {
+        const cone = new THREE.Mesh(sharedFlameGeo, sharedFlameMats[i % 2]);
+        cone.position.set((i - 2) * 0.42, 0.36 + (i % 2) * 0.14, i % 2 === 0 ? 0.1 : -0.1);
         fireGroup.add(cone);
         flameFlames.push(cone);
       }
 
       const smokePuffs: THREE.Mesh[] = [];
-      const smokeMat = new THREE.MeshStandardMaterial({
+      const sharedSmokeGeo = new THREE.SphereGeometry(0.36, 8, 6);
+      const smokeMat = new THREE.MeshBasicMaterial({
         color: 0x1f2937,
         transparent: true,
-        opacity: 0.45,
-        roughness: 1.0
+        opacity: 0.42,
+        depthWrite: false
       });
-      for (let i = 0; i < 6; i++) {
-        const puff = new THREE.Mesh(new THREE.SphereGeometry(0.32 + i * 0.05, 12, 12), smokeMat);
-        puff.position.set((i - 2.5) * 0.35, 1.1 + i * 0.32, 0);
+      for (let i = 0; i < 4; i++) {
+        const puff = new THREE.Mesh(sharedSmokeGeo, smokeMat);
+        puff.position.set((i - 1.5) * 0.42, 1.1 + i * 0.34, 0);
         fireGroup.add(puff);
         smokePuffs.push(puff);
       }
 
-      const fireLight = new THREE.PointLight(0xf97316, 4.5, 10, 1.5);
+      const fireLight = new THREE.PointLight(0xf97316, 4.0, 9.5, 1.5);
       fireLight.position.set(0, 0.8, 0.4);
       fireGroup.add(fireLight);
 

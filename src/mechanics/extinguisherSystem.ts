@@ -10,7 +10,12 @@
  */
 
 import * as THREE from 'three';
-import { SCENARIO_4_CONFIG, type FireZoneSpec } from '../npp/nppNodeConfig';
+import {
+  SCENARIO_4_CONFIG,
+  getFireSmokeQualityPreset,
+  type FireSmokeQualityPreset,
+  type FireZoneSpec
+} from '../npp/nppNodeConfig';
 import type { BuildingBeaconAnchor, NamedWorldMarker } from '../npp/nppSceneInspector';
 import { TargetMarkerSprite } from './targetMarkerSprite';
 
@@ -31,7 +36,9 @@ export interface FireZoneRuntime {
   readonly flameCones: THREE.Mesh[];
   readonly smokePuffs: THREE.Mesh[];
   readonly tallSmokePuffs: THREE.Mesh[];
-  readonly light: THREE.PointLight;
+  readonly smokeMat: THREE.MeshBasicMaterial;
+  readonly tallSmokeMat: THREE.MeshBasicMaterial;
+  readonly light: THREE.PointLight | null;
   readonly floorRing: THREE.Mesh;
   readonly beaconGroup: THREE.Group;
   readonly beaconPoleOffsetX: number;
@@ -40,13 +47,23 @@ export interface FireZoneRuntime {
   readonly beaconBeamMat: THREE.MeshBasicMaterial;
   readonly beaconFloorRing: THREE.Mesh;
   readonly beaconFloorRingMat: THREE.MeshBasicMaterial;
-  readonly portalLight: THREE.PointLight;
+  readonly portalLight: THREE.PointLight | null;
+  readonly portalGlowMesh: THREE.Mesh | null;
+  readonly portalGlowMat: THREE.MeshBasicMaterial | null;
   readonly portalSmokePoints: THREE.Points;
+  readonly portalSmokeGeo: THREE.BufferGeometry;
   readonly portalSmokeMat: THREE.PointsMaterial;
   readonly portalSmokePositions: Float32Array;
   readonly portalSmokePosAttr: THREE.BufferAttribute;
   readonly portalSmokeSeeds: Float32Array;
   readonly markerSprite: TargetMarkerSprite;
+  activeFlameLimit: number;
+  activeSmokeLimit: number;
+  activeTallSmokeLimit: number;
+  activePortalSmokeLimit: number;
+  wasSteamPhase: boolean;
+  wasExtinguishedVisual: boolean;
+  lastBeaconHot: boolean | null;
 }
 
 export interface FirePortalDoorwaySpec {
@@ -62,8 +79,12 @@ export interface SprayHitResult {
   readonly remainingIntensity01: number;
 }
 
-const SPRAY_PARTICLE_COUNT = 120;
-const PORTAL_SMOKE_PARTICLE_COUNT = 24;
+interface FireUnitCaps {
+  readonly flames: number;
+  readonly smoke: number;
+  readonly tallSmoke: number;
+  readonly portalParticles: number;
+}
 
 export class ExtinguisherSystem {
   public readonly rootGroup = new THREE.Group();
@@ -121,6 +142,16 @@ export class ExtinguisherSystem {
   private suppressionMultiplier = 1.0;
   private targetMarkersVisible = true;
   private portalSmokeTexture: THREE.CanvasTexture | null = null;
+  private portalGlowTexture: THREE.CanvasTexture | null = null;
+
+  // Бюджет и качество дыма/пламени (Desktop / VR Lite)
+  private isVrLiteMode = false;
+  private activeQualityPreset: FireSmokeQualityPreset;
+  private readonly maxSprayParticleCount: number;
+  private activeSprayParticleCount: number;
+  private readonly maxPortalParticlesPerFire: number;
+  private spraySpawnAccum = 0;
+  private smokeUpdateTimerSec = 0;
 
   public setTargetMarkersVisible(visible: boolean): void {
     this.targetMarkersVisible = visible;
@@ -135,6 +166,80 @@ export class ExtinguisherSystem {
     this.suppressionMultiplier = Math.max(0.5, suppressionMultiplier);
   }
 
+  public setVrLiteMode(enabled: boolean): void {
+    const effective = SCENARIO_4_CONFIG.FIRE_SMOKE_QUALITY.vrLiteMode || enabled;
+    if (effective === this.isVrLiteMode && this.fires.length > 0) return;
+    this.isVrLiteMode = effective;
+    this.activeQualityPreset = getFireSmokeQualityPreset(effective);
+    this.applyQualityPreset();
+  }
+
+  private computePerFireCaps(preset: FireSmokeQualityPreset, fireCount: number): FireUnitCaps {
+    const safeCount = Math.max(1, fireCount);
+    let flames = Math.max(1, preset.flameConesPerFire);
+    let smoke = Math.max(1, preset.smokePuffsPerFire);
+    let tallSmoke = Math.max(0, preset.tallSmokePuffsPerFire);
+    let portalParticles = Math.max(2, preset.portalSmokeParticlesPerFire);
+
+    const perFireBudget = Math.max(
+      4,
+      Math.floor(preset.maxTotalSceneFireSmokeUnits / safeCount)
+    );
+    let total = flames + smoke + tallSmoke + portalParticles;
+    // Пропорционально ужимаем сначала портальные частицы, затем шлейфы дыма, если превышен глобальный бюджет сцены
+    while (total > perFireBudget) {
+      if (portalParticles > 4) portalParticles -= 1;
+      else if (smoke > 1) smoke -= 1;
+      else if (tallSmoke > 1) tallSmoke -= 1;
+      else if (flames > 1) flames -= 1;
+      else break;
+      total = flames + smoke + tallSmoke + portalParticles;
+    }
+
+    return { flames, smoke, tallSmoke, portalParticles };
+  }
+
+  private applyQualityPreset(): void {
+    const preset = this.activeQualityPreset;
+    this.activeSprayParticleCount = Math.min(this.maxSprayParticleCount, preset.sprayParticleCount);
+    for (let i = this.activeSprayParticleCount; i < this.maxSprayParticleCount; i++) {
+      this.sprayLifetimes[i] = 0;
+      this.sprayPositions[i * 3 + 1] = -999;
+    }
+    const caps = this.computePerFireCaps(preset, this.fires.length);
+    for (let i = 0; i < this.fires.length; i++) {
+      const fire = this.fires[i];
+      fire.activeFlameLimit = Math.min(fire.flameCones.length, caps.flames);
+      fire.activeSmokeLimit = Math.min(fire.smokePuffs.length, caps.smoke);
+      fire.activeTallSmokeLimit = Math.min(fire.tallSmokePuffs.length, caps.tallSmoke);
+      fire.activePortalSmokeLimit = Math.min(
+        this.maxPortalParticlesPerFire,
+        caps.portalParticles
+      );
+      fire.portalSmokeGeo.setDrawRange(0, fire.activePortalSmokeLimit);
+      fire.portalSmokeMat.size = preset.portalSmokeSizeM;
+      for (let f = fire.activeFlameLimit; f < fire.flameCones.length; f++) {
+        fire.flameCones[f].visible = false;
+      }
+      for (let s = fire.activeSmokeLimit; s < fire.smokePuffs.length; s++) {
+        fire.smokePuffs[s].visible = false;
+      }
+      for (let ts = fire.activeTallSmokeLimit; ts < fire.tallSmokePuffs.length; ts++) {
+        fire.tallSmokePuffs[ts].visible = false;
+      }
+      if (fire.light) {
+        fire.light.visible = preset.enableFirePointLight && preset.maxActivePointLights > 0;
+      }
+      if (fire.portalLight) {
+        fire.portalLight.visible = preset.enablePortalPointLight && preset.maxActivePointLights > 0;
+      }
+      if (fire.portalGlowMesh) {
+        fire.portalGlowMesh.visible =
+          preset.useUnlitPortalGlow && fire.status !== 'EXTINGUISHED' && fire.intensity > 0;
+      }
+    }
+  }
+
   constructor(
     fireSpecs: ReadonlyArray<FireZoneSpec>,
     discoveredFires: ReadonlyArray<NamedWorldMarker>,
@@ -142,21 +247,62 @@ export class ExtinguisherSystem {
     sparePostPos: THREE.Vector3,
     effectScale = 0.62,
     buildingAnchors: ReadonlyArray<BuildingBeaconAnchor> = [],
-    fireZoneBuildingIndices: ReadonlyArray<number> = []
+    fireZoneBuildingIndices: ReadonlyArray<number> = [],
+    vrLiteMode = false
   ) {
     this.rootGroup.name = 'npp_extinguisher_fire_system';
     this.effectScale = Math.max(0.25, Math.min(2.0, effectScale));
     this.primaryPostPos.copy(primaryPostPos);
     this.sparePostPos.copy(sparePostPos);
 
-    this.sprayVelocities = new Float32Array(SPRAY_PARTICLE_COUNT * 3);
-    this.sprayLifetimes = new Float32Array(SPRAY_PARTICLE_COUNT);
+    const desktopPreset = SCENARIO_4_CONFIG.FIRE_SMOKE_QUALITY.desktop;
+    const vrPreset = SCENARIO_4_CONFIG.FIRE_SMOKE_QUALITY.vrLite;
+    this.isVrLiteMode = SCENARIO_4_CONFIG.FIRE_SMOKE_QUALITY.vrLiteMode || vrLiteMode;
+    this.activeQualityPreset = getFireSmokeQualityPreset(this.isVrLiteMode);
+
+    this.maxSprayParticleCount = Math.max(
+      desktopPreset.sprayParticleCount,
+      vrPreset.sprayParticleCount
+    );
+    this.activeSprayParticleCount = Math.min(
+      this.maxSprayParticleCount,
+      this.activeQualityPreset.sprayParticleCount
+    );
+    this.maxPortalParticlesPerFire = Math.max(
+      desktopPreset.portalSmokeParticlesPerFire,
+      vrPreset.portalSmokeParticlesPerFire
+    );
+
+    this.sprayVelocities = new Float32Array(this.maxSprayParticleCount * 3);
+    this.sprayLifetimes = new Float32Array(this.maxSprayParticleCount);
     this.portalSmokeTexture = this.createPortalSmokeTexture();
+    this.portalGlowTexture = this.createPortalGlowTexture();
 
     this.buildExtinguisherPosts();
     this.buildHandheldExtinguisher();
     this.buildSprayParticlePool();
     this.buildFireZones(fireSpecs, discoveredFires, buildingAnchors, fireZoneBuildingIndices);
+    this.applyQualityPreset();
+  }
+
+  private createPortalGlowTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 31);
+      grad.addColorStop(0, 'rgba(255, 224, 150, 0.95)');
+      grad.addColorStop(0.32, 'rgba(255, 128, 24, 0.72)');
+      grad.addColorStop(0.7, 'rgba(234, 88, 12, 0.25)');
+      grad.addColorStop(1, 'rgba(234, 88, 12, 0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 64, 64);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    return tex;
   }
 
   private createPortalSmokeTexture(): THREE.CanvasTexture {
@@ -331,8 +477,8 @@ export class ExtinguisherSystem {
   }
 
   private buildSprayParticlePool(): void {
-    this.sprayPositions = new Float32Array(SPRAY_PARTICLE_COUNT * 3);
-    for (let i = 0; i < SPRAY_PARTICLE_COUNT; i++) {
+    this.sprayPositions = new Float32Array(this.maxSprayParticleCount * 3);
+    for (let i = 0; i < this.maxSprayParticleCount; i++) {
       this.sprayPositions[i * 3 + 1] = -999;
       this.sprayLifetimes[i] = 0;
     }
@@ -360,21 +506,47 @@ export class ExtinguisherSystem {
     fireZoneBuildingIndices: ReadonlyArray<number>
   ): void {
     const es = this.effectScale;
-    const flameGeo = new THREE.ConeGeometry(0.32 * es, 1.15 * es, 8);
-    const smokeGeo = new THREE.DodecahedronGeometry(0.36 * es, 0);
-    const tallSmokeGeo = new THREE.DodecahedronGeometry(0.92 * Math.max(0.85, es), 1);
+    const desktopCfg = SCENARIO_4_CONFIG.FIRE_SMOKE_QUALITY.desktop;
+    const maxFlames = Math.max(desktopCfg.flameConesPerFire, this.activeQualityPreset.flameConesPerFire);
+    const maxSmoke = Math.max(desktopCfg.smokePuffsPerFire, this.activeQualityPreset.smokePuffsPerFire);
+    const maxTallSmoke = Math.max(desktopCfg.tallSmokePuffsPerFire, this.activeQualityPreset.tallSmokePuffsPerFire);
+    const maxPortalCount = this.maxPortalParticlesPerFire;
+
+    // Общая геометрия и общие материалы для минимального числа draw-calls и шейдерных переключений
+    const flameGeo = new THREE.ConeGeometry(0.32 * es, 1.15 * es, 6);
+    const smokeGeo = new THREE.DodecahedronGeometry(0.34 * es, 0);
+    const tallSmokeGeo = new THREE.DodecahedronGeometry(0.72 * Math.max(0.85, es), 0);
     const beaconPoleGeo = new THREE.CylinderGeometry(0.055, 0.075, 3.2, 8);
-    const beaconDomeGeo = new THREE.SphereGeometry(0.24, 12, 10);
-    const beaconBeamGeo = new THREE.CylinderGeometry(0.14, 0.36, 7.5, 12, 1, true);
-    const beaconRingGeo = new THREE.RingGeometry(1.1, 1.42, 24);
+    const beaconDomeGeo = new THREE.SphereGeometry(0.24, 10, 8);
+    const beaconBeamGeo = new THREE.CylinderGeometry(0.14, 0.36, 7.5, 10, 1, true);
+    const beaconRingGeo = new THREE.RingGeometry(1.1, 1.42, 20);
+    const portalGlowGeo = new THREE.PlaneGeometry(3.0, 3.2);
+
     const sharedBeaconPoleMat = new THREE.MeshStandardMaterial({
       color: 0x334155,
       roughness: 0.55,
       metalness: 0.6
     });
     const sharedBaseMat = new THREE.MeshBasicMaterial({ color: 0x1c1917 });
+    const sharedFlameMatOrange = new THREE.MeshBasicMaterial({
+      color: 0xf97316,
+      transparent: true,
+      opacity: 0.88,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const sharedFlameMatYellow = new THREE.MeshBasicMaterial({
+      color: 0xfacc15,
+      transparent: true,
+      opacity: 0.86,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
 
-    fireSpecs.forEach((cfg, idx) => {
+    let remainingPointLights = this.activeQualityPreset.maxActivePointLights;
+
+    for (let idx = 0; idx < fireSpecs.length; idx++) {
+      const cfg = fireSpecs[idx];
       const matched =
         discoveredFires.find(d => d.name.toUpperCase().startsWith(cfg.markerName.toUpperCase())) ??
         discoveredFires[idx];
@@ -392,7 +564,7 @@ export class ExtinguisherSystem {
 
       const padRadius = cfg.radiusM * 0.62 * es;
       const baseMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(padRadius * 0.85, padRadius, 0.05, 14),
+        new THREE.CylinderGeometry(padRadius * 0.85, padRadius, 0.05, 12),
         sharedBaseMat
       );
       baseMesh.position.y = 0.025;
@@ -401,12 +573,13 @@ export class ExtinguisherSystem {
       const ringInner = Math.max(padRadius + 0.12, cfg.radiusM * 1.12 * es);
       const ringOuter = ringInner + 0.16 * es;
       const floorRing = new THREE.Mesh(
-        new THREE.RingGeometry(ringInner, ringOuter, 28),
+        new THREE.RingGeometry(ringInner, ringOuter, 24),
         new THREE.MeshBasicMaterial({
           color: 0xf97316,
           side: THREE.DoubleSide,
           transparent: true,
-          opacity: 0.55
+          opacity: 0.55,
+          depthWrite: false
         })
       );
       floorRing.rotation.x = -Math.PI / 2;
@@ -414,16 +587,12 @@ export class ExtinguisherSystem {
       group.add(floorRing);
 
       const flameCones: THREE.Mesh[] = [];
-      for (let f = 0; f < 5; f++) {
-        const flameMat = new THREE.MeshBasicMaterial({
-          color: f % 2 === 0 ? 0xf97316 : 0xfacc15,
-          transparent: true,
-          opacity: 0.88,
-          blending: THREE.AdditiveBlending,
-          depthWrite: false
-        });
-        const cone = new THREE.Mesh(flameGeo, flameMat);
-        const angle = (f / 5) * Math.PI * 2;
+      for (let f = 0; f < maxFlames; f++) {
+        const cone = new THREE.Mesh(
+          flameGeo,
+          f % 2 === 0 ? sharedFlameMatOrange : sharedFlameMatYellow
+        );
+        const angle = (f / Math.max(1, maxFlames)) * Math.PI * 2;
         const r = f === 0 ? 0 : padRadius * 0.52;
         cone.position.set(Math.cos(angle) * r, 0.55 * es, Math.sin(angle) * r);
         cone.userData.baseX = cone.position.x;
@@ -433,14 +602,15 @@ export class ExtinguisherSystem {
         flameCones.push(cone);
       }
 
+      // Один общий материал дыма на очаг (depthWrite: false) вместо отдельного материала на каждую частицу
+      const smokeMat = new THREE.MeshBasicMaterial({
+        color: 0x1e293b,
+        transparent: true,
+        opacity: 0.48 * cfg.smokeDensity,
+        depthWrite: false
+      });
       const smokePuffs: THREE.Mesh[] = [];
-      for (let s = 0; s < 6; s++) {
-        const smokeMat = new THREE.MeshBasicMaterial({
-          color: 0x1e293b,
-          transparent: true,
-          opacity: 0.52 * cfg.smokeDensity,
-          depthWrite: false
-        });
+      for (let s = 0; s < maxSmoke; s++) {
         const puff = new THREE.Mesh(smokeGeo, smokeMat);
         puff.position.set(
           ((s % 3) - 1) * 0.32 * es,
@@ -452,23 +622,23 @@ export class ExtinguisherSystem {
         smokePuffs.push(puff);
       }
 
-      // Высокий шлейф дыма, видимый издалека и над кровлей корпуса
+      // Компактный высокий шлейф дыма над кровлей (1 общий материал на очаг, без гигантского overdraw)
       const plumeHeightBase = bldAnchor
         ? Math.max(4.5, bldAnchor.roofBeaconPos.y - worldPos.y + 1.5)
         : 6.5;
+      const tallSmokeMat = new THREE.MeshBasicMaterial({
+        color: 0x334155,
+        transparent: true,
+        opacity: 0.34,
+        depthWrite: false
+      });
       const tallSmokePuffs: THREE.Mesh[] = [];
-      for (let ts = 0; ts < 5; ts++) {
-        const tallMat = new THREE.MeshBasicMaterial({
-          color: 0x334155,
-          transparent: true,
-          opacity: 0.42,
-          depthWrite: false
-        });
-        const puff = new THREE.Mesh(tallSmokeGeo, tallMat);
+      for (let ts = 0; ts < maxTallSmoke; ts++) {
+        const puff = new THREE.Mesh(tallSmokeGeo, tallSmokeMat);
         puff.position.set(
-          ((ts % 3) - 1) * 0.75,
+          ((ts % 3) - 1) * 0.65,
           plumeHeightBase * 0.45 + ts * 1.6,
-          ((ts % 2) - 0.5) * 0.75
+          ((ts % 2) - 0.5) * 0.65
         );
         puff.userData.phase = ts * 1.15 + idx * 0.85;
         puff.userData.baseHeight = plumeHeightBase * 0.42;
@@ -476,15 +646,18 @@ export class ExtinguisherSystem {
         tallSmokePuffs.push(puff);
       }
 
-      const light = new THREE.PointLight(0xf97316, 4.4, 11.5 * Math.max(0.8, es), 1.5);
-      light.position.set(0, 1.3 * es, 0);
-      group.add(light);
+      let light: THREE.PointLight | null = null;
+      if (this.activeQualityPreset.enableFirePointLight && remainingPointLights > 0) {
+        light = new THREE.PointLight(0xf97316, 4.4, 11.5 * Math.max(0.8, es), 1.5);
+        light.position.set(0, 1.3 * es, 0);
+        group.add(light);
+        remainingPointLights -= 1;
+      }
 
       // Наружный аварийный маяк тревоги на фасаде/входе здания (виден с улицы при подходе)
       const beaconGroup = new THREE.Group();
       const beaconPos = bldAnchor ? bldAnchor.facadePos.clone() : worldPos.clone();
       const beaconPoleOffsetX = idx % 2 === 0 ? -1.45 : 1.45;
-      // Сдвигаем стойку маяка чуть вбок от центра входа, чтобы не мешать проходу
       beaconGroup.position.set(beaconPos.x + beaconPoleOffsetX, beaconPos.y, beaconPos.z);
 
       const pole = new THREE.Mesh(beaconPoleGeo, sharedBeaconPoleMat);
@@ -512,30 +685,52 @@ export class ExtinguisherSystem {
         color: 0xef4444,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.55
+        opacity: 0.55,
+        depthWrite: false
       });
       const beaconFloorRing = new THREE.Mesh(beaconRingGeo, beaconFloorRingMat);
       beaconFloorRing.rotation.x = -Math.PI / 2;
       beaconFloorRing.position.y = 0.04;
       beaconGroup.add(beaconFloorRing);
 
-      // Яркий мигающий оранжевый PointLight прямо в проёме входа (портале) — виден издалека снаружи корпуса
-      const portalLight = new THREE.PointLight(0xff6b00, 10.5, 26, 1.3);
-      portalLight.position.set(-beaconPoleOffsetX, 2.75, 0.45);
-      beaconGroup.add(portalLight);
+      // Динамический PointLight на портале только если явно разрешён бюджетом; иначе лёгкое unlit-свечение
+      let portalLight: THREE.PointLight | null = null;
+      if (this.activeQualityPreset.enablePortalPointLight && remainingPointLights > 0) {
+        portalLight = new THREE.PointLight(0xff6b00, 9.5, 22, 1.3);
+        portalLight.position.set(-beaconPoleOffsetX, 2.75, 0.45);
+        beaconGroup.add(portalLight);
+        remainingPointLights -= 1;
+      }
 
-      // Высоковидимый поток частиц дыма из проёма активного пожарного портала (Zero-Allocation)
-      const portalSmokePositions = new Float32Array(PORTAL_SMOKE_PARTICLE_COUNT * 3);
-      const portalSmokeSeeds = new Float32Array(PORTAL_SMOKE_PARTICLE_COUNT * 3);
-      for (let ps = 0; ps < PORTAL_SMOKE_PARTICLE_COUNT; ps++) {
-        const phase = ps / PORTAL_SMOKE_PARTICLE_COUNT;
+      let portalGlowMesh: THREE.Mesh | null = null;
+      let portalGlowMat: THREE.MeshBasicMaterial | null = null;
+      if (this.activeQualityPreset.useUnlitPortalGlow) {
+        portalGlowMat = new THREE.MeshBasicMaterial({
+          map: this.portalGlowTexture,
+          color: 0xff7b1c,
+          transparent: true,
+          opacity: 0.72,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        });
+        portalGlowMesh = new THREE.Mesh(portalGlowGeo, portalGlowMat);
+        portalGlowMesh.position.set(-beaconPoleOffsetX, 1.85, 0.32);
+        beaconGroup.add(portalGlowMesh);
+      }
+
+      // Лёгкий поток частиц дыма из проёма активного пожарного портала (Zero-Allocation + DrawRange)
+      const portalSmokePositions = new Float32Array(maxPortalCount * 3);
+      const portalSmokeSeeds = new Float32Array(maxPortalCount * 3);
+      for (let ps = 0; ps < maxPortalCount; ps++) {
+        const phase = ps / Math.max(1, maxPortalCount);
         const angle = (ps * 2.39996) % (Math.PI * 2);
-        const radial = 0.35 + ((ps * 17) % 10) * 0.14;
+        const radial = 0.28 + ((ps * 17) % 10) * 0.1;
         portalSmokeSeeds[ps * 3] = phase;
         portalSmokeSeeds[ps * 3 + 1] = angle;
         portalSmokeSeeds[ps * 3 + 2] = radial;
         portalSmokePositions[ps * 3] = Math.cos(angle) * radial * 0.4;
-        portalSmokePositions[ps * 3 + 1] = 1.4 + phase * 9.5;
+        portalSmokePositions[ps * 3 + 1] = 1.4 + phase * 8.2;
         portalSmokePositions[ps * 3 + 2] = Math.sin(angle) * radial * 0.4;
       }
       const portalSmokeGeo = new THREE.BufferGeometry();
@@ -545,9 +740,9 @@ export class ExtinguisherSystem {
       const portalSmokeMat = new THREE.PointsMaterial({
         color: 0x475569,
         map: this.portalSmokeTexture,
-        size: 2.6,
+        size: this.activeQualityPreset.portalSmokeSizeM,
         transparent: true,
-        opacity: 0.72,
+        opacity: 0.68,
         depthWrite: false,
         sizeAttenuation: true
       });
@@ -577,6 +772,8 @@ export class ExtinguisherSystem {
         flameCones,
         smokePuffs,
         tallSmokePuffs,
+        smokeMat,
+        tallSmokeMat,
         light,
         floorRing,
         beaconGroup,
@@ -587,18 +784,28 @@ export class ExtinguisherSystem {
         beaconFloorRing,
         beaconFloorRingMat,
         portalLight,
+        portalGlowMesh,
+        portalGlowMat,
         portalSmokePoints,
+        portalSmokeGeo,
         portalSmokeMat,
         portalSmokePositions,
         portalSmokePosAttr,
         portalSmokeSeeds,
-        markerSprite
+        markerSprite,
+        activeFlameLimit: flameCones.length,
+        activeSmokeLimit: smokePuffs.length,
+        activeTallSmokeLimit: tallSmokePuffs.length,
+        activePortalSmokeLimit: maxPortalCount,
+        wasSteamPhase: false,
+        wasExtinguishedVisual: false,
+        lastBeaconHot: null
       });
-    });
+    }
   }
 
   /**
-   * Явно привязывает мигающий оранжевый PointLight и шлейф дымовых частиц
+   * Явно привязывает оранжевое свечение (unlit/PointLight по конфигу) и шлейф дымовых частиц
    * ко всем активным дверным проёмам (порталам) пожарных корпусов.
    */
   public configureFirePortalDoorways(entries: ReadonlyArray<FirePortalDoorwaySpec>): void {
@@ -612,12 +819,22 @@ export class ExtinguisherSystem {
         entry.doorwayPos.y,
         entry.doorwayPos.z
       );
-      fire.portalLight.position.set(-fire.beaconPoleOffsetX, 2.75, 0.45);
+      if (fire.portalLight) {
+        fire.portalLight.position.set(-fire.beaconPoleOffsetX, 2.75, 0.45);
+      }
+      if (fire.portalGlowMesh) {
+        fire.portalGlowMesh.position.set(-fire.beaconPoleOffsetX, 1.85, 0.32);
+      }
       fire.portalSmokePoints.position.set(-fire.beaconPoleOffsetX, 0, 0.25);
 
       const isActive = fire.status !== 'EXTINGUISHED' && fire.intensity > 0;
       fire.portalSmokePoints.visible = isActive;
-      fire.portalLight.intensity = isActive ? 10.5 : 0;
+      if (fire.portalGlowMesh) {
+        fire.portalGlowMesh.visible = isActive && this.activeQualityPreset.useUnlitPortalGlow;
+      }
+      if (fire.portalLight) {
+        fire.portalLight.intensity = isActive ? 9.5 : 0;
+      }
     }
   }
 
@@ -895,15 +1112,22 @@ export class ExtinguisherSystem {
     suppressRate: number
   ): SprayHitResult {
     const speed = this.isHoseEquipped ? 11.2 : 7.8;
-    for (let s = 0; s < 5; s++) {
-      const slot = Math.floor(Math.random() * SPRAY_PARTICLE_COUNT);
-      this.sprayPositions[slot * 3] = emitPos.x;
-      this.sprayPositions[slot * 3 + 1] = emitPos.y;
-      this.sprayPositions[slot * 3 + 2] = emitPos.z;
-      this.sprayVelocities[slot * 3] = aimDir.x * speed + (Math.random() - 0.5) * 1.3;
-      this.sprayVelocities[slot * 3 + 1] = aimDir.y * speed + (Math.random() - 0.5) * 1.0;
-      this.sprayVelocities[slot * 3 + 2] = aimDir.z * speed + (Math.random() - 0.5) * 1.3;
-      this.sprayLifetimes[slot] = this.isHoseEquipped ? 0.62 : 0.52;
+    const preset = this.activeQualityPreset;
+    this.spraySpawnAccum += dt * preset.spraySpawnRateHz;
+    const spawnCount = Math.min(4, Math.floor(this.spraySpawnAccum));
+    if (spawnCount > 0) {
+      this.spraySpawnAccum -= spawnCount;
+      const poolLen = Math.max(1, this.activeSprayParticleCount);
+      for (let s = 0; s < spawnCount; s++) {
+        const slot = Math.floor(Math.random() * poolLen);
+        this.sprayPositions[slot * 3] = emitPos.x;
+        this.sprayPositions[slot * 3 + 1] = emitPos.y;
+        this.sprayPositions[slot * 3 + 2] = emitPos.z;
+        this.sprayVelocities[slot * 3] = aimDir.x * speed + (Math.random() - 0.5) * 1.3;
+        this.sprayVelocities[slot * 3 + 1] = aimDir.y * speed + (Math.random() - 0.5) * 1.0;
+        this.sprayVelocities[slot * 3 + 2] = aimDir.z * speed + (Math.random() - 0.5) * 1.3;
+        this.sprayLifetimes[slot] = this.isHoseEquipped ? 0.62 : 0.52;
+      }
     }
 
     let hitAnyFire = false;
@@ -1023,7 +1247,8 @@ export class ExtinguisherSystem {
     }
 
     let anySprayAlive = false;
-    for (let i = 0; i < SPRAY_PARTICLE_COUNT; i++) {
+    const sprayLimit = this.activeSprayParticleCount;
+    for (let i = 0; i < sprayLimit; i++) {
       if (this.sprayLifetimes[i] > 0) {
         anySprayAlive = true;
         this.sprayLifetimes[i] -= dt;
@@ -1042,6 +1267,13 @@ export class ExtinguisherSystem {
       this.sprayPosAttr.needsUpdate = true;
     }
 
+    const preset = this.activeQualityPreset;
+    this.smokeUpdateTimerSec += dt;
+    const runPortalParticleUpdate = this.smokeUpdateTimerSec >= preset.particleUpdateIntervalSec;
+    if (runPortalParticleUpdate) {
+      this.smokeUpdateTimerSec = 0;
+    }
+
     let thermalHeatLoad01 = 0;
     let smokeExposure01 = 0;
     let extinguishedCount = 0;
@@ -1054,21 +1286,27 @@ export class ExtinguisherSystem {
 
       if (fire.intensity <= 0 || fire.status === 'EXTINGUISHED') {
         extinguishedCount += 1;
-        fire.light.intensity = 0;
-        fire.floorRing.visible = false;
-        fire.flameCones.forEach(c => {
-          c.visible = false;
-        });
-        fire.tallSmokePuffs.forEach(p => {
-          p.visible = false;
-        });
 
-        // Наружный маяк и портал здания переводятся в спокойный зелёный режим «Выполнено»
-        fire.beaconDomeMat.color.setHex(0x22c55e);
-        fire.beaconBeamMesh.visible = false;
-        fire.beaconFloorRing.visible = false;
-        fire.portalLight.intensity = 0;
-        fire.portalSmokePoints.visible = false;
+        if (!fire.wasExtinguishedVisual) {
+          fire.wasExtinguishedVisual = true;
+          fire.lastBeaconHot = null;
+          if (fire.light) fire.light.intensity = 0;
+          fire.floorRing.visible = false;
+          for (let f = 0; f < fire.flameCones.length; f++) {
+            fire.flameCones[f].visible = false;
+          }
+          for (let ts = 0; ts < fire.tallSmokePuffs.length; ts++) {
+            fire.tallSmokePuffs[ts].visible = false;
+          }
+          // Наружный маяк и портал здания переводятся в спокойный зелёный режим «Выполнено»
+          fire.beaconDomeMat.color.setHex(0x22c55e);
+          fire.beaconBeamMesh.visible = false;
+          fire.beaconFloorRing.visible = false;
+          if (fire.portalLight) fire.portalLight.intensity = 0;
+          if (fire.portalGlowMesh) fire.portalGlowMesh.visible = false;
+          fire.portalSmokePoints.visible = false;
+          fire.smokeMat.color.setHex(0xe2e8f0);
+        }
 
         if (fire.extinguishedLabelTimer > 0) {
           fire.extinguishedLabelTimer = Math.max(0, fire.extinguishedLabelTimer - dt);
@@ -1088,21 +1326,21 @@ export class ExtinguisherSystem {
         if (fire.steamTimer > 0) {
           fire.steamTimer = Math.max(0, fire.steamTimer - dt);
           const steamRatio = fire.steamTimer / 3.2;
-          fire.smokePuffs.forEach((p, idx) => {
-            p.visible = true;
-            const mat = p.material as THREE.MeshBasicMaterial;
-            mat.color.setHex(0xe2e8f0);
-            mat.opacity = 0.28 * steamRatio;
-            p.position.y = 0.9 + ((this.elapsedAnimSec * 1.1 + idx * 0.5) % 2.4);
-          });
-        } else {
-          fire.smokePuffs.forEach(p => {
-            p.visible = false;
-          });
+          fire.smokeMat.opacity = 0.28 * steamRatio;
+          for (let s = 0; s < fire.activeSmokeLimit; s++) {
+            const puff = fire.smokePuffs[s];
+            puff.visible = true;
+            puff.position.y = 0.9 + ((this.elapsedAnimSec * 1.1 + s * 0.5) % 2.4);
+          }
+        } else if (fire.smokePuffs[0]?.visible) {
+          for (let s = 0; s < fire.smokePuffs.length; s++) {
+            fire.smokePuffs[s].visible = false;
+          }
         }
         continue;
       }
 
+      fire.wasExtinguishedVisual = false;
       if (dist < nearestActiveFireDist) nearestActiveFireDist = dist;
 
       if (dist < fire.config.heatRadiusM) {
@@ -1117,76 +1355,107 @@ export class ExtinguisherSystem {
         if (sRatio > smokeExposure01) smokeExposure01 = sRatio;
       }
 
-      const flicker = 0.85 + Math.sin(this.elapsedAnimSec * 17 + i * 2.1) * 0.15;
-      fire.light.intensity = 4.4 * fire.intensity * flicker;
-      fire.floorRing.visible = true;
-      fire.flameCones.forEach(c => {
-        c.visible = true;
-        const ph = (c.userData.phase as number) || 0;
-        const scaleY = Math.max(
-          0.2,
-          fire.intensity * (0.85 + Math.sin(this.elapsedAnimSec * 14 + ph) * 0.28)
-        );
-        c.scale.set(0.6 + fire.intensity * 0.42, scaleY, 0.6 + fire.intensity * 0.42);
-        c.position.y = 0.54 * this.effectScale * scaleY;
-      });
-
       const isSteamTransition = fire.intensity < 0.28;
-      fire.smokePuffs.forEach(p => {
-        p.visible = true;
-        const ph = (p.userData.phase as number) || 0;
-        const cycle = (this.elapsedAnimSec * 0.9 + ph) % 2.4;
-        p.position.y = (0.8 + cycle) * this.effectScale;
-        p.scale.setScalar(0.6 + cycle * 0.32);
-        const mat = p.material as THREE.MeshBasicMaterial;
-        mat.color.setHex(isSteamTransition ? 0xcbd5e1 : 0x1e293b);
-        mat.opacity = Math.min(
-          0.6,
-          fire.config.smokeDensity * (0.35 + fire.intensity * 0.5) * (1 - cycle / 2.6)
-        );
-      });
+      if (isSteamTransition !== fire.wasSteamPhase) {
+        fire.wasSteamPhase = isSteamTransition;
+        fire.smokeMat.color.setHex(isSteamTransition ? 0xcbd5e1 : 0x1e293b);
+        fire.tallSmokeMat.color.setHex(isSteamTransition ? 0xcbd5e1 : 0x334155);
+        fire.portalSmokeMat.color.setHex(isSteamTransition ? 0xcbd5e1 : 0x475569);
+      }
 
-      // Высокий шлейф дыма над кровлей корпуса для визуального обнаружения очага снаружи
-      fire.tallSmokePuffs.forEach(p => {
-        p.visible = true;
-        const ph = (p.userData.phase as number) || 0;
-        const baseH = (p.userData.baseHeight as number) || 3.2;
-        const cycle = (this.elapsedAnimSec * 0.85 + ph) % 6.0;
-        p.position.y = baseH + cycle * 1.45;
-        p.scale.setScalar(0.75 + cycle * 0.24);
-        const mat = p.material as THREE.MeshBasicMaterial;
-        mat.color.setHex(isSteamTransition ? 0xcbd5e1 : 0x334155);
-        mat.opacity = Math.min(0.45, (0.2 + fire.intensity * 0.35) * (1 - cycle / 6.3));
-      });
+      const withinDetailCull = dist <= preset.effectCullDistanceM;
+      if (withinDetailCull) {
+        if (fire.light) {
+          const flicker = 0.85 + Math.sin(this.elapsedAnimSec * 17 + i * 2.1) * 0.15;
+          fire.light.intensity = 4.4 * fire.intensity * flicker;
+        }
+        fire.floorRing.visible = true;
+        for (let f = 0; f < fire.activeFlameLimit; f++) {
+          const cone = fire.flameCones[f];
+          cone.visible = true;
+          const ph = (cone.userData.phase as number) || 0;
+          const scaleY = Math.max(
+            0.22,
+            fire.intensity * (0.85 + Math.sin(this.elapsedAnimSec * 14 + ph) * 0.26)
+          );
+          const scaleXZ = 0.6 + fire.intensity * 0.4;
+          cone.scale.set(scaleXZ, scaleY, scaleXZ);
+          cone.position.y = 0.54 * this.effectScale * scaleY;
+        }
 
-      // Мигающий красно-оранжевый аварийный маяк у фасада корпуса и яркий оранжевый PointLight + дым в проёме портала
+        fire.smokeMat.opacity = Math.min(0.55, fire.config.smokeDensity * (0.3 + fire.intensity * 0.45));
+        for (let s = 0; s < fire.activeSmokeLimit; s++) {
+          const puff = fire.smokePuffs[s];
+          puff.visible = true;
+          const ph = (puff.userData.phase as number) || 0;
+          const cycle = (this.elapsedAnimSec * preset.smokeCycleSpeed + ph) % 2.2;
+          puff.position.y = (0.8 + cycle) * this.effectScale;
+          const puffScale = Math.min(preset.smokeMaxScale, 0.55 + cycle * 0.28);
+          puff.scale.setScalar(puffScale);
+        }
+      } else {
+        if (fire.light) fire.light.intensity = 0;
+        fire.floorRing.visible = false;
+        for (let f = 0; f < fire.activeFlameLimit; f++) {
+          fire.flameCones[f].visible = false;
+        }
+        for (let s = 0; s < fire.activeSmokeLimit; s++) {
+          fire.smokePuffs[s].visible = false;
+        }
+      }
+
+      // Компактный шлейф дыма над кровлей корпуса
+      fire.tallSmokeMat.opacity = Math.min(0.38, 0.16 + fire.intensity * 0.26);
+      for (let ts = 0; ts < fire.activeTallSmokeLimit; ts++) {
+        const puff = fire.tallSmokePuffs[ts];
+        puff.visible = true;
+        const ph = (puff.userData.phase as number) || 0;
+        const baseH = (puff.userData.baseHeight as number) || 3.2;
+        const cycle = (this.elapsedAnimSec * preset.smokeCycleSpeed + ph) % 5.4;
+        puff.position.y = baseH + cycle * 1.3;
+        const tallScale = Math.min(preset.smokeMaxScale, 0.65 + cycle * 0.12);
+        puff.scale.setScalar(tallScale);
+      }
+
+      // Наружный аварийный маяк и лёгкое unlit-свечение портала (без дорогого PBR PointLight)
       const strobePhase = Math.sin(this.elapsedAnimSec * 8.5 + i * 1.7);
       const isHotFlash = strobePhase > 0;
-      const portalPulse = 0.5 + 0.5 * Math.sin(this.elapsedAnimSec * 10.2 + i * 1.9);
-      fire.beaconDomeMat.color.setHex(isHotFlash ? 0xef4444 : 0xf97316);
+      if (isHotFlash !== fire.lastBeaconHot) {
+        fire.lastBeaconHot = isHotFlash;
+        fire.beaconDomeMat.color.setHex(isHotFlash ? 0xef4444 : 0xf97316);
+      }
       fire.beaconBeamMesh.visible = true;
       fire.beaconBeamMat.opacity = 0.14 + Math.max(0, strobePhase) * 0.22;
       fire.beaconFloorRing.visible = true;
       fire.beaconFloorRingMat.opacity = 0.35 + Math.max(0, strobePhase) * 0.35;
 
-      fire.portalLight.color.setHex(portalPulse > 0.45 ? 0xff6b00 : 0xff922b);
-      fire.portalLight.intensity = (4.8 + portalPulse * 8.2) * (0.45 + fire.intensity * 0.55);
-
-      fire.portalSmokePoints.visible = true;
-      fire.portalSmokeMat.color.setHex(isSteamTransition ? 0xcbd5e1 : 0x475569);
-      fire.portalSmokeMat.opacity = 0.45 + fire.intensity * 0.32;
-      const pPos = fire.portalSmokePositions;
-      const pSeeds = fire.portalSmokeSeeds;
-      for (let ps = 0; ps < PORTAL_SMOKE_PARTICLE_COUNT; ps++) {
-        const life = (pSeeds[ps * 3] + this.elapsedAnimSec * 0.24) % 1.0;
-        const baseAng = pSeeds[ps * 3 + 1] + this.elapsedAnimSec * 0.45;
-        const radial = pSeeds[ps * 3 + 2] * (0.35 + life * 1.45);
-        const idx3 = ps * 3;
-        pPos[idx3] = Math.cos(baseAng) * radial;
-        pPos[idx3 + 1] = 1.35 + life * 9.8;
-        pPos[idx3 + 2] = Math.sin(baseAng) * radial + life * 0.85;
+      const portalPulse = 0.5 + 0.5 * Math.sin(this.elapsedAnimSec * 10.2 + i * 1.9);
+      if (fire.portalGlowMesh && fire.portalGlowMat) {
+        fire.portalGlowMesh.visible = preset.useUnlitPortalGlow;
+        fire.portalGlowMat.opacity = (0.42 + portalPulse * 0.42) * (0.45 + fire.intensity * 0.55);
       }
-      fire.portalSmokePosAttr.needsUpdate = true;
+      if (fire.portalLight && fire.portalLight.visible) {
+        fire.portalLight.intensity = (4.8 + portalPulse * 6.5) * (0.45 + fire.intensity * 0.55);
+      }
+
+      // Поток дыма из проёма портала обновляем с регулируемой частотой и в пределах дальности отсечения
+      fire.portalSmokePoints.visible = true;
+      fire.portalSmokeMat.opacity = 0.42 + fire.intensity * 0.28;
+      if (runPortalParticleUpdate && dist <= preset.effectCullDistanceM * 1.25) {
+        const pPos = fire.portalSmokePositions;
+        const pSeeds = fire.portalSmokeSeeds;
+        const pCount = fire.activePortalSmokeLimit;
+        for (let ps = 0; ps < pCount; ps++) {
+          const life = (pSeeds[ps * 3] + this.elapsedAnimSec * 0.24) % 1.0;
+          const baseAng = pSeeds[ps * 3 + 1] + this.elapsedAnimSec * 0.42;
+          const radial = pSeeds[ps * 3 + 2] * (0.35 + life * 1.15);
+          const idx3 = ps * 3;
+          pPos[idx3] = Math.cos(baseAng) * radial;
+          pPos[idx3 + 1] = 1.35 + life * 8.0;
+          pPos[idx3 + 2] = Math.sin(baseAng) * radial + life * 0.7;
+        }
+        fire.portalSmokePosAttr.needsUpdate = true;
+      }
 
       const pct = Math.max(1, Math.round(fire.intensity * 100));
       fire.markerSprite.sync(
@@ -1291,6 +1560,10 @@ export class ExtinguisherSystem {
     if (this.portalSmokeTexture) {
       this.portalSmokeTexture.dispose();
       this.portalSmokeTexture = null;
+    }
+    if (this.portalGlowTexture) {
+      this.portalGlowTexture.dispose();
+      this.portalGlowTexture = null;
     }
     this.rootGroup.parent?.remove(this.rootGroup);
   }

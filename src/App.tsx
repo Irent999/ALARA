@@ -2492,9 +2492,13 @@ export default function App() {
           }
           for (let i = 0; i < fireSim.smokePuffs.length; i++) {
             const puff = fireSim.smokePuffs[i];
-            puff.position.y = 1.0 + ((i * 0.34 + now * 0.00055) % 2.1);
+            puff.position.y = 1.0 + ((i * 0.42 + now * 0.00055) % 2.1);
           }
-          fireSim.fireLight.intensity = (3.4 + 1.6 * Math.sin(now * 0.022)) * suppressScale;
+          const allowFireLight = !isVR && !SCENARIO_4_CONFIG.FIRE_SMOKE_QUALITY.vrLiteMode;
+          fireSim.fireLight.visible = allowFireLight;
+          if (allowFireLight) {
+            fireSim.fireLight.intensity = (3.4 + 1.4 * Math.sin(now * 0.022)) * suppressScale;
+          }
           if (fireSim.isPowerEnergized) {
             fireSim.sparkGroup.visible = Math.sin(now * 0.045) > -0.25;
             fireSim.sparkGroup.rotation.y = now * 0.012;
@@ -2502,6 +2506,7 @@ export default function App() {
             fireSim.sparkGroup.visible = false;
           }
         } else {
+          fireSim.fireLight.visible = false;
           fireSim.fireLight.intensity = 0;
           fireSim.sparkGroup.visible = false;
         }
