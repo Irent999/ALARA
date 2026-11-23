@@ -127,19 +127,116 @@ function roundNum(n: number): number {
 }
 
 /**
+ * Уступает управление браузеру на один кадр / макрозадачу, чтобы не блокировать рендер и не триггерить "Страница не отвечает".
+ */
+export function yieldToBrowser(): Promise<void> {
+  return new Promise(resolve => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => setTimeout(resolve, 0));
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
+
+export function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    const err = new Error('Загрузка 3D-модели АЭС отменена пользователем.');
+    err.name = 'AbortError';
+    throw err;
+  }
+}
+
+export interface SpatialMeshEntry {
+  readonly mesh: THREE.Mesh;
+  readonly box: THREE.Box3;
+  readonly size: THREE.Vector3;
+  readonly center: THREE.Vector3;
+  readonly nodeName: string;
+}
+
+/**
+ * Пространственный индекс мешей с предрасчитанными мировыми Box3.
+ * Ускоряет множественные Raycast-проверки на тяжёлых .glb в 50–100 раз за счёт AABB-отсечения.
+ */
+class SpatialMeshIndex {
+  public readonly entries: SpatialMeshEntry[] = [];
+  public readonly meshes: THREE.Mesh[] = [];
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly filteredMeshes: THREE.Mesh[] = [];
+  private readonly tmpVec = new THREE.Vector3();
+
+  public addMesh(mesh: THREE.Mesh, fallbackIndex: number): SpatialMeshEntry | null {
+    const geom = mesh.geometry;
+    if (!geom) return null;
+    if (!geom.boundingBox) {
+      geom.computeBoundingBox();
+    }
+    if (!geom.boundingBox || geom.boundingBox.isEmpty()) return null;
+
+    // O(1) трансформация локального boundingBox вместо по-вершинного Box3.setFromObject
+    const worldBox = new THREE.Box3().copy(geom.boundingBox).applyMatrix4(mesh.matrixWorld);
+    if (worldBox.isEmpty()) return null;
+
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    worldBox.getSize(size);
+    worldBox.getCenter(center);
+
+    const nodeName = mesh.name?.trim() || mesh.parent?.name?.trim() || `Mesh_${fallbackIndex + 1}`;
+    const entry: SpatialMeshEntry = { mesh, box: worldBox, size, center, nodeName };
+    this.entries.push(entry);
+    this.meshes.push(mesh);
+    return entry;
+  }
+
+  public intersectRay(
+    origin: THREE.Vector3,
+    dir: THREE.Vector3,
+    near = 0,
+    far = Infinity
+  ): THREE.Intersection[] {
+    if (this.entries.length === 0) return [];
+    this.raycaster.set(origin, dir);
+    this.raycaster.near = near;
+    this.raycaster.far = far;
+
+    const ray = this.raycaster.ray;
+    const candidates = this.filteredMeshes;
+    candidates.length = 0;
+
+    for (let i = 0; i < this.entries.length; i++) {
+      const entry = this.entries[i];
+      if (!ray.intersectsBox(entry.box)) continue;
+      if (Number.isFinite(far)) {
+        const minDistSq = entry.box.distanceToPoint(origin);
+        if (minDistSq > far) continue;
+      }
+      candidates.push(entry.mesh);
+    }
+
+    if (candidates.length === 0) return [];
+    return this.raycaster.intersectObjects(candidates, false);
+  }
+
+  public getTmpVec(): THREE.Vector3 {
+    return this.tmpVec;
+  }
+}
+
+/**
  * Определяет высоту горизонтальной площадки/пола модели (.glb) с помощью нисходящих лучей
  * в пределах разумной высоты цоколя (чтобы не принимать крыши корпусов и градирен за уровень земли).
  */
-function sampleGroundDeckY(bounds: THREE.Box3, meshes: THREE.Mesh[]): number {
+function sampleGroundDeckY(bounds: THREE.Box3, spatial: SpatialMeshIndex): number {
   const minY = Number.isFinite(bounds.min.y) ? bounds.min.y : 0;
-  if (bounds.isEmpty() || meshes.length === 0) return minY;
+  if (bounds.isEmpty() || spatial.entries.length === 0) return minY;
 
   const size = new THREE.Vector3();
   const center = new THREE.Vector3();
   bounds.getSize(size);
   bounds.getCenter(center);
 
-  const raycaster = new THREE.Raycaster();
   const origin = new THREE.Vector3();
   const down = new THREE.Vector3(0, -1, 0);
   const maxDeckDelta = Math.max(1.2, Math.min(4.5, size.y * 0.2));
@@ -153,8 +250,7 @@ function sampleGroundDeckY(bounds: THREE.Box3, meshes: THREE.Mesh[]): number {
         bounds.max.y + 3.0,
         center.z + offsets[iz] * size.z
       );
-      raycaster.set(origin, down);
-      const hits = raycaster.intersectObjects(meshes, false);
+      const hits = spatial.intersectRay(origin, down);
       for (let h = 0; h < hits.length; h++) {
         const y = hits[h].point.y;
         if (y >= minY - 0.05 && y <= minY + maxDeckDelta) {
@@ -178,10 +274,10 @@ function sampleInteriorFloorY(
   x: number,
   z: number,
   bounds: THREE.Box3,
-  meshes: THREE.Mesh[],
+  spatial: SpatialMeshIndex,
   deckY: number
 ): number {
-  if (meshes.length === 0 || bounds.isEmpty()) return deckY;
+  if (spatial.entries.length === 0 || bounds.isEmpty()) return deckY;
   if (x < bounds.min.x || x > bounds.max.x || z < bounds.min.z || z > bounds.max.z) {
     return deckY;
   }
@@ -189,12 +285,9 @@ function sampleInteriorFloorY(
   const sizeY = bounds.max.y - bounds.min.y;
   const maxFloorY = deckY + Math.max(1.2, Math.min(3.5, sizeY * 0.14));
 
-  const raycaster = new THREE.Raycaster(
-    new THREE.Vector3(x, bounds.max.y + 3.0, z),
-    new THREE.Vector3(0, -1, 0)
-  );
-  // Raycaster возвращает попадания сверху вниз: пропускаем крыши (> maxFloorY) и берём верхнюю плоскость пола внутри здания
-  const hits = raycaster.intersectObjects(meshes, false);
+  const origin = spatial.getTmpVec().set(x, bounds.max.y + 3.0, z);
+  const down = new THREE.Vector3(0, -1, 0);
+  const hits = spatial.intersectRay(origin, down);
   for (let i = 0; i < hits.length; i++) {
     const hy = hits[i].point.y;
     if (hy >= bounds.min.y - 0.05 && hy <= maxFloorY) {
@@ -212,31 +305,25 @@ interface RawMeshBoxEntry {
 }
 
 /**
- * Сканирует меши .glb и кластеризует их в объёмы отдельных зданий/корпусов АЭС.
+ * Сканирует предрасчитанные меши .glb и кластеризует их в объёмы отдельных зданий/корпусов АЭС.
  * Если модель объединена в один общий меш, автоматически переключается на высотную сетку Raycaster.
  */
 function discoverBuildingVolumes(
   sceneBounds: THREE.Box3,
   sceneSize: THREE.Vector3,
   sceneCenter: THREE.Vector3,
-  allMeshes: THREE.Mesh[],
+  spatial: SpatialMeshIndex,
   deckSurfaceY: number
 ): BuildingVolumeInfo[] {
   const minBuildingHeight = Math.max(3.5, sceneSize.y * 0.16);
   const minBuildingWidth = Math.max(4.5, Math.min(sceneSize.x, sceneSize.z) * 0.045);
 
   const candidates: RawMeshBoxEntry[] = [];
-  const tmpBox = new THREE.Box3();
 
-  for (let i = 0; i < allMeshes.length; i++) {
-    const mesh = allMeshes[i];
-    tmpBox.setFromObject(mesh);
-    if (tmpBox.isEmpty()) continue;
-
-    const mSize = new THREE.Vector3();
-    const mCenter = new THREE.Vector3();
-    tmpBox.getSize(mSize);
-    tmpBox.getCenter(mCenter);
+  for (let i = 0; i < spatial.entries.length; i++) {
+    const entry = spatial.entries[i];
+    const mSize = entry.size;
+    const mCenter = entry.center;
 
     // Исключаем несущую плиту основания комплекса
     const isGroundPlate =
@@ -254,10 +341,9 @@ function discoverBuildingVolumes(
       continue;
     }
 
-    const nodeName = mesh.name?.trim() || mesh.parent?.name?.trim() || `Mesh_${i + 1}`;
     candidates.push({
-      name: nodeName,
-      box: tmpBox.clone(),
+      name: entry.nodeName,
+      box: entry.box,
       size: mSize,
       center: mCenter
     });
@@ -309,7 +395,7 @@ function discoverBuildingVolumes(
     const cCenter = new THREE.Vector3();
     cl.box.getSize(cSize);
     cl.box.getCenter(cCenter);
-    const floorY = sampleInteriorFloorY(cCenter.x, cCenter.z, sceneBounds, allMeshes, deckSurfaceY);
+    const floorY = sampleInteriorFloorY(cCenter.x, cCenter.z, sceneBounds, spatial, deckSurfaceY);
     return {
       id: `BUILDING_${idx + 1}`,
       name: cl.names[0] || `Корпус_${idx + 1}`,
@@ -328,7 +414,7 @@ function discoverBuildingVolumes(
   volumes.sort((a, b) => b.footprintArea - a.footprintArea);
 
   // Если меш был монолитным (обнаружено < 2 корпусов), сканируем высотную карту кровли Raycaster'ом
-  if (volumes.length < 2 && allMeshes.length > 0 && !sceneBounds.isEmpty()) {
+  if (volumes.length < 2 && spatial.entries.length > 0 && !sceneBounds.isEmpty()) {
     const gridN = 11;
     const roofThreshold = deckSurfaceY + Math.max(3.5, sceneSize.y * 0.2);
     const isRoof: boolean[][] = Array.from({ length: gridN }, () =>
@@ -338,7 +424,7 @@ function discoverBuildingVolumes(
       new Array<number>(gridN).fill(deckSurfaceY)
     );
 
-    const raycaster = new THREE.Raycaster();
+    const origin = new THREE.Vector3();
     const down = new THREE.Vector3(0, -1, 0);
     const stepX = (sceneSize.x * 0.88) / gridN;
     const stepZ = (sceneSize.z * 0.88) / gridN;
@@ -349,8 +435,8 @@ function discoverBuildingVolumes(
       for (let gz = 0; gz < gridN; gz++) {
         const wx = startX + gx * stepX;
         const wz = startZ + gz * stepZ;
-        raycaster.set(new THREE.Vector3(wx, sceneBounds.max.y + 3.0, wz), down);
-        const hits = raycaster.intersectObjects(allMeshes, false);
+        origin.set(wx, sceneBounds.max.y + 3.0, wz);
+        const hits = spatial.intersectRay(origin, down);
         if (hits.length > 0 && hits[0].point.y >= roofThreshold) {
           isRoof[gx][gz] = true;
           cellHitY[gx][gz] = hits[0].point.y;
@@ -417,7 +503,7 @@ function discoverBuildingVolumes(
         const bSx = bxMax - bxMin;
         const bSz = bzMax - bzMin;
         const bSy = maxRoofY - deckSurfaceY;
-        const floorY = sampleInteriorFloorY(bCx, bCz, sceneBounds, allMeshes, deckSurfaceY);
+        const floorY = sampleInteriorFloorY(bCx, bCz, sceneBounds, spatial, deckSurfaceY);
 
         heightmapVolumes.push({
           id: `ROOF_ZONE_${heightmapVolumes.length + 1}`,
@@ -456,7 +542,7 @@ function discoverBuildingVolumes(
     const sx = sec.sz[0] * sceneSize.x;
     const sz = sec.sz[1] * sceneSize.z;
     const sy = Math.max(12, sceneSize.y * 0.65);
-    const floorY = sampleInteriorFloorY(cx, cz, sceneBounds, allMeshes, deckSurfaceY);
+    const floorY = sampleInteriorFloorY(cx, cz, sceneBounds, spatial, deckSurfaceY);
     return {
       id: `SECTOR_${idx + 1}`,
       name: sec.name,
@@ -485,18 +571,16 @@ const CLEARANCE_DIRS: ReadonlyArray<THREE.Vector3> = [
 
 /**
  * Оценивает минимальный горизонтальный зазор от точки до вертикальных стен/колонн .glb.
- * Если лучи на уровне груди/пояса упираются в стену ближе minClearanceM, точка считается заблокированной.
  */
 function measureWallClearance(
   x: number,
   floorY: number,
   z: number,
-  meshes: THREE.Mesh[],
+  spatial: SpatialMeshIndex,
   maxRangeM: number
 ): number {
-  if (meshes.length === 0) return maxRangeM;
+  if (spatial.entries.length === 0) return maxRangeM;
 
-  const raycaster = new THREE.Raycaster();
   const origin = new THREE.Vector3();
   let minClearance = maxRangeM;
   const heights = [floorY + 0.75, floorY + 1.45];
@@ -504,13 +588,9 @@ function measureWallClearance(
   for (let hi = 0; hi < heights.length; hi++) {
     origin.set(x, heights[hi], z);
     for (let di = 0; di < CLEARANCE_DIRS.length; di++) {
-      raycaster.set(origin, CLEARANCE_DIRS[di]);
-      raycaster.near = 0.05;
-      raycaster.far = maxRangeM;
-      const hits = raycaster.intersectObjects(meshes, false);
+      const hits = spatial.intersectRay(origin, CLEARANCE_DIRS[di], 0.05, maxRangeM);
       for (let k = 0; k < hits.length; k++) {
         const hit = hits[k];
-        // Игнорируем пологие настилы пола
         if (hit.face && Math.abs(hit.face.normal.y) > 0.78 && hit.distance > 0.6) {
           continue;
         }
@@ -533,21 +613,20 @@ function hasClearLineOfSightXZ(
   az: number,
   bx: number,
   bz: number,
-  meshes: THREE.Mesh[]
+  spatial: SpatialMeshIndex
 ): boolean {
-  if (meshes.length === 0) return true;
+  if (spatial.entries.length === 0) return true;
   const dx = bx - ax;
   const dz = bz - az;
   const dist = Math.hypot(dx, dz);
   if (dist < 0.4) return true;
 
-  const raycaster = new THREE.Raycaster(
+  const hits = spatial.intersectRay(
     new THREE.Vector3(ax, ay + 1.15, az),
     new THREE.Vector3(dx / dist, 0, dz / dist),
     0.15,
     Math.max(0.2, dist - 0.35)
   );
-  const hits = raycaster.intersectObjects(meshes, false);
   for (let i = 0; i < hits.length; i++) {
     const h = hits[i];
     if (h.face && Math.abs(h.face.normal.y) > 0.78) continue;
@@ -574,7 +653,7 @@ function computeBuildingFacadeAnchor(
   building: BuildingVolumeInfo,
   buildingIndex: number,
   sceneBounds: THREE.Box3,
-  allMeshes: THREE.Mesh[],
+  spatial: SpatialMeshIndex,
   deckSurfaceY: number
 ): BuildingBeaconAnchor {
   const candidates: ReadonlyArray<{ x: number; z: number; bias: number }> = [
@@ -593,8 +672,8 @@ function computeBuildingFacadeAnchor(
     const c = candidates[i];
     const cx = THREE.MathUtils.clamp(c.x, sceneBounds.min.x + 1.5, sceneBounds.max.x - 1.5);
     const cz = THREE.MathUtils.clamp(c.z, sceneBounds.min.z + 1.5, sceneBounds.max.z - 1.5);
-    const fy = sampleInteriorFloorY(cx, cz, sceneBounds, allMeshes, deckSurfaceY);
-    const clear = measureWallClearance(cx, fy, cz, allMeshes, 3.2);
+    const fy = sampleInteriorFloorY(cx, cz, sceneBounds, spatial, deckSurfaceY);
+    const clear = measureWallClearance(cx, fy, cz, spatial, 3.2);
     const score = clear * 2.0 + c.bias;
     if (score > bestScore) {
       bestScore = score;
@@ -631,7 +710,7 @@ function findClearIndoorSpot(
   building: BuildingVolumeInfo,
   offsetXZ: readonly [number, number],
   sceneBounds: THREE.Box3,
-  allMeshes: THREE.Mesh[],
+  spatial: SpatialMeshIndex,
   deckSurfaceY: number,
   occupiedSpots: ReadonlyArray<THREE.Vector3> = [],
   minSpacingM = 2.4,
@@ -660,16 +739,16 @@ function findClearIndoorSpot(
 
   let bestPos = new THREE.Vector3(
     anchorX,
-    sampleInteriorFloorY(anchorX, anchorZ, sceneBounds, allMeshes, deckSurfaceY),
+    sampleInteriorFloorY(anchorX, anchorZ, sceneBounds, spatial, deckSurfaceY),
     anchorZ
   );
   let bestScore = -Infinity;
 
   const evaluateCandidate = (cx: number, cz: number, distWeight = 0.22): number => {
-    const fy = sampleInteriorFloorY(cx, cz, sceneBounds, allMeshes, deckSurfaceY);
-    const wallClear = measureWallClearance(cx, fy, cz, allMeshes, minWallClear + 1.0);
+    const fy = sampleInteriorFloorY(cx, cz, sceneBounds, spatial, deckSurfaceY);
+    const wallClear = measureWallClearance(cx, fy, cz, spatial, minWallClear + 1.0);
     const losBonus =
-      facadePos && hasClearLineOfSightXZ(cx, fy, cz, facadePos.x, facadePos.z, allMeshes) ? 4.2 : 0;
+      facadePos && hasClearLineOfSightXZ(cx, fy, cz, facadePos.x, facadePos.z, spatial) ? 4.2 : 0;
     const colliderPenalty = isInsideAnyWallCollider(cx, cz, wallColliders) ? 14.0 : 0;
 
     let tooClosePenalty = 0;
@@ -753,10 +832,10 @@ function resolveInsideBuilding(
   building: BuildingVolumeInfo,
   offsetXZ: readonly [number, number],
   sceneBounds: THREE.Box3,
-  allMeshes: THREE.Mesh[],
+  spatial: SpatialMeshIndex,
   deckSurfaceY: number
 ): THREE.Vector3 {
-  return findClearIndoorSpot(building, offsetXZ, sceneBounds, allMeshes, deckSurfaceY);
+  return findClearIndoorSpot(building, offsetXZ, sceneBounds, spatial, deckSurfaceY);
 }
 
 /**
@@ -777,23 +856,29 @@ function selectMainPlantBuildings(volumes: BuildingVolumeInfo[]): BuildingVolume
 }
 
 /**
- * Проводит полный обход графа нормализованной сцены (.glb), анализирует объёмы зданий,
- * вычисляет габариты Box3, высоту пола внутри зданий и привязывает все очаги и 4 группы NPC внутрь корпусов.
+ * Асинхронный неблокирующий обход графа нормализованной сцены (.glb) с AABB-индексом,
+ * анализом объёмов зданий, вычислением высоты пола и поэтапной уступкой кадру браузеру.
  */
-export function inspectNppSceneGraph(
+export async function inspectNppSceneGraphAsync(
   root: THREE.Object3D,
   config: NppAssemblyConfig,
   sourceKind: NppSceneSourceKind,
   sourceUrl: string,
-  normMetrics?: NormalizationMetrics
-): NppInspectionReport {
+  normMetrics?: NormalizationMetrics,
+  options?: {
+    signal?: AbortSignal;
+    onStepProgress?: (pct: number, statusRu: string) => void;
+  }
+): Promise<NppInspectionReport> {
+  throwIfAborted(options?.signal);
+  console.time('[ALARA Inspector] 1. Индексация узлов и мировых AABB');
   root.updateMatrixWorld(true);
 
   const discoveredNodes: InspectedNodeEntry[] = [];
   const missingExpectedNodes: string[] = [];
   const keyNodeNames: string[] = [];
   const namedNodeCoords: NamedNodeWorldCoord[] = [];
-  const allMeshes: THREE.Mesh[] = [];
+  const spatial = new SpatialMeshIndex();
 
   const spawnCandidates: NamedWorldMarker[] = [];
   const entrances: NamedWorldMarker[] = [];
@@ -812,7 +897,6 @@ export function inspectNppSceneGraph(
   let totalMeshes = 0;
 
   const wp = new THREE.Vector3();
-  const box3 = new THREE.Box3();
   const sceneBounds = new THREE.Box3();
   const centerVec = new THREE.Vector3();
   const sizeVec = new THREE.Vector3();
@@ -822,9 +906,14 @@ export function inspectNppSceneGraph(
   root.traverse(obj => {
     totalNodes += 1;
     const isMesh = Boolean((obj as THREE.Mesh).isMesh);
+    let addedEntry: SpatialMeshEntry | null = null;
     if (isMesh) {
+      const mesh = obj as THREE.Mesh;
+      addedEntry = spatial.addMesh(mesh, totalMeshes);
       totalMeshes += 1;
-      allMeshes.push(obj as THREE.Mesh);
+      if (addedEntry) {
+        sceneBounds.union(addedEntry.box);
+      }
     }
 
     const rawName = obj.name?.trim() ?? '';
@@ -880,24 +969,20 @@ export function inspectNppSceneGraph(
       record('extinguisher', extinguisherPoints);
     }
 
-    if (isMesh && prefixes.colliderKeywords.some(kw => upper.includes(kw.toUpperCase()))) {
-      box3.setFromObject(obj);
-      if (!box3.isEmpty()) {
-        wallColliders.push({
-          minX: box3.min.x,
-          maxX: box3.max.x,
-          minY: box3.min.y,
-          maxY: box3.max.y,
-          minZ: box3.min.z,
-          maxZ: box3.max.z
-        });
-      }
+    if (addedEntry && prefixes.colliderKeywords.some(kw => upper.includes(kw.toUpperCase()))) {
+      wallColliders.push({
+        minX: addedEntry.box.min.x,
+        maxX: addedEntry.box.max.x,
+        minY: addedEntry.box.min.y,
+        maxY: addedEntry.box.max.y,
+        minZ: addedEntry.box.min.z,
+        maxZ: addedEntry.box.max.z
+      });
     }
   });
 
   waypoints.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-  sceneBounds.setFromObject(root);
   if (!sceneBounds.isEmpty()) {
     sceneBounds.getSize(sizeVec);
     sceneBounds.getCenter(centerVec);
@@ -907,17 +992,23 @@ export function inspectNppSceneGraph(
     sizeVec.set(164, 32, 164);
     centerVec.set(0, 16, 0);
   }
+  console.timeEnd('[ALARA Inspector] 1. Индексация узлов и мировых AABB');
 
+  // Уступаем кадр браузеру перед raycast-анализом рельефа и корпусов
+  options?.onStepProgress?.(96.5, 'Анализ корпусов и высоты площадки .glb...');
+  await yieldToBrowser();
+  throwIfAborted(options?.signal);
+
+  console.time('[ALARA Inspector] 2. Поиск корпусов и расстановка входов');
   const floorY = Number.isFinite(sceneBounds.min.y) ? sceneBounds.min.y : 0;
-  const deckSurfaceY = sampleGroundDeckY(sceneBounds, allMeshes);
+  const deckSurfaceY = sampleGroundDeckY(sceneBounds, spatial);
   const diag = Math.max(sizeVec.length(), 30);
 
-  // Анализируем объёмы всех корпусов/зданий комплекса
   const allBuildingVolumes = discoverBuildingVolumes(
     sceneBounds,
     sizeVec,
     centerVec,
-    allMeshes,
+    spatial,
     deckSurfaceY
   );
   const mainBuildings = selectMainPlantBuildings(allBuildingVolumes);
@@ -926,7 +1017,7 @@ export function inspectNppSceneGraph(
   const resolveRelAnchor = (rel: readonly [number, number, number]): THREE.Vector3 => {
     const x = centerVec.x + rel[0] * sizeVec.x;
     const z = centerVec.z + rel[2] * sizeVec.z;
-    const surfY = sampleInteriorFloorY(x, z, sceneBounds, allMeshes, deckSurfaceY);
+    const surfY = sampleInteriorFloorY(x, z, sceneBounds, spatial, deckSurfaceY);
     return new THREE.Vector3(x, surfY + rel[1] * sizeVec.y, z);
   };
 
@@ -942,13 +1033,12 @@ export function inspectNppSceneGraph(
     sceneBounds.max.z + Math.max(14.0, Math.min(130, diag * transform.spawn.overviewDistanceFactor * 0.48))
   );
 
-  // Якоря фасадов/крыш и входов для каждого из целевых корпусов (чтобы каждый корпус имел видимый вход и маяк)
+  // Якоря фасадов/крыш и входов для каждого из целевых корпусов
   const buildingSourceList = mainBuildings.length > 0 ? mainBuildings : allBuildingVolumes;
   const buildingAnchors: BuildingBeaconAnchor[] = buildingSourceList.map((bld, idx) =>
-    computeBuildingFacadeAnchor(bld, idx, sceneBounds, allMeshes, deckSurfaceY)
+    computeBuildingFacadeAnchor(bld, idx, sceneBounds, spatial, deckSurfaceY)
   );
 
-  // Вход в корпуса (у открытого фасада каждого активного здания, начиная с главного корпуса №1)
   if (entrances.length === 0) {
     if (buildingAnchors.length > 0) {
       buildingAnchors.slice(0, 3).forEach((anchor, idx) => {
@@ -966,7 +1056,7 @@ export function inspectNppSceneGraph(
   }
   const mainEntrancePos = entrances[0].pos;
 
-  // Стартовая позиция игрока: снаружи перед входом в главный корпус, лицом к зданиям
+  // Стартовая позиция игрока
   let spawnPlayer: THREE.Vector3;
   const spawnLookTarget = new THREE.Vector3(
     primaryBuilding ? primaryBuilding.center[0] : centerVec.x,
@@ -986,7 +1076,7 @@ export function inspectNppSceneGraph(
       THREE.MathUtils.clamp(spawnX, sceneBounds.min.x + 1, sceneBounds.max.x - 1),
       THREE.MathUtils.clamp(spawnZ, sceneBounds.min.z + 1, sceneBounds.max.z - 1),
       sceneBounds,
-      allMeshes,
+      spatial,
       deckSurfaceY
     );
     spawnPlayer = new THREE.Vector3(spawnX, spawnY, spawnZ);
@@ -1001,7 +1091,7 @@ export function inspectNppSceneGraph(
     });
   }
 
-  // Выходы и безопасный Пункт сбора снаружи (на передней площади перед корпусом)
+  // Выходы и безопасный Пункт сбора снаружи
   if (exits.length === 0) {
     missingExpectedNodes.push('EXIT_* (эваковыходы у корпусов)');
     const mainExitPos = new THREE.Vector3(
@@ -1017,7 +1107,7 @@ export function inspectNppSceneGraph(
         name: 'EXIT_EAST',
         pos: new THREE.Vector3(
           b2.center[0],
-          sampleInteriorFloorY(b2.center[0], eastExitZ, sceneBounds, allMeshes, deckSurfaceY),
+          sampleInteriorFloorY(b2.center[0], eastExitZ, sceneBounds, spatial, deckSurfaceY),
           eastExitZ
         )
       });
@@ -1033,13 +1123,13 @@ export function inspectNppSceneGraph(
       sceneBounds.max.x - 4.0
     );
     const asmZ = Math.min(sceneBounds.max.z - 1.5, spawnPlayer.z - 3.0);
-    const asmY = sampleInteriorFloorY(asmX, asmZ, sceneBounds, allMeshes, deckSurfaceY);
+    const asmY = sampleInteriorFloorY(asmX, asmZ, sceneBounds, spatial, deckSurfaceY);
     const autoAssembly = new THREE.Vector3(asmX, asmY, asmZ);
     missingExpectedNodes.push(`ASSEMBLY_* (площадь сбора МЧС: [${roundCoords(autoAssembly).join(', ')}])`);
     assemblyPoints.push({ name: 'AUTO_ASSEMBLY_MAIN', pos: autoAssembly });
   }
 
-  // Основной пост ОУ-5 — рядом со стартом перед входом, запасной — внутри главного корпуса
+  // Основной пост ОУ-5 — рядом со стартом, запасной — внутри главного корпуса
   if (extinguisherPoints.length === 0) {
     const primaryX = spawnPlayer.x - 2.5;
     const primaryZ = spawnPlayer.z - 3.6;
@@ -1047,7 +1137,7 @@ export function inspectNppSceneGraph(
       THREE.MathUtils.clamp(primaryX, sceneBounds.min.x + 1, sceneBounds.max.x - 1),
       THREE.MathUtils.clamp(primaryZ, sceneBounds.min.z + 1, sceneBounds.max.z - 1),
       sceneBounds,
-      allMeshes,
+      spatial,
       deckSurfaceY
     );
     const primaryPost = new THREE.Vector3(primaryX, primaryY, primaryZ);
@@ -1057,7 +1147,7 @@ export function inspectNppSceneGraph(
           primaryBuilding,
           [0.05, 0.24],
           sceneBounds,
-          allMeshes,
+          spatial,
           deckSurfaceY
         )
       : resolveRelAnchor(config.defaultSpareExtinguisherRelPos);
@@ -1068,13 +1158,20 @@ export function inspectNppSceneGraph(
       { name: 'AUTO_EXTINGUISHER_SPARE', pos: sparePost }
     );
   }
+  console.timeEnd('[ALARA Inspector] 2. Поиск корпусов и расстановка входов');
 
-  // 1. Привязка очагов пожара строго в открытых проходах / доступных проёмах зданий (без клиппинга в стенах .glb)
+  options?.onStepProgress?.(97.2, 'Расстановка очагов пожара и групп эвакуации...');
+  await yieldToBrowser();
+  throwIfAborted(options?.signal);
+
+  console.time('[ALARA Inspector] 3. Позиции очагов, NPC и техники АЦ-40');
   const occupiedIndoorSpots: THREE.Vector3[] = [];
   const elevOffset = SCENARIO_4_CONFIG.FIRE_CLEARANCE.fireElevationOffsetM;
   const fireZoneBuildingIndices: number[] = [];
 
-  const resolvedFireZones: NamedWorldMarker[] = config.fireZones.map((fz, idx) => {
+  const resolvedFireZones: NamedWorldMarker[] = [];
+  for (let idx = 0; idx < config.fireZones.length; idx++) {
+    const fz = config.fireZones[idx];
     const bldIdx =
       mainBuildings.length > 0 ? fz.preferredBuildingIndex % mainBuildings.length : 0;
     fireZoneBuildingIndices.push(bldIdx);
@@ -1086,36 +1183,40 @@ export function inspectNppSceneGraph(
       const p = found.pos.clone();
       p.y += elevOffset;
       occupiedIndoorSpots.push(p);
-      return { name: found.name, pos: p };
+      resolvedFireZones.push({ name: found.name, pos: p });
+    } else {
+      const targetBld = mainBuildings.length > 0 ? mainBuildings[bldIdx] : undefined;
+      const anchor = buildingAnchors[bldIdx];
+      const indoorPos = targetBld
+        ? findClearIndoorSpot(
+            targetBld,
+            fz.buildingOffsetXZ,
+            sceneBounds,
+            spatial,
+            deckSurfaceY,
+            occupiedIndoorSpots,
+            3.2,
+            anchor?.facadePos,
+            wallColliders
+          )
+        : resolveRelAnchor(fz.relPos);
+      indoorPos.y += elevOffset;
+      occupiedIndoorSpots.push(indoorPos);
+
+      missingExpectedNodes.push(
+        `${fz.markerName} -> ${anchor?.labelRu ?? targetBld?.name ?? 'комплекс'} [${roundCoords(indoorPos).join(', ')}]`
+      );
+      resolvedFireZones.push({ name: fz.markerName, pos: indoorPos });
     }
+    await yieldToBrowser();
+    throwIfAborted(options?.signal);
+  }
 
-    const targetBld = mainBuildings.length > 0 ? mainBuildings[bldIdx] : undefined;
-    const anchor = buildingAnchors[bldIdx];
-    const indoorPos = targetBld
-      ? findClearIndoorSpot(
-          targetBld,
-          fz.buildingOffsetXZ,
-          sceneBounds,
-          allMeshes,
-          deckSurfaceY,
-          occupiedIndoorSpots,
-          3.2,
-          anchor?.facadePos,
-          wallColliders
-        )
-      : resolveRelAnchor(fz.relPos);
-    indoorPos.y += elevOffset;
-    occupiedIndoorSpots.push(indoorPos);
-
-    missingExpectedNodes.push(
-      `${fz.markerName} -> ${anchor?.labelRu ?? targetBld?.name ?? 'комплекс'} [${roundCoords(indoorPos).join(', ')}]`
-    );
-    return { name: fz.markerName, pos: indoorPos };
-  });
-
-  // 2. Привязка всех 4 групп NPC (10 чел.) в доступных зонах корпусов + маршруты выхода через ближайший фасадный проём
+  // 2. Привязка всех 4 групп NPC (10 чел.)
   const npcGroupBuildingIndices: number[] = [];
-  const resolvedNpcSpawns: NamedWorldMarker[] = config.npcGroups.map((ng, idx) => {
+  const resolvedNpcSpawns: NamedWorldMarker[] = [];
+  for (let idx = 0; idx < config.npcGroups.length; idx++) {
+    const ng = config.npcGroups[idx];
     const bldIdx =
       mainBuildings.length > 0 ? ng.preferredBuildingIndex % mainBuildings.length : 0;
     npcGroupBuildingIndices.push(bldIdx);
@@ -1125,33 +1226,37 @@ export function inspectNppSceneGraph(
       npcSpawns[idx];
     if (found) {
       occupiedIndoorSpots.push(found.pos);
-      return found;
+      resolvedNpcSpawns.push(found);
+    } else {
+      const targetBld = mainBuildings.length > 0 ? mainBuildings[bldIdx] : undefined;
+      const anchor = buildingAnchors[bldIdx];
+      const indoorPos = targetBld
+        ? findClearIndoorSpot(
+            targetBld,
+            ng.buildingOffsetXZ,
+            sceneBounds,
+            spatial,
+            deckSurfaceY,
+            occupiedIndoorSpots,
+            3.0,
+            anchor?.facadePos,
+            wallColliders
+          )
+        : resolveRelAnchor(ng.relPos);
+      occupiedIndoorSpots.push(indoorPos);
+
+      missingExpectedNodes.push(
+        `${ng.markerName} (${ng.count} чел.) -> ${anchor?.labelRu ?? targetBld?.name ?? 'комплекс'} [${roundCoords(indoorPos).join(', ')}]`
+      );
+      resolvedNpcSpawns.push({ name: ng.markerName, pos: indoorPos });
     }
+    if (idx % 2 === 1) {
+      await yieldToBrowser();
+      throwIfAborted(options?.signal);
+    }
+  }
 
-    const targetBld = mainBuildings.length > 0 ? mainBuildings[bldIdx] : undefined;
-    const anchor = buildingAnchors[bldIdx];
-    const indoorPos = targetBld
-      ? findClearIndoorSpot(
-          targetBld,
-          ng.buildingOffsetXZ,
-          sceneBounds,
-          allMeshes,
-          deckSurfaceY,
-          occupiedIndoorSpots,
-          3.0,
-          anchor?.facadePos,
-          wallColliders
-        )
-      : resolveRelAnchor(ng.relPos);
-    occupiedIndoorSpots.push(indoorPos);
-
-    missingExpectedNodes.push(
-      `${ng.markerName} (${ng.count} чел.) -> ${anchor?.labelRu ?? targetBld?.name ?? 'комплекс'} [${roundCoords(indoorPos).join(', ')}]`
-    );
-    return { name: ng.markerName, pos: indoorPos };
-  });
-
-  // 3. Дополнительные точки операций МЧС (доразведка на входе, задвижка контура, пострадавший)
+  // 3. Дополнительные точки операций МЧС
   const radReconPos = new THREE.Vector3(
     THREE.MathUtils.lerp(spawnPlayer.x, mainEntrancePos.x, 0.55),
     mainEntrancePos.y,
@@ -1168,7 +1273,7 @@ export function inspectNppSceneGraph(
         bldForIsolation,
         [-0.22, -0.14],
         sceneBounds,
-        allMeshes,
+        spatial,
         deckSurfaceY,
         occupiedIndoorSpots,
         2.8,
@@ -1179,7 +1284,7 @@ export function inspectNppSceneGraph(
         allBuildingVolumes[0],
         [-0.18, 0.0],
         sceneBounds,
-        allMeshes,
+        spatial,
         deckSurfaceY
       );
   occupiedIndoorSpots.push(loopIsolationPos);
@@ -1195,7 +1300,7 @@ export function inspectNppSceneGraph(
         bldForTriage,
         [-0.16, 0.16],
         sceneBounds,
-        allMeshes,
+        spatial,
         deckSurfaceY,
         occupiedIndoorSpots,
         2.8,
@@ -1206,7 +1311,7 @@ export function inspectNppSceneGraph(
         allBuildingVolumes[0],
         [0.16, 0.14],
         sceneBounds,
-        allMeshes,
+        spatial,
         deckSurfaceY
       );
   occupiedIndoorSpots.push(casualtyTriagePos);
@@ -1215,7 +1320,7 @@ export function inspectNppSceneGraph(
     pos: casualtyTriagePos
   };
 
-  // 4. Пожарный автомобиль МЧС на подъездной площадке и точки подъезда по всей территории комплекса
+  // 4. Пожарный автомобиль МЧС и точки автопилота
   const vehOff = SCENARIO_4_CONFIG.VEHICLE.spawnOffsetFromPlayer;
   const driveCfg = SCENARIO_4_CONFIG.VEHICLE.driveBounds;
   const siteHalfX = Math.max(0, sizeVec.x * 0.5);
@@ -1238,7 +1343,7 @@ export function inspectNppSceneGraph(
     THREE.MathUtils.clamp(vehX, sceneBounds.min.x + 1, sceneBounds.max.x - 1),
     THREE.MathUtils.clamp(vehZ, sceneBounds.min.z + 1, sceneBounds.max.z - 1),
     sceneBounds,
-    allMeshes,
+    spatial,
     deckSurfaceY
   );
   const vehicleSpawn: NamedWorldMarker = {
@@ -1246,7 +1351,6 @@ export function inspectNppSceneGraph(
     pos: new THREE.Vector3(vehX, vehY, vehZ)
   };
 
-  // Формируем точки автопилота по всей площади комплекса (главные блоки + периферийные корпуса)
   const driveCandidates: BuildingVolumeInfo[] = [...mainBuildings];
   for (let i = 0; i < allBuildingVolumes.length && driveCandidates.length < 6; i++) {
     const cand = allBuildingVolumes[i];
@@ -1271,7 +1375,7 @@ export function inspectNppSceneGraph(
       THREE.MathUtils.clamp(driveX, sceneBounds.min.x + 1, sceneBounds.max.x - 1),
       THREE.MathUtils.clamp(driveZ, sceneBounds.min.z + 1, sceneBounds.max.z - 1),
       sceneBounds,
-      allMeshes,
+      spatial,
       deckSurfaceY
     );
     return {
@@ -1279,6 +1383,7 @@ export function inspectNppSceneGraph(
       pos: new THREE.Vector3(driveX, driveY, driveZ)
     };
   });
+  console.timeEnd('[ALARA Inspector] 3. Позиции очагов, NPC и техники АЦ-40');
 
   const resolvedWaypoints: NamedWorldMarker[] = [...waypoints];
   config.npcGroups.forEach((ng, idx) => {

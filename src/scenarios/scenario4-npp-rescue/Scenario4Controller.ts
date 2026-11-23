@@ -15,10 +15,14 @@ import {
   SCENARIO_4_CONFIG,
   type WallColliderBox
 } from '../../npp/nppNodeConfig';
-import { NppAssemblyLoader } from '../../npp/nppAssemblyLoader';
-import type { NppInspectionReport } from '../../npp/nppSceneInspector';
+import { disposeGlbSceneHierarchy, NppAssemblyLoader } from '../../npp/nppAssemblyLoader';
+import {
+  throwIfAborted,
+  yieldToBrowser,
+  type NppInspectionReport
+} from '../../npp/nppSceneInspector';
 import type { RadiationSourceInstance } from '../../scene/scenarios';
-import { ExtinguisherSystem } from '../../mechanics/extinguisherSystem';
+import { ExtinguisherSystem, type FirePortalDoorwaySpec } from '../../mechanics/extinguisherSystem';
 import { NpcEvacuationSystem } from '../../mechanics/npcEvacuationSystem';
 import { NppEquipmentBuilder } from '../../mechanics/nppEquipmentBuilder';
 import {
@@ -149,11 +153,13 @@ export class Scenario4Controller {
   private deckSurfaceY = 0;
   private isDisposed = false;
 
-  // Состояние асинхронной загрузки /assembly.glb
+  // Состояние асинхронной загрузки /assembly.glb и токен безопасной отмены
   private isLoadingGlb = true;
   private loadProgressPct = 0;
   private loadStatusRu = `Загрузка 3D-комплекса АЭС (${NPP_NODE_CONFIG.glbUrl})...`;
   private loadErrorRu: string | null = null;
+  private activeLoadAbort: AbortController | null = null;
+  private activeLoadToken = 0;
 
   // Оперативные таймеры и телеметрия
   private elapsedSec = 0;
@@ -291,6 +297,14 @@ export class Scenario4Controller {
     }
   }
 
+  public cancelLoading(): void {
+    this.activeLoadToken += 1;
+    if (this.activeLoadAbort) {
+      this.activeLoadAbort.abort();
+      this.activeLoadAbort = null;
+    }
+  }
+
   public retryLoadGlb(): void {
     if (this.isDisposed) return;
     void this.loadComplexGlb();
@@ -318,6 +332,12 @@ export class Scenario4Controller {
   private async loadComplexGlb(customUrl?: string, isCustomUpload = false): Promise<void> {
     if (this.isDisposed) return;
 
+    this.cancelLoading();
+    const loadToken = ++this.activeLoadToken;
+    const abortController = new AbortController();
+    this.activeLoadAbort = abortController;
+    const signal = abortController.signal;
+
     this.clearCurrentWorldSystems();
     this.fsm.reset();
     this.isLoadingGlb = true;
@@ -328,13 +348,19 @@ export class Scenario4Controller {
       ? 'Чтение пользовательской 3D-модели АЭС (.glb)...'
       : `Загрузка 3D-комплекса АЭС (${NPP_NODE_CONFIG.glbUrl})...`;
 
+    // Уступаем один кадр браузеру, чтобы UI загрузки гарантированно отрисовался до старта сетевого запроса
+    await yieldToBrowser();
+    if (this.isDisposed || this.activeLoadToken !== loadToken || signal.aborted) return;
+
+    console.time('[ALARA S4] Полная загрузка и запуск Сценария №4');
     try {
       const result = await this.assemblyLoader.load(
         customUrl,
         isCustomUpload ? 'custom_upload' : 'glb_file',
         {
+          signal,
           onProgress: (pct, textRu) => {
-            if (!this.isDisposed) {
+            if (!this.isDisposed && this.activeLoadToken === loadToken && !signal.aborted) {
               this.loadProgressPct = pct;
               this.loadStatusRu = textRu;
             }
@@ -342,19 +368,34 @@ export class Scenario4Controller {
         }
       );
 
-      if (this.isDisposed) {
-        this.disposeObjectTree(result.sceneRoot);
+      if (this.isDisposed || this.activeLoadToken !== loadToken || signal.aborted) {
+        disposeGlbSceneHierarchy(result.sceneRoot);
         return;
       }
 
-      this.mountLoadedWorld(result.sceneRoot, result.report);
+      await this.mountLoadedWorldAsync(result.sceneRoot, result.report, loadToken, signal);
+
+      if (this.isDisposed || this.activeLoadToken !== loadToken || signal.aborted) {
+        this.clearCurrentWorldSystems();
+        return;
+      }
+
       this.onToast(
         'success',
         'МОДЕЛЬ АЭС ЗАГРУЖЕНА (.GLB)',
         `${result.resolvedUrl} • Корпусов: ${result.report.buildingVolumes.length}, узлов: ${result.report.totalNodes}, Box3: ${result.report.boundingBoxSize.join('×')} м.`
       );
     } catch (err) {
-      if (this.isDisposed) return;
+      const isAborted =
+        signal.aborted ||
+        this.activeLoadToken !== loadToken ||
+        (err as { name?: string })?.name === 'AbortError';
+      if (this.isDisposed || isAborted) {
+        this.clearCurrentWorldSystems();
+        return;
+      }
+
+      this.clearCurrentWorldSystems();
       const errMsg = err instanceof Error ? err.message : String(err);
       this.isLoadingGlb = false;
       this.loadProgressPct = 0;
@@ -366,16 +407,58 @@ export class Scenario4Controller {
         'ОШИБКА ЗАГРУЗКИ /assembly.glb',
         `${errMsg}. Проверьте public/assembly.glb или выберите .glb вручную.`
       );
+    } finally {
+      console.timeEnd('[ALARA S4] Полная загрузка и запуск Сценария №4');
+      if (this.activeLoadAbort === abortController) {
+        this.activeLoadAbort = null;
+      }
     }
   }
 
-  private mountLoadedWorld(worldRoot: THREE.Group, report: NppInspectionReport): void {
+  private assertLoadStillValid(loadToken: number, signal: AbortSignal): void {
+    throwIfAborted(signal);
+    if (this.isDisposed || this.activeLoadToken !== loadToken) {
+      const err = new Error('Загрузка сцены прервана сменой сценария.');
+      err.name = 'AbortError';
+      throw err;
+    }
+  }
+
+  private async mountLoadedWorldAsync(
+    worldRoot: THREE.Group,
+    report: NppInspectionReport,
+    loadToken: number,
+    signal: AbortSignal
+  ): Promise<void> {
+    this.assertLoadStillValid(loadToken, signal);
+    const updateProgress = (pct: number, textRu: string) => {
+      if (!this.isDisposed && this.activeLoadToken === loadToken) {
+        this.loadProgressPct = pct;
+        this.loadStatusRu = textRu;
+      }
+    };
+
+    // Шаг 1: Добавление модели АЭС в сцену и расстановка технического оборудования корпусов
+    updateProgress(97.8, 'Размещение оборудования внутри корпусов АЭС...');
+    await yieldToBrowser();
+    this.assertLoadStillValid(loadToken, signal);
+
+    console.time('[ALARA S4] Этап 1: Оборудование корпусов');
     this.loadErrorRu = null;
     this.inspectionReport = report;
     this.deckSurfaceY = report.deckSurfaceY;
     this.modelContainer.add(worldRoot);
     this.modelContainer.updateMatrixWorld(true);
-    this.modelBounds.setFromObject(worldRoot);
+    this.modelBounds.min.set(
+      report.boundingBoxMin[0],
+      report.boundingBoxMin[1],
+      report.boundingBoxMin[2]
+    );
+    this.modelBounds.max.set(
+      report.boundingBoxMax[0],
+      report.boundingBoxMax[1],
+      report.boundingBoxMax[2]
+    );
 
     const m = report.markers;
     this.spawnPos.copy(m.spawnPlayer);
@@ -397,7 +480,6 @@ export class Scenario4Controller {
     this.primaryPostPos.copy(primaryMarker.pos);
     this.sparePostPos.copy(spareMarker.pos);
 
-    // 1. Внутреннее техническое оборудование (турбоагрегаты, насосы, КРУ, площадки) без пересечения с очагами и NPC
     const avoidPoints: THREE.Vector3[] = [
       ...m.fireZones.map(f => f.pos),
       ...m.npcSpawns.map(n => n.pos),
@@ -420,8 +502,14 @@ export class Scenario4Controller {
     } else {
       this.wallColliders = [...m.wallColliders];
     }
+    console.timeEnd('[ALARA S4] Этап 1: Оборудование корпусов');
 
-    // 2. Пожарный автомобиль МЧС и вытягиваемый пожарный рукав
+    // Шаг 2: Пожарный автомобиль АЦ-40 (кабина, приборы, рукав) и аварийные посты МЧС
+    updateProgress(98.5, 'Сборка пожарного автомобиля АЦ-40 и аварийных постов...');
+    await yieldToBrowser();
+    this.assertLoadStillValid(loadToken, signal);
+
+    console.time('[ALARA S4] Этап 2: АЦ-40 МЧС и аварийные посты');
     const groundMeshes: THREE.Mesh[] = [];
     worldRoot.traverse(obj => {
       if ((obj as THREE.Mesh).isMesh) {
@@ -440,15 +528,20 @@ export class Scenario4Controller {
     });
     this.rootGroup.add(this.vehicleSys.rootGroup);
 
-    // 3. Дополнительные аварийные операции МЧС (разведка, перекрытие контура, пострадавший)
     this.emergencyOps = new EmergencyOpsSystem({
       radReconPos: m.radReconPoint.pos,
       loopIsolationPos: m.loopIsolationPoint.pos,
       casualtyTriagePos: m.casualtyTriagePoint.pos
     });
     this.rootGroup.add(this.emergencyOps.rootGroup);
+    console.timeEnd('[ALARA S4] Этап 2: АЦ-40 МЧС и аварийные посты');
 
-    // 4. Система пожаротушения (ОУ-5 + интеграция с пожарным рукавом МЧС + наружные маяки на корпусах)
+    // Шаг 3: Очаги пожара + яркие мигающие оранжевые PointLight и дым у порталов входа
+    updateProgress(99.2, 'Активация очагов возгорания и дымовых порталов...');
+    await yieldToBrowser();
+    this.assertLoadStillValid(loadToken, signal);
+
+    console.time('[ALARA S4] Этап 3: Очаги, портальные огни и дым');
     this.fireMgr = new ExtinguisherSystem(
       NPP_NODE_CONFIG.fireZones,
       m.fireZones,
@@ -458,10 +551,30 @@ export class Scenario4Controller {
       m.buildingAnchors,
       m.fireZoneBuildingIndices
     );
+
+    // Явно инжектируем мигающие оранжевые PointLight и частицы дыма на каждый активный проём пожарного портала
+    const portalDoorways: FirePortalDoorwaySpec[] = NPP_NODE_CONFIG.fireZones.map((cfg, idx) => {
+      const bldIdx = m.fireZoneBuildingIndices[idx] ?? idx;
+      const anchor = m.buildingAnchors[bldIdx] ?? m.buildingAnchors[0];
+      const fallbackPos = m.fireZones[idx]?.pos ?? new THREE.Vector3(cfg.defaultPos[0], cfg.defaultPos[1], cfg.defaultPos[2]);
+      return {
+        fireId: cfg.id,
+        doorwayPos: anchor ? anchor.facadePos : fallbackPos,
+        labelRu: anchor?.labelRu
+      };
+    });
+    this.fireMgr.configureFirePortalDoorways(portalDoorways);
+
     this.rootGroup.add(this.fireMgr.rootGroup);
     this.applyOperatorLoadoutModifiers();
+    console.timeEnd('[ALARA S4] Этап 3: Очаги, портальные огни и дым');
 
-    // 5. Система эвакуации персонала (4 группы / 10 чел. внутри зданий + 3D-маркеры)
+    // Шаг 4: Персонал для эвакуации и источники ИИИ
+    updateProgress(99.7, 'Размещение персонала эвакуации и радиационных маркеров...');
+    await yieldToBrowser();
+    this.assertLoadStillValid(loadToken, signal);
+
+    console.time('[ALARA S4] Этап 4: Эвакуация NPC и финализация');
     this.evacMgr = new NpcEvacuationSystem({
       npcSpecs: NPP_NODE_CONFIG.npcGroups,
       discoveredNpcs: m.npcSpawns,
@@ -483,7 +596,6 @@ export class Scenario4Controller {
     this.evacMgr.setTargetMarkersVisible(this.targetMarkersVisible);
     this.emergencyOps.setTargetMarkersVisible(this.targetMarkersVisible);
 
-    // 6. Синхронизация маркеров ИИИ (Cs-137, Co-60) с мировыми координатами очагов внутри .glb
     const fireIsotopes: ReadonlyArray<{ isotopeId: string; activityMBq: number }> = [
       { isotopeId: 'Cs-137', activityMBq: 450 },
       { isotopeId: 'Co-60', activityMBq: 320 },
@@ -511,9 +623,11 @@ export class Scenario4Controller {
     this.debrief = null;
     this.isLoadingGlb = false;
     this.loadProgressPct = 100;
+    this.loadStatusRu = '3D-комплекс АЭС готов к операции';
     this.fsm.markAssetReady();
 
     this.onPlayerSpawnReady?.(this.spawnPos, this.spawnLookTarget, report.boundingBoxSize);
+    console.timeEnd('[ALARA S4] Этап 4: Эвакуация NPC и финализация');
   }
 
   public isPlayerSeatedInVehicle(): boolean {
@@ -1506,30 +1620,14 @@ export class Scenario4Controller {
   }
 
   private disposeObjectTree(tree: THREE.Object3D): void {
-    tree.traverse(obj => {
-      if ((obj as THREE.Mesh).isMesh || (obj as THREE.InstancedMesh).isInstancedMesh) {
-        const mesh = obj as THREE.Mesh;
-        mesh.geometry?.dispose();
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        mats.forEach(m => {
-          if (!m) return;
-          const std = m as THREE.MeshStandardMaterial;
-          std.map?.dispose();
-          std.normalMap?.dispose();
-          std.roughnessMap?.dispose();
-          std.metalnessMap?.dispose();
-          std.emissiveMap?.dispose();
-          std.aoMap?.dispose();
-          m.dispose();
-        });
-      }
-    });
+    disposeGlbSceneHierarchy(tree);
   }
 
   public dispose(): void {
     if (this.isDisposed) return;
     this.isDisposed = true;
 
+    this.cancelLoading();
     this.clearCurrentWorldSystems();
     this.assemblyLoader.dispose();
     if (this.vrComfortMesh) {
