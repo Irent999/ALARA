@@ -20,8 +20,9 @@ protocol.registerSchemesAsPrivileged([
 // Аппаратное ускорение WebGL2 / WebXR / SteamVR / OpenXR
 app.commandLine.appendSwitch('enable-webgl2-compute-context');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
-app.commandLine.appendSwitch('enable-features', 'WebXR,OpenXR');
-app.commandLine.appendSwitch('webxr-runtime', 'openxr');
+app.commandLine.appendSwitch('enable-features', 'WebXR,OpenXR,GamepadExtensions');
+app.commandLine.appendSwitch('force-webxr-runtime', 'openxr');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
 
 function resolveDistFile(requestUrl) {
   const parsed = new URL(requestUrl);

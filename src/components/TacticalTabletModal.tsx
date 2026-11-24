@@ -37,6 +37,7 @@ import {
   X
 } from 'lucide-react';
 import { SCENARIOS, ScenarioDefinition } from '../scene/scenarios';
+import type { XRDiagnosticsStatus } from '../scene/webxrManager';
 import { InstrumentId, GOST_INSTRUMENTS } from '../instruments/gostInstruments';
 import {
   ComprehensiveProtectionAnalysis,
@@ -82,6 +83,7 @@ export interface TacticalTabletModalProps {
   onClose: () => void;
   isVRSupported?: boolean;
   isInVR?: boolean;
+  vrDiagnostics?: XRDiagnosticsStatus;
   onToggleVR?: () => void;
 
   activeScenarioId: number;
@@ -174,6 +176,7 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
   onClose,
   isVRSupported = false,
   isInVR = false,
+  vrDiagnostics,
   onToggleVR,
   activeScenarioId,
   scenario,
@@ -340,24 +343,32 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
               </button>
               <button
                 type="button"
-                disabled={!isVRSupported || !onToggleVR}
+                disabled={!onToggleVR}
                 onClick={() => {
-                  if (isVRSupported && !isInVR && onToggleVR) {
+                  if (!isInVR && onToggleVR) {
                     onClose();
                     onToggleVR();
                   }
                 }}
-                title={isVRSupported ? 'VR-режим (HTC Vive)' : 'WebXR не обнаружен в браузере'}
+                title={
+                  vrDiagnostics
+                    ? `${vrDiagnostics.statusSummaryRu}. ${vrDiagnostics.lastErrorMessageRu || vrDiagnostics.hintRu}`
+                    : isVRSupported
+                    ? 'VR-режим (HTC Vive)'
+                    : 'Проверить WebXR и войти в VR (HTC Vive)'
+                }
                 className={`px-2.5 py-1.5 rounded-[8px] flex items-center gap-1.5 transition whitespace-nowrap ${
                   isInVR
                     ? 'bg-[#F59E0B] text-[#0B1117] font-semibold cursor-pointer'
                     : isVRSupported && onToggleVR
                     ? 'text-[#F59E0B] hover:bg-slate-800/70 cursor-pointer'
+                    : onToggleVR
+                    ? 'text-[#CBD5E1] hover:bg-slate-800/70 cursor-pointer'
                     : 'text-[#64748B] opacity-50 cursor-not-allowed'
                 }`}
               >
                 <Glasses className="w-3.5 h-3.5" />
-                <span>VR</span>
+                <span>{isVRSupported || isInVR ? 'VR' : 'VR (?)'}</span>
               </button>
             </div>
 
@@ -1424,6 +1435,72 @@ export const TacticalTabletModal: React.FC<TacticalTabletModalProps> = ({
           {/* ===================================================================== */}
           {activeTab === 'settings' && (
             <div className="space-y-4 text-xs">
+              {/* Диагностика WebXR / HTC Vive */}
+              {vrDiagnostics && (
+                <div className="p-4 rounded-xl alara-surface space-y-2.5 border border-slate-400/15">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-semibold text-sm text-[#F1F5F9] flex items-center gap-1.5">
+                      <Glasses className="w-4 h-4 text-[#F59E0B]" />
+                      <span>VR-гарнитура (HTC Vive / WebXR)</span>
+                    </h3>
+                    {onToggleVR && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isInVR) onClose();
+                          onToggleVR();
+                        }}
+                        className={`px-3 py-1.5 rounded-[10px] font-semibold cursor-pointer whitespace-nowrap transition ${
+                          isInVR
+                            ? 'bg-[#EF4444]/20 border border-[#EF4444]/50 text-[#FCA5A5]'
+                            : vrDiagnostics.isSupported
+                            ? 'bg-[#F59E0B] text-[#0B1117] hover:bg-amber-400'
+                            : 'bg-[#0B1117] border border-slate-400/30 text-[#E2E8F0] hover:border-[#0EA5E9]'
+                        }`}
+                      >
+                        {isInVR ? 'Выйти из VR' : vrDiagnostics.isSupported ? 'Войти в VR' : 'Проверить / Войти в VR'}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono alara-tabular text-[11px]">
+                    <div className="p-2 rounded-[10px] bg-[#0B1117] border border-slate-400/15">
+                      <span className="text-[#64748B] block">HTTPS / Secure</span>
+                      <strong className={vrDiagnostics.isSecureContext ? 'text-[#10B981]' : 'text-[#EF4444]'}>
+                        {vrDiagnostics.isSecureContext ? 'OK' : 'НЕТ'}
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-[10px] bg-[#0B1117] border border-slate-400/15">
+                      <span className="text-[#64748B] block">navigator.xr</span>
+                      <strong className={vrDiagnostics.hasNavigatorXr ? 'text-[#10B981]' : 'text-[#EF4444]'}>
+                        {vrDiagnostics.hasNavigatorXr ? 'Доступен' : vrDiagnostics.isElectronEnv ? 'Выкл (Electron)' : 'Нет'}
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-[10px] bg-[#0B1117] border border-slate-400/15">
+                      <span className="text-[#64748B] block">immersive-vr</span>
+                      <strong className={vrDiagnostics.isSupported ? 'text-[#10B981]' : 'text-[#F59E0B]'}>
+                        {vrDiagnostics.isSupported ? 'Готов' : vrDiagnostics.supportState === 'checking' ? 'Проверка...' : 'Не найден'}
+                      </strong>
+                    </div>
+                    <div className="p-2 rounded-[10px] bg-[#0B1117] border border-slate-400/15">
+                      <span className="text-[#64748B] block">ReferenceSpace</span>
+                      <strong className="text-[#0EA5E9]">{vrDiagnostics.activeReferenceSpaceType}</strong>
+                    </div>
+                  </div>
+
+                  <div className="text-[11px] text-[#CBD5E1] leading-relaxed">
+                    <span className="font-semibold text-[#F1F5F9]">{vrDiagnostics.statusSummaryRu}. </span>
+                    <span className="text-[#94A3B8]">{vrDiagnostics.hintRu}</span>
+                  </div>
+
+                  {vrDiagnostics.lastErrorMessageRu && (
+                    <div className="px-3 py-2 rounded-[10px] bg-[#EF4444]/10 border border-[#EF4444]/35 text-[#FCA5A5] text-[11px]">
+                      {vrDiagnostics.lastErrorMessageRu}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="p-4 rounded-xl alara-surface space-y-3">
                 <h3 className="font-semibold text-sm text-[#F1F5F9] flex items-center gap-1.5">
                   <Sliders className="w-4 h-4 text-[#0EA5E9]" />

@@ -41,6 +41,8 @@ export { VRInputManager, VRFlashlight };
 export interface WebXRCallbacks {
   onSessionStart?: () => void;
   onSessionEnd?: () => void;
+  onDiagnosticsChange?: (status: XRDiagnosticsStatus) => void;
+  onSessionError?: (errorMessageRu: string) => void;
   onSelectStart?: (controller: THREE.Group, controllerIndex: number) => void;
   onSelectEnd?: (controller: THREE.Group, controllerIndex: number) => void;
   onSqueezeStart?: (controller: THREE.Group, controllerIndex: number) => boolean | void;
@@ -77,6 +79,22 @@ export interface XRControllerInput {
 }
 
 export type XRReferenceSpaceFallbackType = 'local-floor' | 'local' | 'viewer';
+
+export type XRSupportState = 'checking' | 'supported' | 'unsupported' | 'unavailable' | 'error';
+
+export interface XRDiagnosticsStatus {
+  isSecureContext: boolean;
+  hasNavigatorXr: boolean;
+  isElectronEnv: boolean;
+  supportState: XRSupportState;
+  isSupported: boolean;
+  isPresenting: boolean;
+  activeReferenceSpaceType: XRReferenceSpaceFallbackType;
+  connectedControllers: number;
+  statusSummaryRu: string;
+  hintRu: string;
+  lastErrorMessageRu: string | null;
+}
 
 /**
  * 3D-планшет на левом запястье (VR Wrist HUD)
@@ -258,10 +276,13 @@ export class WebXRManager {
   private readonly callbacks: WebXRCallbacks;
 
   public isSupported = false;
+  public supportState: XRSupportState = 'checking';
   public isInVR = false;
   public xrSession: XRSession | null = null;
   public activeReferenceSpaceType: XRReferenceSpaceFallbackType = 'local-floor';
   public lastErrorMessageRu: string | null = null;
+  private statusSummaryRu = 'Проверка WebXR...';
+  private hintRu = 'Подключите HTC Vive и убедитесь, что SteamVR (OpenXR) запущен.';
 
   // Контроллеры WebXR (слоты 0 и 1) и их Grip-пространства (руки маппятся динамически по handedness)
   public controller0: THREE.XRTargetRaySpace | null = null;
@@ -412,10 +433,16 @@ export class WebXRManager {
     }
   }
 
+  private readonly onXRDeviceChange = (): void => {
+    console.info('[WebXR] Обнаружено событие devicechange — повторная проверка VR-гарнитуры...');
+    void this.checkXRSupport();
+  };
+
   private readonly onRendererSessionStart = (): void => {
     this.isInVR = true;
     const session = this.renderer.xr.getSession();
     this.xrSession = session;
+    this.lastErrorMessageRu = null;
     this.attachXRSessionListeners(session);
 
     // Сброс Y-координаты группы игрока под аппаратный уровень пола площадки (для local/viewer — +1.65м)
@@ -424,20 +451,27 @@ export class WebXRManager {
     this.syncTrackedHandMetaFromSession();
     this.syncHandRigVisibility();
 
+    console.info(
+      `[WebXR] VR-сессия запущена (referenceSpace=${this.activeReferenceSpaceType}, presenting=${String(this.renderer.xr.isPresenting)})`
+    );
     this.updateVRButtonText();
+    this.emitDiagnostics();
     this.callbacks.onSessionStart?.();
   };
 
   private readonly onRendererSessionEnd = (): void => {
+    console.info('[WebXR] VR-сессия завершена (sessionend).');
     this.detachXRSessionListeners();
     this.cleanupSessionState();
     this.updateVRButtonText();
+    this.emitDiagnostics();
     this.callbacks.onSessionEnd?.();
   };
 
   private readonly onSessionInputSourcesChange = (): void => {
     this.syncTrackedHandMetaFromSession();
     this.syncHandRigVisibility();
+    this.emitDiagnostics();
   };
 
   private readonly onSessionGazeSelectStart = (event: XRInputSourceEvent): void => {
@@ -490,9 +524,16 @@ export class WebXRManager {
     this.renderer.xr.enabled = true;
     this.renderer.xr.setReferenceSpaceType('local-floor');
 
-    // 3. Обработчики жизненного цикла XR-сессии
+    // 3. Обработчики жизненного цикла XR-сессии и горячего подключения гарнитуры
     this.renderer.xr.addEventListener('sessionstart', this.onRendererSessionStart);
     this.renderer.xr.addEventListener('sessionend', this.onRendererSessionEnd);
+    if (typeof navigator !== 'undefined' && navigator.xr && typeof navigator.xr.addEventListener === 'function') {
+      try {
+        navigator.xr.addEventListener('devicechange', this.onXRDeviceChange);
+      } catch {
+        // Игнорируем, если среда не поддерживает devicechange
+      }
+    }
 
     // 4. Инициализация геометрии параболической дуги телепортации без динамических аллокаций
     this.arcPositionsBuffer = new Float32Array((this.arcPointsCount + 1) * 3);
@@ -975,6 +1016,35 @@ export class WebXRManager {
     return this.leftHandRig ? this.leftHandRig.toggleFlashlight() : false;
   }
 
+  public getDiagnosticsStatus(): XRDiagnosticsStatus {
+    const isSecureContext =
+      typeof window !== 'undefined' ? Boolean(window.isSecureContext) : false;
+    const hasNavigatorXr =
+      typeof navigator !== 'undefined' && 'xr' in navigator && Boolean(navigator.xr);
+    const isElectronEnv =
+      typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent || '');
+    const connectedControllers =
+      (this.controllerMeta[0].connected ? 1 : 0) + (this.controllerMeta[1].connected ? 1 : 0);
+
+    return {
+      isSecureContext,
+      hasNavigatorXr,
+      isElectronEnv,
+      supportState: this.supportState,
+      isSupported: this.isSupported,
+      isPresenting: this.isInVR || Boolean(this.renderer.xr.isPresenting),
+      activeReferenceSpaceType: this.activeReferenceSpaceType,
+      connectedControllers,
+      statusSummaryRu: this.statusSummaryRu,
+      hintRu: this.hintRu,
+      lastErrorMessageRu: this.lastErrorMessageRu
+    };
+  }
+
+  private emitDiagnostics(): void {
+    this.callbacks.onDiagnosticsChange?.(this.getDiagnosticsStatus());
+  }
+
   public createVRButton(): HTMLElement {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -1001,8 +1071,12 @@ export class WebXRManager {
     btn.onclick = async (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      await this.toggleVRSession();
+      const wasInVR = this.isInVR;
+      const ok = await this.toggleVRSession();
       this.updateVRButtonText(btn);
+      if (!ok && !wasInVR && this.lastErrorMessageRu) {
+        this.callbacks.onSessionError?.(this.lastErrorMessageRu);
+      }
     };
 
     this.vrButtonElement = btn;
@@ -1022,28 +1096,68 @@ export class WebXRManager {
       target.title = 'Завершить активную WebXR-сессию';
     } else if (this.isSupported) {
       target.textContent = 'ВОЙТИ В VR (HTC VIVE)';
-      target.style.borderColor = 'rgba(14, 165, 233, 0.45)';
+      target.style.borderColor = 'rgba(14, 165, 233, 0.55)';
       target.style.color = '#F59E0B';
-      target.title = 'Запустить WebXR-режим для гарнитуры HTC Vive / OpenXR';
+      target.title = `${this.statusSummaryRu}. Нажмите для входа в immersive-vr.`;
     } else {
-      target.textContent = 'VR НЕ ОБНАРУЖЕН (ПК)';
-      target.style.borderColor = 'rgba(148, 163, 184, 0.25)';
-      target.style.color = '#94A3B8';
-      target.title = 'Гарнитура WebXR/OpenXR не обнаружена; активен режим ПК';
+      target.textContent = 'ВОЙТИ В VR (ПРОВЕРКА)';
+      target.style.borderColor = 'rgba(148, 163, 184, 0.32)';
+      target.style.color = '#CBD5E1';
+      target.title = `${this.statusSummaryRu} ${this.hintRu}`;
     }
   }
 
   public async checkXRSupport(): Promise<boolean> {
-    if (typeof navigator !== 'undefined' && 'xr' in navigator && navigator.xr) {
-      try {
-        this.isSupported = await (navigator.xr as XRSystem).isSessionSupported('immersive-vr');
-      } catch {
-        this.isSupported = false;
-      }
-    } else {
+    const isSecureContext =
+      typeof window !== 'undefined' ? Boolean(window.isSecureContext) : false;
+    const hasNavigatorXr =
+      typeof navigator !== 'undefined' && 'xr' in navigator && Boolean(navigator.xr);
+    const isElectronEnv =
+      typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent || '');
+
+    if (!isSecureContext) {
       this.isSupported = false;
+      this.supportState = 'unavailable';
+      this.statusSummaryRu = 'WebXR заблокирован: нет HTTPS / localhost';
+      this.hintRu = 'Откройте тренажёр по HTTPS или на http://localhost:3000 для активации WebXR.';
+      console.warn('[WebXR] Небезопасный контекст (window.isSecureContext === false).');
+    } else if (!hasNavigatorXr) {
+      this.isSupported = false;
+      this.supportState = 'unavailable';
+      this.statusSummaryRu = isElectronEnv
+        ? 'В текущей сборке Electron отключён WebXR'
+        : 'WebXR API (navigator.xr) недоступен в браузере';
+      this.hintRu = isElectronEnv
+        ? 'Для шлема HTC Vive откройте URL тренажёра в Google Chrome или Microsoft Edge с запущенным SteamVR (OpenXR).'
+        : 'Используйте Google Chrome или Microsoft Edge на ПК с запущенным SteamVR / OpenXR.';
+      console.warn(`[WebXR] navigator.xr отсутствует (Electron=${String(isElectronEnv)}).`);
+    } else {
+      try {
+        const supported = await (navigator.xr as XRSystem).isSessionSupported('immersive-vr');
+        this.isSupported = supported;
+        this.supportState = supported ? 'supported' : 'unsupported';
+        if (supported) {
+          this.statusSummaryRu = 'VR-шлем готов (immersive-vr поддерживается)';
+          this.hintRu = 'Нажмите «VR» для запуска сессии HTC Vive / SteamVR.';
+          console.info('[WebXR] isSessionSupported("immersive-vr") = true.');
+        } else {
+          this.statusSummaryRu = 'Шлем / OpenXR-рантайм не обнаружен';
+          this.hintRu =
+            'Запустите SteamVR, проверьте SteamVR → Настройки → Разработчик → Текущая среда OpenXR: SteamVR, затем нажмите VR ещё раз.';
+          console.info('[WebXR] isSessionSupported("immersive-vr") = false.');
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.isSupported = false;
+        this.supportState = 'error';
+        this.statusSummaryRu = 'Ошибка проверки WebXR';
+        this.hintRu = `Сбой isSessionSupported: ${msg}`;
+        console.warn('[WebXR] Ошибка checkXRSupport:', err);
+      }
     }
+
     this.updateVRButtonText();
+    this.emitDiagnostics();
     return this.isSupported;
   }
 
@@ -1685,32 +1799,77 @@ export class WebXRManager {
   }
 
   /**
-   * Асинхронный каскадный запрос системы координат (Reference Space)
-   * с fallback-цепочкой: 'local-floor' -> 'local' -> 'viewer' (SteamVR / OpenXR / Quest совместимость)
+   * Запрос WebXR-сессии с сохранением прямой пользовательской активации (User Gesture)
+   * и каскадным fallback по optionalFeatures для совместимости с HTC Vive / SteamVR / OpenXR
    */
-  private async resolveReferenceSpaceWithFallback(session: XRSession): Promise<XRReferenceSpaceFallbackType> {
+  private async requestImmersiveSessionWithFallback(xrSystem: XRSystem): Promise<XRSession> {
+    const featureProfiles: XRSessionInit[] = [
+      { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'] },
+      { optionalFeatures: ['local-floor', 'local'] },
+      { optionalFeatures: ['local-floor'] },
+      {}
+    ];
+
+    let lastErr: unknown = null;
+    for (let i = 0; i < featureProfiles.length; i++) {
+      try {
+        const session = await xrSystem.requestSession('immersive-vr', featureProfiles[i]);
+        return session;
+      } catch (err) {
+        lastErr = err;
+        const errName = err instanceof Error ? err.name : '';
+        // При отказе прав или отсутствии активности пользователя повтор без фич не поможет
+        if (errName === 'NotAllowedError' || errName === 'SecurityError' || errName === 'InvalidStateError') {
+          throw err;
+        }
+      }
+    }
+    throw lastErr;
+  }
+
+  /**
+   * Привязка XRSession к Three.js WebGLRenderer с реальным каскадным fallback Reference Space:
+   * 'local-floor' -> 'local' -> 'viewer' вокруг самого renderer.xr.setSession(session)
+   */
+  private async attachSessionToRendererWithFallback(session: XRSession): Promise<XRReferenceSpaceFallbackType> {
+    const gl = this.renderer.getContext() as WebGLRenderingContext & {
+      makeXRCompatible?: () => Promise<void>;
+    };
+    if (gl && typeof gl.makeXRCompatible === 'function') {
+      try {
+        await gl.makeXRCompatible();
+      } catch (compatErr) {
+        console.warn('[WebXR] Предупреждение makeXRCompatible:', compatErr);
+      }
+    }
+
     const fallbackChain: XRReferenceSpaceFallbackType[] = ['local-floor', 'local', 'viewer'];
+    let lastAttachErr: unknown = null;
 
     for (let i = 0; i < fallbackChain.length; i++) {
       const spaceType = fallbackChain[i];
       try {
+        // Сначала проверяем поддержку этого пространства самой XRSession
         await session.requestReferenceSpace(spaceType);
         this.activeReferenceSpaceType = spaceType;
         this.renderer.xr.setReferenceSpaceType(spaceType);
+        this.playerGroup.position.y = this.groundFloorY + (spaceType === 'local-floor' ? 0.0 : 1.65);
+
+        await this.renderer.xr.setSession(session);
         return spaceType;
-      } catch {
-        // Переход к следующему типу пространства в цепочке fallback
+      } catch (err) {
+        lastAttachErr = err;
+        console.warn(`[WebXR] Пространство '${spaceType}' не подошло, пробуем следующий fallback:`, err);
       }
     }
 
-    this.activeReferenceSpaceType = 'viewer';
-    this.renderer.xr.setReferenceSpaceType('viewer');
-    return 'viewer';
+    throw lastAttachErr ?? new Error('Не удалось привязать XRSession ни к одному ReferenceSpace');
   }
 
   /**
-   * Безопасное переключение XR-сессии с проверкой navigator.xr / isSessionSupported,
-   * каскадным Reference Space fallback ('local-floor' -> 'local' -> 'viewer') и очисткой при сбоях.
+   * Безопасное переключение XR-сессии.
+   * ВАЖНО: при входе в VR requestSession('immersive-vr') вызывается сразу из клика пользователя
+   * БЕЗ предварительных await (isSessionSupported/end), чтобы браузер не сбрасывал User Activation.
    */
   public async toggleVRSession(): Promise<boolean> {
     if (this.isTogglingVR || this.isDisposed) return false;
@@ -1718,64 +1877,64 @@ export class WebXRManager {
     this.lastErrorMessageRu = null;
 
     try {
-      if (typeof navigator === 'undefined' || !('xr' in navigator) || !navigator.xr) {
+      const isSecureContext =
+        typeof window !== 'undefined' ? Boolean(window.isSecureContext) : false;
+      const isElectronEnv =
+        typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent || '');
+
+      if (!isSecureContext) {
         this.lastErrorMessageRu =
-          'Браузер или окружение не поддерживают WebXR. Откройте приложение в Chrome, Edge или встроенном браузере VR-шлема.';
+          'WebXR требует защищённый контекст (HTTPS или http://localhost). Откройте приложение по HTTPS или localhost.';
+        this.emitDiagnostics();
         return false;
       }
 
+      if (typeof navigator === 'undefined' || !('xr' in navigator) || !navigator.xr) {
+        this.lastErrorMessageRu = isElectronEnv
+          ? 'В текущей сборке Electron WebXR API отключён. Для HTC Vive откройте тренажёр в Google Chrome или Microsoft Edge с запущенным SteamVR (OpenXR).'
+          : 'Браузер не поддерживает WebXR (navigator.xr отсутствует). Используйте Google Chrome или Microsoft Edge.';
+        this.emitDiagnostics();
+        return false;
+      }
+
+      const xrSystem = navigator.xr as XRSystem;
+
       // 1. Если сессия уже активна, корректно завершаем её
-      if (this.isInVR || this.xrSession) {
+      const currentRendererSession = this.renderer.xr.getSession();
+      if (this.isInVR || this.xrSession || currentRendererSession) {
+        const sessionToEnd = this.xrSession ?? currentRendererSession;
         try {
-          if (this.xrSession) {
-            await this.xrSession.end();
+          if (sessionToEnd) {
+            await sessionToEnd.end();
           }
         } catch (e) {
-          console.warn('Error ending previous active XR session:', e);
+          console.warn('[WebXR] Ошибка завершения активной XR-сессии:', e);
         } finally {
           this.detachXRSessionListeners();
           this.cleanupSessionState();
           this.updateVRButtonText();
+          this.emitDiagnostics();
         }
         return false;
       }
 
-      // 2. Проверяем аппаратную поддержку immersive-vr до запроса сессии
-      const supported = await (navigator.xr as XRSystem)
-        .isSessionSupported('immersive-vr')
-        .catch(() => false);
-      this.isSupported = supported;
-      if (!supported) {
-        this.lastErrorMessageRu =
-          'VR-гарнитура или OpenXR/SteamVR-рантайм не обнаружены. Подключите шлем и убедитесь, что VR-рантайм запущен.';
-        return false;
-      }
-
-      // 3. Завершаем любую возможную зависшую сессию в Three.js WebGLRenderer
-      const activeRendererSession = this.renderer.xr.getSession();
-      if (activeRendererSession) {
-        try {
-          await activeRendererSession.end();
-        } catch {
-          // Игнорируем ошибку закрытия устаревшей сессии
-        }
-      }
-
-      // 4. Включаем WebXR в рендерере до вызова requestSession
+      // 2. Включаем WebXR в рендерере синхронно ДО requestSession и сразу запрашиваем сессию
       this.renderer.xr.enabled = true;
+      this.renderer.xr.setReferenceSpaceType('local-floor');
+
       let session: XRSession | null = null;
       try {
-        session = await (navigator.xr as XRSystem).requestSession('immersive-vr', {
-          optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers']
-        });
-
-        const resolvedSpace = await this.resolveReferenceSpaceWithFallback(session);
-        this.playerGroup.position.y = this.groundFloorY + (resolvedSpace === 'local-floor' ? 0.0 : 1.65);
-
+        console.info('[WebXR] Запрос immersive-vr сессии по действию пользователя...');
+        session = await this.requestImmersiveSessionWithFallback(xrSystem);
+        this.isSupported = true;
+        this.supportState = 'supported';
         this.xrSession = session;
-        await this.renderer.xr.setSession(session);
+
+        const resolvedSpace = await this.attachSessionToRendererWithFallback(session);
+        this.activeReferenceSpaceType = resolvedSpace;
         this.attachXRSessionListeners(session);
         this.updateVRButtonText();
+        this.emitDiagnostics();
         return true;
       } catch (sessionErr) {
         if (session) {
@@ -1792,17 +1951,22 @@ export class WebXRManager {
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errName === 'NotAllowedError' || errName === 'SecurityError') {
         this.lastErrorMessageRu =
-          'Доступ к WebXR отклонён браузером или политикой безопасности (требуется HTTPS или localhost).';
+          'Браузер отклонил запрос WebXR (NotAllowedError). Убедитесь, что страница открыта по HTTPS/localhost и клик выполнен напрямую по кнопке VR.';
       } else if (errName === 'NotSupportedError') {
         this.lastErrorMessageRu =
-          'Текущее устройство или драйвер OpenXR не поддерживает режим immersive-vr.';
+          'Гарнитура HTC Vive / OpenXR-рантайм не найдены или не активны. Запустите SteamVR и проверьте, что OpenXR Runtime установлен на SteamVR.';
+      } else if (errName === 'InvalidStateError') {
+        this.lastErrorMessageRu =
+          'Конфликт активной WebXR-сессии (InvalidStateError). Закройте другие VR-вкладки и повторите вход.';
       } else {
-        this.lastErrorMessageRu = `Не удалось запустить VR-сессию: ${errMsg}`;
+        this.lastErrorMessageRu = `Не удалось запустить VR-сессию (${errName || 'Error'}): ${errMsg}`;
       }
-      console.warn('VR session request failed:', err);
+      console.warn('[WebXR] Ошибка запуска immersive-vr:', err);
       this.detachXRSessionListeners();
       this.cleanupSessionState();
+      await this.checkXRSupport();
       this.updateVRButtonText();
+      this.emitDiagnostics();
       return false;
     } finally {
       this.isTogglingVR = false;
@@ -1828,6 +1992,13 @@ export class WebXRManager {
     this.detachXRSessionListeners();
     this.renderer.xr.removeEventListener('sessionstart', this.onRendererSessionStart);
     this.renderer.xr.removeEventListener('sessionend', this.onRendererSessionEnd);
+    if (typeof navigator !== 'undefined' && navigator.xr && typeof navigator.xr.removeEventListener === 'function') {
+      try {
+        navigator.xr.removeEventListener('devicechange', this.onXRDeviceChange);
+      } catch {
+        // Игнорируем ошибку отписки devicechange
+      }
+    }
 
     for (const cleanup of this.cleanupCallbacks) {
       cleanup();

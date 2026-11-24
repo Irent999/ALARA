@@ -5,9 +5,8 @@
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
-import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { RealisticHumanHandRig, HazmatHandRig } from './scene/handModel';
-import { WebXRManager } from './scene/webxrManager';
+import { WebXRManager, type XRDiagnosticsStatus } from './scene/webxrManager';
 import { SCENARIOS, ScenarioDefinition, RadiationSourceInstance, ShieldingInstance, InteractiveObjectInstance } from './scene/scenarios';
 import { GOST_INSTRUMENTS, InstrumentId, simulateDetectorReading } from './instruments/gostInstruments';
 import {
@@ -164,6 +163,19 @@ export default function App() {
   const [isReportModalOpen, setIsReportModalOpen] = useState<boolean>(false);
   const [isVRSupported, setIsVRSupported] = useState<boolean>(false);
   const [isInVR, setIsInVR] = useState<boolean>(false);
+  const [vrDiagnostics, setVrDiagnostics] = useState<XRDiagnosticsStatus>(() => ({
+    isSecureContext: typeof window !== 'undefined' ? Boolean(window.isSecureContext) : false,
+    hasNavigatorXr: typeof navigator !== 'undefined' && 'xr' in navigator && Boolean(navigator.xr),
+    isElectronEnv: typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent || ''),
+    supportState: 'checking',
+    isSupported: false,
+    isPresenting: false,
+    activeReferenceSpaceType: 'local-floor',
+    connectedControllers: 0,
+    statusSummaryRu: 'Проверка WebXR...',
+    hintRu: 'Подключите HTC Vive и убедитесь, что SteamVR (OpenXR) запущен.',
+    lastErrorMessageRu: null
+  }));
   const [isRadiationFieldVisible, setIsRadiationFieldVisible] = useState<boolean>(true);
 
   // Тактический фонарь (жестко привязан к иерархии левой руки leftHandRig), режим низкой освещенности и виброотклик VR
@@ -641,6 +653,8 @@ export default function App() {
 
     // 3. Создание рендерера с физически корректным пайплайном и оптимизированным pixelRatio
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.xr.enabled = true;
+    renderer.xr.setReferenceSpaceType('local-floor');
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     const hdriEnvTexture = configurePhotorealisticRendererAndHDRI(renderer, scene);
@@ -1273,6 +1287,13 @@ export default function App() {
           scenario4ControllerRef.current?.onBoardOrExitVehicle();
         }
       },
+      onDiagnosticsChange: status => {
+        setVrDiagnostics(status);
+        setIsVRSupported(status.isSupported);
+      },
+      onSessionError: errorMessageRu => {
+        addToast('warning', 'НЕ УДАЛОСЬ ВОЙТИ В VR', errorMessageRu);
+      },
       onRightTriggerWorldHold: (raycaster, _controller, isHeld, justPressed, justReleased) => {
         vrRightHoldRef.current.active = isHeld;
         vrRightHoldRef.current.raycaster = raycaster;
@@ -1291,7 +1312,10 @@ export default function App() {
     xrManager.setPpeSuit(characterPpeStateRef.current.suitId);
     xrManager.setCoopRoleAccent(COOP_ROLE_SPECIFICATIONS[coopRoleRef.current].accentHexNumber);
     xrManagerRef.current = xrManager;
-    xrManager.checkXRSupport().then(supported => setIsVRSupported(supported));
+    void xrManager.checkXRSupport().then(supported => {
+      setIsVRSupported(supported);
+      setVrDiagnostics(xrManager.getDiagnosticsStatus());
+    });
 
     // Добавление стандартной кнопки Enter VR от Three.js в DOM
     const vrButton = xrManager.createVRButton();
@@ -1324,7 +1348,14 @@ export default function App() {
       playerRotY = 0;
       cameraPitch = 0;
     };
+    const isXrPresentingNow = () =>
+      Boolean(xrManagerRef.current?.isInVR || rendererRef.current?.xr.isPresenting);
+
     setDesktopLookTargetRef.current = (from: THREE.Vector3, target: THREE.Vector3) => {
+      if (isXrPresentingNow()) {
+        // В активной WebXR-сессии поворот камеры управляется исключительно датчиками VR-шлема
+        return;
+      }
       const dx = target.x - from.x;
       const dy = target.y - from.y;
       const dz = target.z - from.z;
@@ -1345,9 +1376,6 @@ export default function App() {
       handRigRef.current?.setDesktopCameraPitch(cameraPitch);
       leftHandRigDesktopRef.current?.setDesktopCameraPitch(cameraPitch);
     };
-
-    const isXrPresentingNow = () =>
-      Boolean(xrManagerRef.current?.isInVR || rendererRef.current?.xr.isPresenting);
 
     const handleMouseDown = (e: MouseEvent) => {
       if (isXrPresentingNow()) return;
@@ -2789,8 +2817,8 @@ export default function App() {
         try {
           const xrCam = renderer.xr.getCamera();
           const leftCam = xrCam?.cameras?.[0];
-          const mirrorCam = leftCam || camera;
-          if (mirrorCam) {
+          if (leftCam) {
+            const mirrorCam = leftCam;
             const prevRenderTarget = renderer.getRenderTarget();
             const prevSceneAutoUpdate = scene.matrixWorldAutoUpdate;
             const prevShadowAutoUpdate = renderer.shadowMap.autoUpdate;
@@ -4604,7 +4632,7 @@ export default function App() {
 
   const toggleVR = async () => {
     try {
-      if (!rendererRef.current) {
+      if (!rendererRef.current || !xrManagerRef.current) {
         addToast(
           'warning',
           'WEBXR НЕ ГОТОВ',
@@ -4613,45 +4641,31 @@ export default function App() {
         return;
       }
 
+      // Синхронно включаем XR до запроса сессии и не делаем лишних await до requestSession(),
+      // чтобы браузер сохранил жест пользователя (User Activation) для HTC Vive / OpenXR.
       rendererRef.current.xr.enabled = true;
 
-      if (typeof navigator === 'undefined' || !('xr' in navigator) || !navigator.xr) {
-        addToast(
-          'warning',
-          'WEBXR НЕ ПОДДЕРЖИВАЕТСЯ',
-          'Ваш браузер или система не поддерживают WebXR Device API. Используйте Chrome, Edge или встроенный браузер VR-гарнитуры.'
-        );
-        return;
-      }
+      const wasInVR = Boolean(isInVR || xrManagerRef.current.isInVR || rendererRef.current.xr.isPresenting);
+      const success = await xrManagerRef.current.toggleVRSession();
+      const diag = xrManagerRef.current.getDiagnosticsStatus();
+      setVrDiagnostics(diag);
+      setIsVRSupported(diag.isSupported);
 
-      const isSupp = await navigator.xr.isSessionSupported('immersive-vr').catch(() => false);
-      if (!isSupp && !isInVR) {
+      if (success) {
         addToast(
-          'warning',
-          'VR-ШЛЕМ НЕ ОБНАРУЖЕН',
-          'Шлем виртуальной реальности не найден. Подключите гарнитуру (Quest, Vive, Pico, Index) и запустите OpenXR / SteamVR.'
+          'success',
+          'VR-РЕЖИМ АКТИВИРОВАН',
+          `Активно пространство: ${diag.activeReferenceSpaceType}. Планшет закреплён на левом запястье.`
         );
-        return;
-      }
-
-      if (xrManagerRef.current) {
-        const wasInVR = isInVR;
-        const success = await xrManagerRef.current.toggleVRSession();
-        if (success) {
-          addToast(
-            'success',
-            'VR-РЕЖИМ АКТИВИРОВАН',
-            'Добро пожаловать в WebXR! 3D-планшет закреплен на левом запястье. Нажмите на дисплей запястья для скрытия/показа VR HUD.'
-          );
-        } else if (wasInVR) {
-          addToast('info', 'VR-СЕССИЯ ЗАВЕРШЕНА', 'Возврат к стандартному монитору ПК.');
-        } else if (xrManagerRef.current.lastErrorMessageRu) {
-          addToast('warning', 'НЕ УДАЛОСЬ ВОЙТИ В VR', xrManagerRef.current.lastErrorMessageRu);
-        }
+      } else if (wasInVR) {
+        addToast('info', 'VR-СЕССИЯ ЗАВЕРШЕНА', 'Возврат к стандартному монитору ПК.');
+      } else {
+        const msg = xrManagerRef.current.lastErrorMessageRu || `${diag.statusSummaryRu}. ${diag.hintRu}`;
+        addToast('warning', 'НЕ УДАЛОСЬ ВОЙТИ В VR', msg);
       }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      console.warn('VR Mode Toggle Error:', err);
+      console.warn('[WebXR] VR Mode Toggle Error:', err);
       addToast('danger', 'СБОЙ ВХОДА В VR', `Ошибка WebXR: ${errorMsg}`);
     }
   };
@@ -5018,6 +5032,7 @@ export default function App() {
             onToggleVR={toggleVR}
             isVRSupported={isVRSupported}
             isInVR={isInVR}
+            vrDiagnostics={vrDiagnostics}
             isRadiationFieldVisible={isRadiationFieldVisible}
             onToggleRadiationField={toggleRadiationField}
             telemetryHistory={telemetryHistory}
@@ -5198,6 +5213,7 @@ export default function App() {
           }}
           isVRSupported={isVRSupported}
           isInVR={isInVR}
+          vrDiagnostics={vrDiagnostics}
           onToggleVR={toggleVR}
           activeScenarioId={activeScenarioId}
           scenario={currentScenario}

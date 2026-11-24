@@ -33,6 +33,7 @@ import type { IScenarioConfig } from '../scene/scenarioConfigRegistry';
 import type { ScenarioRulesEvaluationResult } from '../scene/scenarioRulesEngine';
 import { ScenarioFailedModal } from './ScenarioFailedModal';
 import { useXR } from '../vr/VRManager';
+import type { XRDiagnosticsStatus } from '../scene/webxrManager';
 import type { SessionExposureLimitsTracker } from '../utils/pdfDoseReportExporter';
 import type { Scenario4HudSnapshot } from '../scenarios/scenario4-npp-rescue/config';
 import {
@@ -189,6 +190,7 @@ interface HUDProps {
   onToggleVR: () => void;
   isVRSupported: boolean;
   isInVR: boolean;
+  vrDiagnostics?: XRDiagnosticsStatus;
   isRadiationFieldVisible?: boolean;
   onToggleRadiationField?: () => void;
   telemetryHistory: TelemetryHistoryPoint[];
@@ -274,6 +276,7 @@ export const HUD: React.FC<HUDProps> = ({
   onToggleVR,
   isVRSupported,
   isInVR,
+  vrDiagnostics,
   telemetryHistory,
   protectionAnalysis,
   missionTimeSec,
@@ -605,16 +608,23 @@ export const HUD: React.FC<HUDProps> = ({
           <button
             type="button"
             onClick={onToggleVR}
-            disabled={!isVRSupported}
-            className={`px-3 py-1.5 rounded-[10px] text-xs font-medium alara-glass flex items-center gap-1.5 whitespace-nowrap transition ${
-              isVRSupported
-                ? 'hover:bg-slate-800/80 text-[#F59E0B] cursor-pointer'
-                : 'opacity-50 text-[#64748B] cursor-not-allowed'
+            className={`px-3 py-1.5 rounded-[10px] text-xs font-medium alara-glass flex items-center gap-1.5 whitespace-nowrap cursor-pointer transition ${
+              isInVR
+                ? 'bg-[#F59E0B]/20 border border-[#F59E0B]/60 text-[#F59E0B]'
+                : isVRSupported
+                ? 'hover:bg-slate-800/80 text-[#F59E0B]'
+                : 'hover:bg-slate-800/80 text-[#94A3B8]'
             }`}
-            title={isVRSupported ? 'Войти в VR-режим (HTC Vive / WebXR)' : 'WebXR не обнаружен'}
+            title={
+              vrDiagnostics
+                ? `${vrDiagnostics.statusSummaryRu}. ${vrDiagnostics.lastErrorMessageRu || vrDiagnostics.hintRu}`
+                : isVRSupported
+                ? 'Войти в VR-режим (HTC Vive / WebXR)'
+                : 'Проверить WebXR и войти в VR (HTC Vive / SteamVR)'
+            }
           >
             <Glasses className="w-3.5 h-3.5" />
-            <span>VR</span>
+            <span>{isInVR ? 'Выход VR' : isVRSupported ? 'VR' : 'VR (?)'}</span>
           </button>
 
           <button

@@ -434,29 +434,53 @@ export const VRManager: React.FC<VRManagerProps> = ({
       return false;
     }
     try {
-      // КРИТИЧЕСКИ ВАЖНО: renderer.xr.enabled = true должно быть включено до вызова requestSession
+      // КРИТИЧЕСКИ ВАЖНО: renderer.xr.enabled = true и вызов requestSession без лишних await для сохранения user gesture
       renderer.xr.enabled = true;
-      const isSupp = await navigator.xr.isSessionSupported('immersive-vr');
-      if (!isSupp) {
-        console.warn('VRManager: immersive-vr is not supported by device/browser');
-        return false;
+      renderer.xr.setReferenceSpaceType('local-floor');
+
+      let newSession: XRSession;
+      try {
+        newSession = await navigator.xr.requestSession('immersive-vr', {
+          optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers']
+        });
+      } catch (err) {
+        const name = err instanceof Error ? err.name : '';
+        if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'InvalidStateError') {
+          throw err;
+        }
+        newSession = await navigator.xr.requestSession('immersive-vr', {
+          optionalFeatures: ['local-floor']
+        });
       }
-      const newSession = await navigator.xr.requestSession('immersive-vr', {
-        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers']
-      });
+
+      const gl = renderer.getContext() as WebGLRenderingContext & {
+        makeXRCompatible?: () => Promise<void>;
+      };
+      if (gl && typeof gl.makeXRCompatible === 'function') {
+        try {
+          await gl.makeXRCompatible();
+        } catch {
+          // Продолжаем, если контекст уже совместим
+        }
+      }
+
       const spaceChain: XRReferenceSpaceType[] = ['local-floor', 'local', 'viewer'];
-      let resolvedSpace: XRReferenceSpaceType = 'viewer';
+      let attached = false;
       for (const spaceType of spaceChain) {
         try {
           await newSession.requestReferenceSpace(spaceType);
-          resolvedSpace = spaceType;
+          renderer.xr.setReferenceSpaceType(spaceType);
+          await renderer.xr.setSession(newSession);
+          attached = true;
           break;
         } catch {
           // fallback к следующему reference space
         }
       }
-      renderer.xr.setReferenceSpaceType(resolvedSpace);
-      await renderer.xr.setSession(newSession);
+      if (!attached) {
+        await newSession.end().catch(() => {});
+        return false;
+      }
       return true;
     } catch (err) {
       console.warn('VRManager: WebXR requestSession error:', err);
