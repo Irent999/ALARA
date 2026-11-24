@@ -15,7 +15,10 @@
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "build:release": "tsc --noEmit && vite build",
-    "electron:build": "tsc --noEmit && vite build && electron-builder"
+    "electron": "npm run build && electron .",
+    "electron:dev": "node scripts/electron-dev.cjs",
+    "electron:build": "tsc --noEmit && vite build && electron-builder",
+    "dist:win": "tsc --noEmit && vite build && electron-builder --win"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans": "^5.3.0",
@@ -58,6 +61,7 @@
     },
     "files": [
       "dist/**/*",
+      "electron/**/*",
       "main.cjs",
       "package.json"
     ],

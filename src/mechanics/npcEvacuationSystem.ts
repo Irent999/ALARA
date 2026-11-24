@@ -38,12 +38,8 @@ export interface NpcGroupRuntime {
   waypointIndex: number;
   state: NpcEvacState;
   safeLabelTimer: number;
-  readonly statusBeaconMesh: THREE.Mesh;
-  readonly statusBeaconMat: THREE.MeshBasicMaterial;
   readonly floorRingMesh: THREE.Mesh;
   readonly floorRingMat: THREE.MeshBasicMaterial;
-  readonly beaconBeamMesh: THREE.Mesh;
-  readonly beaconBeamMat: THREE.MeshBasicMaterial;
   readonly markerSprite: TargetMarkerSprite;
   readonly personMeshes: THREE.Group[];
 }
@@ -468,45 +464,20 @@ export class NpcEvacuationSystem {
       const initialState: NpcEvacState = cfg.initialState;
       const initialColor = STATE_BEACON_COLORS[initialState];
 
-      const statusBeaconMat = new THREE.MeshBasicMaterial({
-        color: initialColor
-      });
-      const statusBeaconMesh = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.21, 0),
-        statusBeaconMat
-      );
-      statusBeaconMesh.position.set(0, 2.2 * this.npcScale, 0);
-      groupRoot.add(statusBeaconMesh);
-
-      // Пульсирующее напольное кольцо и световой луч над группой персонала
+      // Напольное кольцо статуса группы персонала
       const floorRingMat = new THREE.MeshBasicMaterial({
         color: initialColor,
         side: THREE.DoubleSide,
         transparent: true,
-        opacity: 0.65
+        opacity: 0.6
       });
       const floorRingMesh = new THREE.Mesh(
-        new THREE.RingGeometry(1.15 * this.markerScale, 1.45 * this.markerScale, 32),
+        new THREE.RingGeometry(1.15 * this.markerScale, 1.45 * this.markerScale, 24),
         floorRingMat
       );
       floorRingMesh.rotation.x = -Math.PI / 2;
       floorRingMesh.position.y = 0.035;
       groupRoot.add(floorRingMesh);
-
-      const beaconBeamMat = new THREE.MeshBasicMaterial({
-        color: initialColor,
-        transparent: true,
-        opacity: 0.16,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending
-      });
-      const beaconBeamMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.08, 0.28, 4.6, 10, 1, true),
-        beaconBeamMat
-      );
-      beaconBeamMesh.position.y = 2.4;
-      groupRoot.add(beaconBeamMesh);
 
       // Парящий 3D-маркер с числом людей, статусом и расстоянием
       const markerSprite = new TargetMarkerSprite(2.65, 0.78);
@@ -536,12 +507,8 @@ export class NpcEvacuationSystem {
         waypointIndex: 0,
         state: initialState,
         safeLabelTimer: 0,
-        statusBeaconMesh,
-        statusBeaconMat,
         floorRingMesh,
         floorRingMat,
-        beaconBeamMesh,
-        beaconBeamMat,
         markerSprite,
         personMeshes
       });
@@ -551,9 +518,7 @@ export class NpcEvacuationSystem {
   private setGroupState(grp: NpcGroupRuntime, next: NpcEvacState): void {
     grp.state = next;
     const col = STATE_BEACON_COLORS[next];
-    grp.statusBeaconMat.color.setHex(col);
     grp.floorRingMat.color.setHex(col);
-    grp.beaconBeamMat.color.setHex(col);
     if (next === 'SAFE') {
       grp.safeLabelTimer = 4.0;
     }
@@ -713,15 +678,13 @@ export class NpcEvacuationSystem {
     for (let i = 0; i < this.npcGroups.length; i++) {
       const grp = this.npcGroups[i];
       totalNpcCount += grp.config.count;
-      grp.statusBeaconMesh.rotation.y += dt * 2.2;
 
       const distToGrp = playerPos.distanceTo(grp.currentPos);
       const distInt = Math.round(distToGrp);
-      const pulse = 0.5 + 0.5 * Math.sin(this.animClockSec * 4.8 + i * 1.1);
+      const pulse = 0.5 + 0.5 * Math.sin(this.animClockSec * 4.2 + i * 1.1);
 
       if (grp.state === 'SAFE') {
         rescuedCount += grp.config.count;
-        grp.beaconBeamMesh.visible = false;
         grp.floorRingMat.opacity = 0.22;
         if (grp.safeLabelTimer > 0) {
           grp.safeLabelTimer = Math.max(0, grp.safeLabelTimer - dt);
@@ -740,9 +703,7 @@ export class NpcEvacuationSystem {
         continue;
       }
 
-      grp.beaconBeamMesh.visible = this.targetMarkersVisible;
-      grp.beaconBeamMat.opacity = 0.1 + pulse * 0.14;
-      grp.floorRingMat.opacity = 0.42 + pulse * 0.35;
+      grp.floorRingMat.opacity = 0.4 + pulse * 0.3;
 
       const nearestFire = fireMgr.getNearestActiveFire(grp.currentPos);
       const fireNearby = Boolean(

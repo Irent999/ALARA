@@ -29,32 +29,47 @@ function resolveDistFile(requestUrl) {
   if (relPath === '/' || relPath === '') {
     relPath = '/index.html';
   }
-  const safeRel = path.normalize(relPath).replace(/^([/\\])+/, '').replace(/^(\.\.[/\\])+/, '');
+  const safeRel = path
+    .normalize(relPath)
+    .replace(/^([/\\])+/, '')
+    .replace(/^(\.\.[/\\])+/, '');
   const distDir = path.join(__dirname, 'dist');
   const distCandidate = path.join(distDir, safeRel);
   if (fs.existsSync(distCandidate) && fs.statSync(distCandidate).isFile()) {
     return distCandidate;
   }
 
-  // Позволяем пользователю положить тяжёлый assembly.glb рядом с exe/resources без пересборки asar
+  // Позволяем положить тяжёлый assembly.glb рядом с exe, в resources/ или в public/ без пересборки asar
   if (safeRel === 'assembly.glb') {
     const externalCandidates = [
       path.join(process.resourcesPath || __dirname, 'assembly.glb'),
       path.join(path.dirname(app.getPath('exe')), 'assembly.glb'),
-      path.join(__dirname, 'public', 'assembly.glb')
+      path.join(__dirname, 'public', 'assembly.glb'),
+      path.join(process.cwd(), 'public', 'assembly.glb'),
+      path.join(process.cwd(), 'assembly.glb')
     ];
     for (const candidate of externalCandidates) {
       if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
         return candidate;
       }
     }
+    return null;
   }
 
-  return path.join(distDir, 'index.html');
+  // Не подменяем отсутствующие бинарные/скриптовые файлы HTML-страницей (иначе GLTFLoader получает '<'!)
+  const ext = path.extname(safeRel).toLowerCase();
+  if (ext && ext !== '.html') {
+    return null;
+  }
+
+  const indexFile = path.join(distDir, 'index.html');
+  return fs.existsSync(indexFile) ? indexFile : null;
 }
 
+let mainWindow = null;
+
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1024,
@@ -63,10 +78,15 @@ function createWindow() {
     autoHideMenuBar: true,
     title: 'ALARA-Planner Pro VR',
     webPreferences: {
+      preload: path.join(__dirname, 'electron', 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false
     }
+  });
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
   });
 
   // Разрешаем WebXR, микрофон (PTT) и WebBluetooth (HIL ESP32) в локальном окне Electron
@@ -83,9 +103,27 @@ function createWindow() {
   }
 }
 
+// Доверяем локальному самоподписанному SSL-сертификату Vite dev-сервера (@vitejs/plugin-basic-ssl)
+app.on('certificate-error', (event, _webContents, url, _error, _certificate, callback) => {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      event.preventDefault();
+      callback(true);
+      return;
+    }
+  } catch {
+    // ignore
+  }
+  callback(false);
+});
+
 app.whenReady().then(() => {
   protocol.handle('app', request => {
     const filePath = resolveDistFile(request.url);
+    if (!filePath) {
+      return new Response('Not Found', { status: 404, statusText: 'Not Found' });
+    }
     return net.fetch(pathToFileURL(filePath).toString());
   });
 

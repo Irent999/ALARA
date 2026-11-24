@@ -302,11 +302,11 @@ export const SCENARIO_4_CONFIG = {
     maxSearchRings: 5
   },
 
-  // --- 7. Внутреннее техническое оборудование АЭС в корпусах ---
+  // --- 7. Внутреннее техническое оборудование АЭС в корпусах (отключено для чистоты проходов и FPS) ---
   EQUIPMENT_LAYOUT: {
-    enabled: true,
+    enabled: false,
     minClearanceFromFireOrNpcM: 3.4,
-    maxBuildingsToPopulate: 4,
+    maxBuildingsToPopulate: 0,
     equipmentScale: 1.0
   },
 
@@ -371,40 +371,40 @@ export const SCENARIO_4_CONFIG = {
     /** Принудительный режим для слабых GPU; при входе в WebXR (HTC Vive) vrLite включается автоматически */
     vrLiteMode: false,
     desktop: {
-      flameConesPerFire: 3,
-      smokePuffsPerFire: 3,
-      tallSmokePuffsPerFire: 2,
-      portalSmokeParticlesPerFire: 10,
-      maxTotalSceneFireSmokeUnits: 54,
-      sprayParticleCount: 64,
-      spraySpawnRateHz: 150,
-      portalSmokeSizeM: 1.35,
-      smokeMaxScale: 1.15,
-      smokeCycleSpeed: 0.85,
-      particleUpdateIntervalSec: 0.033,
-      effectCullDistanceM: 95,
+      flameConesPerFire: 2,
+      smokePuffsPerFire: 2,
+      tallSmokePuffsPerFire: 0,
+      portalSmokeParticlesPerFire: 4,
+      maxTotalSceneFireSmokeUnits: 24,
+      sprayParticleCount: 32,
+      spraySpawnRateHz: 110,
+      portalSmokeSizeM: 1.1,
+      smokeMaxScale: 1.0,
+      smokeCycleSpeed: 0.78,
+      particleUpdateIntervalSec: 0.06,
+      effectCullDistanceM: 80,
       enableFirePointLight: false,
       enablePortalPointLight: false,
       maxActivePointLights: 0,
-      useUnlitPortalGlow: true
+      useUnlitPortalGlow: false
     },
     vrLite: {
       flameConesPerFire: 2,
-      smokePuffsPerFire: 2,
-      tallSmokePuffsPerFire: 1,
-      portalSmokeParticlesPerFire: 6,
-      maxTotalSceneFireSmokeUnits: 33,
-      sprayParticleCount: 40,
-      spraySpawnRateHz: 90,
-      portalSmokeSizeM: 1.05,
-      smokeMaxScale: 1.0,
-      smokeCycleSpeed: 0.75,
-      particleUpdateIntervalSec: 0.05,
-      effectCullDistanceM: 75,
+      smokePuffsPerFire: 1,
+      tallSmokePuffsPerFire: 0,
+      portalSmokeParticlesPerFire: 3,
+      maxTotalSceneFireSmokeUnits: 18,
+      sprayParticleCount: 24,
+      spraySpawnRateHz: 80,
+      portalSmokeSizeM: 0.95,
+      smokeMaxScale: 0.9,
+      smokeCycleSpeed: 0.72,
+      particleUpdateIntervalSec: 0.08,
+      effectCullDistanceM: 65,
       enableFirePointLight: false,
       enablePortalPointLight: false,
       maxActivePointLights: 0,
-      useUnlitPortalGlow: true
+      useUnlitPortalGlow: false
     }
   }
 } as const;
@@ -699,6 +699,6 @@ export const AC40_CAB_CONFIG: Ac40CabConfig = {
     screenWidthM: 0.36,
     screenHeightM: 0.19
   },
-  canvasRefreshMinIntervalMs: 80
+  canvasRefreshMinIntervalMs: 250
 };
 

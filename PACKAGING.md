@@ -39,13 +39,23 @@ npm run preview
 
 ---
 
-## 4. Сборка установочного пакета (Electron)
+## 4. Запуск и сборка установочного пакета (Electron)
 
-В `main.cjs` настроена защищённая схема `app://alara/` (без ограничений `file://` для `fetch('./assembly.glb')` и WebAssembly Draco) и флаги WebXR/OpenXR.
+В `main.cjs` настроена защищённая схема `app://alara/` (без подмены отсутствующего `assembly.glb` на HTML и с поддержкой WASM Draco), `electron/preload.cjs`, доверие к локальному HTTPS-сертификату Vite и флаги WebXR/OpenXR.
 
-```bash
-npm run electron:build
-```
+- Запуск с локальной сборкой `dist/`:
+  ```bash
+  npm run electron
+  ```
+- Запуск в режиме разработки (Vite + Electron):
+  ```bash
+  npm run electron:dev
+  ```
+- Сборка установочного пакета (текущая ОС / Windows):
+  ```bash
+  npm run electron:build
+  npm run dist:win
+  ```
 
 Готовые установщики появятся в каталоге `release/`:
 - **Windows**: `NSIS` инсталлятор (`.exe`) и `portable` версия

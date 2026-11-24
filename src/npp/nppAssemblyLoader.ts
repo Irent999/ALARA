@@ -74,7 +74,11 @@ function getPlainGltfLoader(): GLTFLoader {
   return sharedPlainGltfLoader;
 }
 
-function getCompressedGltfLoader(dracoPath: string, needsDraco: boolean, needsMeshopt: boolean): GLTFLoader {
+async function getCompressedGltfLoader(
+  dracoPath: string,
+  needsDraco: boolean,
+  needsMeshopt: boolean
+): Promise<GLTFLoader> {
   if (needsDraco && (!sharedDracoLoader || sharedDracoDecoderPath !== dracoPath)) {
     if (sharedDracoLoader) {
       sharedDracoLoader.dispose();
@@ -91,6 +95,10 @@ function getCompressedGltfLoader(dracoPath: string, needsDraco: boolean, needsMe
     sharedCompressedGltfLoader.setDRACOLoader(sharedDracoLoader);
   }
   if (needsMeshopt) {
+    const decoderWithReady = MeshoptDecoder as unknown as { ready?: Promise<void> };
+    if (decoderWithReady.ready) {
+      await decoderWithReady.ready;
+    }
     sharedCompressedGltfLoader.setMeshoptDecoder(MeshoptDecoder);
   }
   return sharedCompressedGltfLoader;
@@ -196,7 +204,8 @@ export class NppAssemblyLoader {
     const candidates = [
       this.config.glbUrl,
       `${normalizedBase}assembly.glb`,
-      './assembly.glb'
+      './assembly.glb',
+      '/assembly.glb'
     ];
     return Array.from(new Set(candidates.filter(Boolean)));
   }
@@ -234,6 +243,7 @@ export class NppAssemblyLoader {
       const chunks: Uint8Array[] = [];
       let loadedBytes = 0;
       let lastUiUpdateMs = 0;
+      let streamFailed = false;
 
       try {
         while (true) {
@@ -267,17 +277,32 @@ export class NppAssemblyLoader {
         } catch {
           // ignore
         }
-        console.timeEnd('[ALARA GLB] 1. Скачивание .glb');
-        throw err;
+        if ((err as { name?: string })?.name === 'AbortError' || callbacks?.signal?.aborted) {
+          console.timeEnd('[ALARA GLB] 1. Скачивание .glb');
+          throw err;
+        }
+        console.warn('[ALARA GLB] Потоковое чтение прервалось, пробуем response.arrayBuffer():', err);
+        streamFailed = true;
       }
 
-      const merged = new Uint8Array(loadedBytes);
-      let offset = 0;
-      for (let i = 0; i < chunks.length; i++) {
-        merged.set(chunks[i], offset);
-        offset += chunks[i].byteLength;
+      if (!streamFailed) {
+        const merged = new Uint8Array(loadedBytes);
+        let offset = 0;
+        for (let i = 0; i < chunks.length; i++) {
+          merged.set(chunks[i], offset);
+          offset += chunks[i].byteLength;
+          // Освобождаем ссылки на чанки по мере копирования для снижения пикового расхода памяти
+          chunks[i] = new Uint8Array(0);
+        }
+        arrayBuffer = merged.buffer;
+      } else {
+        const fallbackResp = await fetch(url, { signal: callbacks?.signal });
+        if (!fallbackResp.ok) {
+          console.timeEnd('[ALARA GLB] 1. Скачивание .glb');
+          throw new Error(`HTTP ${fallbackResp.status} при резервном чтении "${url}"`);
+        }
+        arrayBuffer = await fallbackResp.arrayBuffer();
       }
-      arrayBuffer = merged.buffer;
     } else {
       arrayBuffer = await response.arrayBuffer();
     }
@@ -285,17 +310,41 @@ export class NppAssemblyLoader {
     console.timeEnd('[ALARA GLB] 1. Скачивание .glb');
     throwIfAborted(callbacks?.signal);
 
-    if (arrayBuffer.byteLength > 0) {
-      const head = new Uint8Array(arrayBuffer, 0, Math.min(16, arrayBuffer.byteLength));
-      const headAscii = String.fromCharCode(...head).trimStart();
-      if (headAscii.startsWith('<')) {
-        throw new Error(
-          `По пути "${url}" получен HTML вместо бинарного .glb (проверьте public/assembly.glb)`
-        );
-      }
+    if (arrayBuffer.byteLength < 20) {
+      throw new Error(`Файл "${url}" пуст или повреждён (${arrayBuffer.byteLength} байт)`);
+    }
+
+    const head = new Uint8Array(arrayBuffer, 0, Math.min(16, arrayBuffer.byteLength));
+    const headAscii = String.fromCharCode(...head).trimStart();
+    if (headAscii.startsWith('<')) {
+      throw new Error(
+        `По пути "${url}" получен HTML вместо бинарного .glb (проверьте public/assembly.glb)`
+      );
+    }
+
+    const headerMagic = new DataView(arrayBuffer).getUint32(0, true);
+    if (headerMagic !== 0x46546c67) {
+      throw new Error(
+        `Файл "${url}" не является бинарным glTF/GLB (заголовок 0x${headerMagic.toString(16)})`
+      );
     }
 
     return arrayBuffer;
+  }
+
+  private parseBufferWithLoader(
+    loader: GLTFLoader,
+    arrayBuffer: ArrayBuffer,
+    resourcePath: string
+  ): Promise<GLTF> {
+    return new Promise<GLTF>((resolve, reject) => {
+      loader.parse(
+        arrayBuffer,
+        resourcePath,
+        parsed => resolve(parsed),
+        err => reject(err instanceof Error ? err : new Error(String(err)))
+      );
+    });
   }
 
   private async loadViaGltfParse(
@@ -305,11 +354,6 @@ export class NppAssemblyLoader {
     const arrayBuffer = await this.fetchBinaryWithProgress(url, callbacks);
 
     const { needsDraco, needsMeshopt } = inspectGlbDecoderRequirements(arrayBuffer);
-    const loader =
-      needsDraco || needsMeshopt
-        ? getCompressedGltfLoader(this.config.dracoDecoderPath, needsDraco, needsMeshopt)
-        : getPlainGltfLoader();
-
     console.info(`[ALARA GLB] Декодеры: Draco=${needsDraco}, Meshopt=${needsMeshopt}`);
 
     // Единичная уступка кадру, чтобы HUD успел показать "Распаковка" перед парсингом
@@ -323,28 +367,42 @@ export class NppAssemblyLoader {
         : url.substring(0, url.lastIndexOf('/') + 1);
 
     console.time('[ALARA GLB] 2. GLTFLoader.parse');
+    try {
+      let primaryLoader: GLTFLoader;
+      try {
+        primaryLoader =
+          needsDraco || needsMeshopt
+            ? await getCompressedGltfLoader(this.config.dracoDecoderPath, needsDraco, needsMeshopt)
+            : getPlainGltfLoader();
+      } catch (decoderErr) {
+        console.warn('[ALARA GLB] Не удалось инициализировать WASM-декодер, пробуем стандартный GLTFLoader:', decoderErr);
+        primaryLoader = getPlainGltfLoader();
+      }
 
-    const gltf = await new Promise<GLTF>((resolve, reject) => {
-      loader.parse(
-        arrayBuffer,
-        resourcePath,
-        parsed => {
-          resolve(parsed);
-        },
-        err => {
-          reject(err instanceof Error ? err : new Error(String(err)));
+      let gltf: GLTF;
+      try {
+        gltf = await this.parseBufferWithLoader(primaryLoader, arrayBuffer, resourcePath);
+      } catch (parseErr) {
+        if (primaryLoader !== getPlainGltfLoader()) {
+          console.warn('[ALARA GLB] Сбой сжатого GLTFLoader.parse, fallback на стандартный GLTFLoader:', parseErr);
+          gltf = await this.parseBufferWithLoader(getPlainGltfLoader(), arrayBuffer, resourcePath);
+        } else if (!url.startsWith('blob:') && !url.startsWith('data:')) {
+          console.warn('[ALARA GLB] Сбой GLTFLoader.parse, пробуем прямой GLTFLoader.loadAsync:', parseErr);
+          gltf = await getPlainGltfLoader().loadAsync(url);
+        } else {
+          throw parseErr;
         }
-      );
-    }).finally(() => {
+      }
+
+      if (callbacks?.signal?.aborted) {
+        disposeGlbSceneHierarchy(gltf.scene);
+        throwIfAborted(callbacks.signal);
+      }
+
+      return gltf;
+    } finally {
       console.timeEnd('[ALARA GLB] 2. GLTFLoader.parse');
-    });
-
-    if (callbacks?.signal?.aborted) {
-      disposeGlbSceneHierarchy(gltf.scene);
-      throwIfAborted(callbacks.signal);
     }
-
-    return gltf;
   }
 
   /**
@@ -467,14 +525,14 @@ export class NppAssemblyLoader {
 
     let fixedOpacityCount = 0;
 
-    // 2. Пошаговая нормализация с временны́м бюджетом 14 мс (без холостых rAF-пауз)
+    // 2. Пошаговая нормализация с временны́м бюджетом 14 мс (без тяжёлых теней на тысячах мешей .glb)
     for (let i = 0; i < meshCount; i++) {
       const mesh = allMeshes[i];
       mesh.visible = true;
       mesh.frustumCulled = true;
-      mesh.receiveShadow = true;
+      mesh.castShadow = false;
+      mesh.receiveShadow = false;
 
-      let diag = 0;
       if (mesh.geometry) {
         if (!mesh.geometry.boundingBox) {
           mesh.geometry.computeBoundingBox();
@@ -483,14 +541,9 @@ export class NppAssemblyLoader {
           tmpBox.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
           if (!tmpBox.isEmpty()) {
             rawBox.union(tmpBox);
-            tmpBox.getSize(tmpSize);
-            diag = tmpSize.length();
           }
         }
       }
-
-      // Тени только на крупных строительных элементах, без мелких крепёжных деталей
-      mesh.castShadow = meshCount <= 300 || diag >= 1.8;
 
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (let mi = 0; mi < mats.length; mi++) {

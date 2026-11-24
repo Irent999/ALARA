@@ -3291,12 +3291,18 @@ export default function App() {
 
         let sceneVisibleMeshes = 0;
         let envVisibleMeshes = 0;
-        sceneRef.current.traverse(obj => {
-          if ((obj as THREE.Mesh).isMesh && obj.visible) sceneVisibleMeshes += 1;
-        });
-        built.envGroup.traverse(obj => {
-          if ((obj as THREE.Mesh).isMesh && obj.visible) envVisibleMeshes += 1;
-        });
+        if (scen.id !== 4) {
+          sceneRef.current.traverse(obj => {
+            if ((obj as THREE.Mesh).isMesh && obj.visible) sceneVisibleMeshes += 1;
+          });
+          built.envGroup.traverse(obj => {
+            if ((obj as THREE.Mesh).isMesh && obj.visible) envVisibleMeshes += 1;
+          });
+        } else {
+          // В Сценарии №4 не обходим всю 55 МБ сцену синхронно при старте (модель грузится асинхронно)
+          sceneVisibleMeshes = built.envGroup.children.length;
+          envVisibleMeshes = built.envGroup.children.length;
+        }
 
         const hasNanCamera =
           !Number.isFinite(camWorldPos.x) ||

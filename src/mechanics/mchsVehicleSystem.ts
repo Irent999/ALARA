@@ -238,7 +238,6 @@ export class MchsVehicleSystem {
       chassisMat
     );
     chassis.position.set(0, 0.56, 0);
-    chassis.castShadow = true;
     this.vehicleGroup.add(chassis);
 
     const bumper = new THREE.Mesh(
@@ -257,7 +256,6 @@ export class MchsVehicleSystem {
       redPaint
     );
     body.position.set(0, 1.58, -1.05);
-    body.castShadow = true;
     this.vehicleGroup.add(body);
 
     // Белая полоса МЧС только на заднем кузове/цистерне (не заходит внутрь кабины!)
@@ -735,7 +733,7 @@ export class MchsVehicleSystem {
       const movedSq =
         (this.vehiclePos.x - this.lastGroundSampleX) ** 2 +
         (this.vehiclePos.z - this.lastGroundSampleZ) ** 2;
-      if (movedSq >= 0.09) {
+      if (movedSq >= 0.36) {
         this.lastGroundSampleX = this.vehiclePos.x;
         this.lastGroundSampleZ = this.vehiclePos.z;
 

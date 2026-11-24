@@ -219,7 +219,6 @@ export class EmergencyOpsSystem {
       bodyMat
     );
     cabinet.position.set(0, 0.79, -0.36);
-    cabinet.castShadow = true;
 
     const pipe = new THREE.Mesh(
       this.track(new THREE.CylinderGeometry(0.14, 0.14, 1.48, 14)),
