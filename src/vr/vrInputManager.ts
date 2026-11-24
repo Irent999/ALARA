@@ -698,23 +698,30 @@ export class VRInputManager {
     }
   }
 
+  public groundFloorY = 0.0;
+
   /**
-   * Сброс / Калибровка высоты и центра пространственного пространства playerGroup
+   * Сброс / Калибровка высоты и компенсация локального дрейфа playerGroup
    * (вызывается по нажатию на правый стик Thumbstick Press)
    */
-  public calibratePlayerSpace(xrCamera?: THREE.Camera): void {
-    // Сбрасываем вертикальный дрейф к уровню пола local-floor (0.0)
-    this.playerGroup.position.y = 0.0;
+  public calibratePlayerSpace(xrCamera?: THREE.Camera, groundY = this.groundFloorY): void {
+    // Сбрасываем вертикальный дрейф к базовому уровню площадки (0.0 в залах или deckSurfaceY на АЭС)
+    this.playerGroup.position.y = Number.isFinite(groundY) ? groundY : 0.0;
 
-    // Если передана XR-камера, компенсируем локальное горизонтальное смещение гарнитуры относительно центра playerGroup
+    // Если передана XR-камера, компенсируем локальное горизонтальное смещение гарнитуры без сброса в центр координат
     if (xrCamera) {
       const localCamPos = xrCamera.position;
       if (localCamPos.lengthSq() > 0.0001) {
         this.tempCalibOffset.set(localCamPos.x, 0, localCamPos.z);
         this.tempCalibOffset.applyAxisAngle(this.upAxis, this.playerGroup.rotation.y);
-        // Центрируем положение группы игрока плавной калибровкой
-        this.playerGroup.position.x = THREE.MathUtils.clamp(this.playerGroup.position.x, -7.5, 7.5);
-        this.playerGroup.position.z = THREE.MathUtils.clamp(this.playerGroup.position.z, -5.5, 5.5);
+        if (
+          Number.isFinite(this.tempCalibOffset.x) &&
+          Number.isFinite(this.tempCalibOffset.z) &&
+          this.tempCalibOffset.lengthSq() < 16.0
+        ) {
+          this.playerGroup.position.x -= this.tempCalibOffset.x * 0.25;
+          this.playerGroup.position.z -= this.tempCalibOffset.z * 0.25;
+        }
       }
     }
   }

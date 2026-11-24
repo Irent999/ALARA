@@ -346,8 +346,9 @@ export class VisorPostProcessingController {
       (targetExposure - this.currentExposure) * Math.min(1.0, dt * adaptationSpeed);
     this.uniforms.uEyeAdaptationExposure.value = this.currentExposure;
 
-    if (renderer) {
-      renderer.toneMappingExposure = this.currentExposure;
+    if (renderer && !renderer.xr.isPresenting) {
+      // В основном цикле App.tsx уже адаптируется renderer.toneMappingExposure; оставляем uEyeAdaptationExposure для шейдера.
+      void renderer;
     }
   }
 
@@ -406,7 +407,8 @@ export const VisorPostProcessing: React.FC<VisorPostProcessingProps> = ({
     let hasRenderedOnce = false;
     controller.visorMesh.onBeforeRender = () => {
       const nowMs = performance.now();
-      if (hasRenderedOnce && nowMs - lastTimeMs < 2) {
+      // В WebXR стереопаре onBeforeRender вызывается дважды за кадр (левый/правый глаз) — шаг dt делаем только один раз за кадр
+      if (hasRenderedOnce && nowMs - lastTimeMs < 4) {
         return;
       }
       hasRenderedOnce = true;

@@ -328,6 +328,12 @@ export const PBRSceneLighting: React.FC<PBRSceneLightingProps> = ({
     const scene = sceneRef.current;
     if (!scene) return;
 
+    // В Сценарии №4 (открытый комплекс АЭС /assembly.glb) используется собственная уличная атмосфера и дальний туман;
+    // комнатная контактная тень 14×14 м и обход тысяч мешей .glb не требуются и снижают производительность.
+    if (scenarioId === 4) {
+      return;
+    }
+
     const rig = new PBRSceneLightingRig({
       presetId: resolvedPresetId,
       emergencyGlowMultiplier
@@ -355,9 +361,10 @@ export const PBRSceneLighting: React.FC<PBRSceneLightingProps> = ({
       rig.dispose();
       rigRef.current = null;
     };
-  }, [sceneRef, rendererRef]);
+  }, [sceneRef, rendererRef, scenarioId]);
 
   useEffect(() => {
+    if (scenarioId === 4) return;
     if (rigRef.current && sceneRef.current) {
       rigRef.current.applyPresetToScene(
         sceneRef.current,
@@ -366,7 +373,7 @@ export const PBRSceneLighting: React.FC<PBRSceneLightingProps> = ({
         emergencyGlowMultiplier
       );
     }
-  }, [resolvedPresetId, emergencyGlowMultiplier, isLowLightMode, sceneRef, rendererRef]);
+  }, [resolvedPresetId, emergencyGlowMultiplier, isLowLightMode, scenarioId, sceneRef, rendererRef]);
 
   return null;
 };

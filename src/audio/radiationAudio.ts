@@ -310,6 +310,51 @@ export class RadiationAudioEngine {
     } catch {}
   }
 
+  public playBreakerSwitch(): void {
+    if (!this.ctx || this.isMuted) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(75, now + 0.07);
+      gain.gain.setValueAtTime(0.11, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.09);
+    } catch {}
+  }
+
+  public playDieselGeneratorStart(): void {
+    if (!this.ctx || this.isMuted) return;
+    try {
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const filter = this.ctx.createBiquadFilter();
+      const gain = this.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(38, now);
+      osc.frequency.exponentialRampToValueAtTime(68, now + 0.45);
+      osc.frequency.linearRampToValueAtTime(58, now + 0.9);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(240, now);
+
+      gain.gain.setValueAtTime(0.01, now);
+      gain.gain.linearRampToValueAtTime(0.11, now + 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.98);
+    } catch {}
+  }
+
   public playTaskSuccess(): void {
     if (!this.ctx || this.isMuted) return;
     const now = this.ctx.currentTime;

@@ -535,17 +535,45 @@ export const VRManager: React.FC<VRManagerProps> = ({
     controllerGrip1.addEventListener('connected' as never, onConnected as never);
 
     let rafId = 0;
-    const pollLoop = () => {
+    let xrRafId = 0;
+    let xrRafSession: XRSession | null = null;
+    let isUnmounted = false;
+
+    const scheduleNextPoll = () => {
+      if (isUnmounted) return;
       const activeSession = renderer.xr.getSession?.() ?? null;
-      if (activeSession) {
-        poller.update(activeSession);
+      if (renderer.xr.isPresenting && activeSession && typeof activeSession.requestAnimationFrame === 'function') {
+        xrRafSession = activeSession;
+        xrRafId = activeSession.requestAnimationFrame(() => {
+          if (isUnmounted) return;
+          const currentSession = renderer.xr.getSession?.() ?? null;
+          if (currentSession) {
+            poller.update(currentSession);
+          }
+          scheduleNextPoll();
+        });
+      } else {
+        xrRafSession = null;
+        rafId = window.requestAnimationFrame(() => {
+          if (isUnmounted) return;
+          const currentSession = renderer.xr.getSession?.() ?? null;
+          if (currentSession) {
+            poller.update(currentSession);
+          }
+          scheduleNextPoll();
+        });
       }
-      rafId = window.requestAnimationFrame(pollLoop);
     };
-    rafId = window.requestAnimationFrame(pollLoop);
+    scheduleNextPoll();
 
     return () => {
+      isUnmounted = true;
       window.cancelAnimationFrame(rafId);
+      if (xrRafSession && xrRafId && typeof xrRafSession.cancelAnimationFrame === 'function') {
+        try {
+          xrRafSession.cancelAnimationFrame(xrRafId);
+        } catch {}
+      }
       renderer.xr.removeEventListener('sessionstart', syncSession);
       renderer.xr.removeEventListener('sessionend', syncSession);
       controllerGrip0.removeEventListener('connected' as never, onConnected as never);

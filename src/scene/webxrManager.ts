@@ -25,7 +25,6 @@
  */
 
 import * as THREE from 'three';
-import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { RealisticHumanHandRig, HazmatHandRig, VRFlashlight } from './handModel';
 import type { InstrumentId } from '../instruments/gostInstruments';
 import type { RemoteToolId } from '../physics/gostPhysics';
@@ -398,11 +397,20 @@ export class WebXRManager {
   public lastEffectiveHapticIntensity = 0.0;
   private draggingUiControllerIdx: number | null = null;
   private isDisposed = false;
+  public groundFloorY = 0.0;
   private readonly cleanupCallbacks: Array<() => void> = [];
   private attachedSession: XRSession | null = null;
   private readonly tempCamPos = new THREE.Vector3();
   private readonly tempCamDir = new THREE.Vector3();
   private readonly tempCamQuat = new THREE.Quaternion();
+
+  public setGroundFloorY(floorY: number): void {
+    const safeY = Number.isFinite(floorY) ? floorY : 0.0;
+    this.groundFloorY = safeY;
+    if (this.vrInputManager) {
+      this.vrInputManager.groundFloorY = safeY;
+    }
+  }
 
   private readonly onRendererSessionStart = (): void => {
     this.isInVR = true;
@@ -410,8 +418,9 @@ export class WebXRManager {
     this.xrSession = session;
     this.attachXRSessionListeners(session);
 
-    // Сброс Y-координаты группы игрока под аппаратный уровень пола гарнитуры (для local/viewer — 1.65м)
-    this.playerGroup.position.y = this.activeReferenceSpaceType === 'local-floor' ? 0.0 : 1.65;
+    // Сброс Y-координаты группы игрока под аппаратный уровень пола площадки (для local/viewer — +1.65м)
+    const baseOffset = this.activeReferenceSpaceType === 'local-floor' ? 0.0 : 1.65;
+    this.playerGroup.position.y = this.groundFloorY + baseOffset;
     this.syncTrackedHandMetaFromSession();
     this.syncHandRigVisibility();
 
@@ -967,18 +976,16 @@ export class WebXRManager {
   }
 
   public createVRButton(): HTMLElement {
-    const rawBtn = VRButton.createButton(this.renderer);
-    // Клонируем элемент без Three.js дефолтных onclick/listeners, чтобы исключить конфликты и InvalidStateError
-    const btn = rawBtn.cloneNode(true) as HTMLElement;
+    const btn = document.createElement('button');
+    btn.type = 'button';
     btn.id = 'three-vr-button';
     btn.style.position = 'fixed';
     btn.style.bottom = '14px';
     btn.style.left = '14px';
     btn.style.transform = 'none';
     btn.style.zIndex = '45';
-    btn.style.backgroundColor = 'rgba(11, 17, 23, 0.82)';
-    btn.style.backdropFilter = 'blur(12px)';
-    btn.style.border = '1px solid rgba(148, 163, 184, 0.16)';
+    btn.style.backgroundColor = 'rgba(11, 17, 23, 0.92)';
+    btn.style.border = '1px solid rgba(148, 163, 184, 0.22)';
     btn.style.borderRadius = '10px';
     btn.style.padding = '7px 12px';
     btn.style.fontFamily = "'JetBrains Mono', monospace";
@@ -988,8 +995,8 @@ export class WebXRManager {
     btn.style.letterSpacing = '0.03em';
     btn.style.cursor = 'pointer';
     btn.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.45)';
-    btn.style.transition = 'all 0.2s ease';
-    btn.textContent = 'ВОЙТИ В VR (HTC VIVE)';
+    btn.style.transition = 'border-color 0.2s ease, color 0.2s ease';
+    btn.textContent = 'ПРОВЕРКА VR (HTC VIVE)...';
 
     btn.onclick = async (e: MouseEvent) => {
       e.preventDefault();
@@ -999,20 +1006,30 @@ export class WebXRManager {
     };
 
     this.vrButtonElement = btn;
+    this.updateVRButtonText(btn);
+    void this.checkXRSupport();
     return btn;
   }
 
   public updateVRButtonText(btn?: HTMLElement): void {
     const target = btn || this.vrButtonElement;
-    if (target) {
-      target.style.display = this.isInVR ? 'none' : 'block';
-      target.textContent = this.isInVR
-        ? 'ВЫЙТИ ИЗ VR'
-        : 'ВОЙТИ В VR (HTC VIVE)';
-      target.style.borderColor = this.isInVR
-        ? 'rgba(239, 68, 68, 0.6)'
-        : 'rgba(14, 165, 233, 0.35)';
-      target.style.color = this.isInVR ? '#EF4444' : '#F59E0B';
+    if (!target) return;
+    target.style.display = this.isInVR ? 'none' : 'block';
+    if (this.isInVR) {
+      target.textContent = 'ВЫЙТИ ИЗ VR';
+      target.style.borderColor = 'rgba(239, 68, 68, 0.6)';
+      target.style.color = '#EF4444';
+      target.title = 'Завершить активную WebXR-сессию';
+    } else if (this.isSupported) {
+      target.textContent = 'ВОЙТИ В VR (HTC VIVE)';
+      target.style.borderColor = 'rgba(14, 165, 233, 0.45)';
+      target.style.color = '#F59E0B';
+      target.title = 'Запустить WebXR-режим для гарнитуры HTC Vive / OpenXR';
+    } else {
+      target.textContent = 'VR НЕ ОБНАРУЖЕН (ПК)';
+      target.style.borderColor = 'rgba(148, 163, 184, 0.25)';
+      target.style.color = '#94A3B8';
+      target.title = 'Гарнитура WebXR/OpenXR не обнаружена; активен режим ПК';
     }
   }
 
@@ -1026,6 +1043,7 @@ export class WebXRManager {
     } else {
       this.isSupported = false;
     }
+    this.updateVRButtonText();
     return this.isSupported;
   }
 
@@ -1450,8 +1468,9 @@ export class WebXRManager {
       this.tempArcPoint.addScaledVector(this.tempArcVelocity, stepDt);
       this.tempArcVelocity.y -= 9.81 * stepDt;
 
-      if (this.tempArcPoint.y <= 0.02 && !foundFloorHit) {
-        this.tempHitFloorPoint.set(this.tempArcPoint.x, 0.02, this.tempArcPoint.z);
+      const floorThresholdY = this.groundFloorY + 0.02;
+      if (this.tempArcPoint.y <= floorThresholdY && !foundFloorHit) {
+        this.tempHitFloorPoint.set(this.tempArcPoint.x, floorThresholdY, this.tempArcPoint.z);
         foundFloorHit = true;
       }
     }
@@ -1751,7 +1770,7 @@ export class WebXRManager {
         });
 
         const resolvedSpace = await this.resolveReferenceSpaceWithFallback(session);
-        this.playerGroup.position.y = resolvedSpace === 'local-floor' ? 0.0 : 1.65;
+        this.playerGroup.position.y = this.groundFloorY + (resolvedSpace === 'local-floor' ? 0.0 : 1.65);
 
         this.xrSession = session;
         await this.renderer.xr.setSession(session);

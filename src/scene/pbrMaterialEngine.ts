@@ -826,18 +826,17 @@ export function createGaussianPlumeAerosolCloud(
   plumeSystem.rootGroup.position.set(-radiusX * 0.65, 0, 0);
   cloudGroup.add(plumeSystem.rootGroup);
 
+  const puffGeo = new THREE.SphereGeometry(1.0, 14, 10);
+  const puffMat = new THREE.MeshStandardMaterial({
+    color: colorHex,
+    transparent: true,
+    opacity: 0.09,
+    roughness: 0.95,
+    metalness: 0.0,
+    depthWrite: false
+  });
   for (let i = 0; i < 5; i++) {
     const scale = 0.55 + (i / 5) * 0.6;
-    const puffGeo = new THREE.SphereGeometry(1.0, 18, 14);
-    const puffMat = new THREE.MeshPhysicalMaterial({
-      color: colorHex,
-      transparent: true,
-      opacity: Math.max(0.03, 0.11 - i * 0.015),
-      roughness: 0.9,
-      transmission: 0.45,
-      thickness: 0.8,
-      depthWrite: false
-    });
     const puff = new THREE.Mesh(puffGeo, puffMat);
     puff.scale.set(radiusX * scale, radiusY * (0.6 + (i % 3) * 0.2), radiusZ * scale);
     puff.position.set(

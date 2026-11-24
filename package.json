@@ -13,7 +13,9 @@
     "preview": "vite preview --port=3000 --host=0.0.0.0",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "electron:build": "vite build && electron-builder"
+    "typecheck": "tsc --noEmit",
+    "build:release": "tsc --noEmit && vite build",
+    "electron:build": "tsc --noEmit && vite build && electron-builder"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans": "^5.3.0",

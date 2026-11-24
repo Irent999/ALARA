@@ -191,12 +191,12 @@ export class NppAssemblyLoader {
   private buildCandidateUrls(customUrl?: string): string[] {
     if (customUrl) return [customUrl];
 
-    const rawBase = import.meta.env?.BASE_URL ?? '/';
+    const rawBase = import.meta.env?.BASE_URL ?? './';
     const normalizedBase = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
     const candidates = [
       this.config.glbUrl,
       `${normalizedBase}assembly.glb`,
-      '/assembly.glb'
+      './assembly.glb'
     ];
     return Array.from(new Set(candidates.filter(Boolean)));
   }

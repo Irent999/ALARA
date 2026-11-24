@@ -134,21 +134,39 @@ export class EmergencyOpsSystem {
       })
     );
 
+    const basePlate = new THREE.Mesh(
+      this.track(new THREE.CylinderGeometry(0.28, 0.32, 0.06, 16)),
+      metalMat
+    );
+    basePlate.position.y = 0.03;
+
     const pole = new THREE.Mesh(
-      this.track(new THREE.CylinderGeometry(0.05, 0.08, 1.35, 10)),
+      this.track(new THREE.CylinderGeometry(0.045, 0.065, 1.32, 12)),
       metalMat
     );
     pole.position.y = 0.68;
+
     const head = new THREE.Mesh(
-      this.track(new THREE.BoxGeometry(0.32, 0.24, 0.22)),
+      this.track(new THREE.BoxGeometry(0.36, 0.26, 0.22)),
       yellowMat
     );
     head.position.y = 1.42;
+
+    const screenMat = this.track(
+      new THREE.MeshBasicMaterial({ color: 0x0f172a })
+    );
+    const screen = new THREE.Mesh(
+      this.track(new THREE.BoxGeometry(0.24, 0.12, 0.02)),
+      screenMat
+    );
+    screen.position.set(0, 1.44, 0.11);
+
     const led = new THREE.Mesh(
-      this.track(new THREE.SphereGeometry(0.08, 10, 10)),
+      this.track(new THREE.SphereGeometry(0.075, 10, 10)),
       ledMat
     );
     led.position.y = 1.62;
+
     const ring = new THREE.Mesh(
       this.track(new THREE.RingGeometry(0.85, 1.05, 28)),
       ringMat
@@ -156,7 +174,7 @@ export class EmergencyOpsSystem {
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.03;
 
-    g.add(pole, head, led, ring);
+    g.add(basePlate, pole, head, screen, led, ring);
     this.rootGroup.add(g);
     return { ringMat, ledMat };
   }
@@ -169,13 +187,16 @@ export class EmergencyOpsSystem {
     g.position.copy(this.loopIsolationPos);
 
     const pipeMat = this.track(
-      new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.35, metalness: 0.8 })
+      new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.32, metalness: 0.82 })
     );
     const bodyMat = this.track(
       new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5, metalness: 0.65 })
     );
     const redWheelMat = this.track(
-      new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.38, metalness: 0.35 })
+      new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.36, metalness: 0.35 })
+    );
+    const dialMat = this.track(
+      new THREE.MeshBasicMaterial({ color: 0xf8fafc })
     );
     const ledMat = this.track(
       new THREE.MeshStandardMaterial({
@@ -194,38 +215,63 @@ export class EmergencyOpsSystem {
     );
 
     const cabinet = new THREE.Mesh(
-      this.track(new THREE.BoxGeometry(0.82, 1.55, 0.54)),
+      this.track(new THREE.BoxGeometry(0.86, 1.58, 0.54)),
       bodyMat
     );
-    cabinet.position.set(0, 0.78, -0.35);
+    cabinet.position.set(0, 0.79, -0.36);
     cabinet.castShadow = true;
 
     const pipe = new THREE.Mesh(
-      this.track(new THREE.CylinderGeometry(0.14, 0.14, 1.4, 12)),
+      this.track(new THREE.CylinderGeometry(0.14, 0.14, 1.48, 14)),
       pipeMat
     );
-    pipe.position.set(0, 0.7, 0.05);
+    pipe.position.set(0, 0.74, 0.05);
+
+    const flangeGeo = this.track(new THREE.CylinderGeometry(0.21, 0.21, 0.06, 16));
+    const flangeLow = new THREE.Mesh(flangeGeo, pipeMat);
+    flangeLow.position.set(0, 0.38, 0.05);
+    const flangeHigh = new THREE.Mesh(flangeGeo, pipeMat);
+    flangeHigh.position.set(0, 1.15, 0.05);
+
+    const stemPipe = new THREE.Mesh(
+      this.track(new THREE.CylinderGeometry(0.05, 0.05, 0.24, 10)),
+      pipeMat
+    );
+    stemPipe.rotation.x = Math.PI / 2;
+    stemPipe.position.set(0, 1.15, 0.14);
+
+    const gaugeCase = new THREE.Mesh(
+      this.track(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 16)),
+      pipeMat
+    );
+    gaugeCase.rotation.x = Math.PI / 2;
+    gaugeCase.position.set(0.24, 1.38, -0.08);
+    const gaugeDial = new THREE.Mesh(
+      this.track(new THREE.CircleGeometry(0.075, 16)),
+      dialMat
+    );
+    gaugeDial.position.set(0.24, 1.38, -0.05);
 
     const wheelRim = new THREE.Mesh(
-      this.track(new THREE.TorusGeometry(0.28, 0.038, 10, 20)),
+      this.track(new THREE.TorusGeometry(0.28, 0.038, 10, 22)),
       redWheelMat
     );
     const spokeA = new THREE.Mesh(
-      this.track(new THREE.BoxGeometry(0.54, 0.04, 0.04)),
+      this.track(new THREE.BoxGeometry(0.54, 0.042, 0.042)),
       redWheelMat
     );
     const spokeB = new THREE.Mesh(
-      this.track(new THREE.BoxGeometry(0.04, 0.54, 0.04)),
+      this.track(new THREE.BoxGeometry(0.042, 0.54, 0.042)),
       redWheelMat
     );
     this.valveWheelGroup.add(wheelRim, spokeA, spokeB);
-    this.valveWheelGroup.position.set(0, 1.15, 0.24);
+    this.valveWheelGroup.position.set(0, 1.15, 0.26);
 
     const led = new THREE.Mesh(
       this.track(new THREE.SphereGeometry(0.08, 10, 10)),
       ledMat
     );
-    led.position.set(0, 1.65, -0.2);
+    led.position.set(0, 1.66, -0.2);
 
     const ring = new THREE.Mesh(
       this.track(new THREE.RingGeometry(0.75, 0.95, 28)),
@@ -234,7 +280,7 @@ export class EmergencyOpsSystem {
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.03;
 
-    g.add(cabinet, pipe, this.valveWheelGroup, led, ring);
+    g.add(cabinet, pipe, flangeLow, flangeHigh, stemPipe, gaugeCase, gaugeDial, this.valveWheelGroup, led, ring);
     this.rootGroup.add(g);
     return { ringMat, ledMat };
   }
@@ -247,16 +293,22 @@ export class EmergencyOpsSystem {
     g.position.copy(this.casualtyTriagePos);
 
     const suitMat = this.track(
-      new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.6, metalness: 0.1 })
+      new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.58, metalness: 0.08 })
+    );
+    const stripeMat = this.track(
+      new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.3, metalness: 0.2, emissive: 0x334155, emissiveIntensity: 0.2 })
     );
     const darkMat = this.track(
-      new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.7 })
+      new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.72 })
     );
     const helmetMat = this.track(
-      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.35 })
+      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.32 })
     );
     const medBagMat = this.track(
       new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.45 })
+    );
+    const oxygenMat = this.track(
+      new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3, metalness: 0.55 })
     );
     const maskMat = this.track(
       new THREE.MeshStandardMaterial({
@@ -275,42 +327,79 @@ export class EmergencyOpsSystem {
     );
 
     const matPad = new THREE.Mesh(
-      this.track(new THREE.BoxGeometry(0.95, 0.08, 1.85)),
+      this.track(new THREE.BoxGeometry(0.98, 0.07, 1.92)),
       darkMat
     );
-    matPad.position.y = 0.04;
+    matPad.position.y = 0.035;
 
     const torso = new THREE.Mesh(
-      this.track(new THREE.BoxGeometry(0.42, 0.24, 0.66)),
+      this.track(new THREE.CapsuleGeometry(0.18, 0.36, 6, 12)),
       suitMat
     );
-    torso.position.set(0, 0.2, -0.05);
+    torso.rotation.x = Math.PI / 2;
+    torso.scale.set(1.2, 1.0, 0.68);
+    torso.position.set(0, 0.19, -0.02);
+
+    const vestStripe = new THREE.Mesh(
+      this.track(new THREE.BoxGeometry(0.42, 0.14, 0.08)),
+      stripeMat
+    );
+    vestStripe.position.set(0, 0.22, -0.04);
+
+    const shoulderGeo = this.track(new THREE.CapsuleGeometry(0.065, 0.32, 4, 8));
+    const armL = new THREE.Mesh(shoulderGeo, suitMat);
+    armL.rotation.x = Math.PI / 2;
+    armL.rotation.z = 0.18;
+    armL.position.set(-0.26, 0.15, 0.06);
+    const armR = new THREE.Mesh(shoulderGeo, suitMat);
+    armR.rotation.x = Math.PI / 2;
+    armR.rotation.z = -0.18;
+    armR.position.set(0.26, 0.15, 0.06);
 
     const head = new THREE.Mesh(
-      this.track(new THREE.SphereGeometry(0.14, 14, 12)),
+      this.track(new THREE.SphereGeometry(0.135, 14, 12)),
       helmetMat
     );
-    head.position.set(0, 0.24, -0.48);
+    head.position.set(0, 0.23, -0.45);
 
-    const legGeo = this.track(new THREE.CylinderGeometry(0.08, 0.07, 0.62, 10));
+    const visor = new THREE.Mesh(
+      this.track(new THREE.BoxGeometry(0.16, 0.07, 0.06)),
+      darkMat
+    );
+    visor.position.set(0, 0.29, -0.47);
+
+    const legGeo = this.track(new THREE.CapsuleGeometry(0.072, 0.44, 4, 10));
     legGeo.rotateX(Math.PI / 2);
     const legL = new THREE.Mesh(legGeo, suitMat);
-    legL.position.set(-0.12, 0.16, 0.55);
+    legL.position.set(-0.12, 0.15, 0.54);
     const legR = new THREE.Mesh(legGeo, suitMat);
-    legR.position.set(0.12, 0.16, 0.55);
+    legR.position.set(0.12, 0.15, 0.54);
+
+    const bootGeo = this.track(new THREE.BoxGeometry(0.10, 0.12, 0.18));
+    const bootL = new THREE.Mesh(bootGeo, darkMat);
+    bootL.position.set(-0.12, 0.12, 0.86);
+    const bootR = new THREE.Mesh(bootGeo, darkMat);
+    bootR.position.set(0.12, 0.12, 0.86);
 
     const maskMesh = new THREE.Mesh(
-      this.track(new THREE.BoxGeometry(0.14, 0.1, 0.14)),
+      this.track(new THREE.CylinderGeometry(0.055, 0.07, 0.09, 12)),
       maskMat
     );
-    maskMesh.position.set(0, 0.3, -0.56);
+    maskMesh.position.set(0, 0.31, -0.52);
     maskMesh.visible = false;
 
     const medBag = new THREE.Mesh(
-      this.track(new THREE.BoxGeometry(0.32, 0.22, 0.22)),
+      this.track(new THREE.BoxGeometry(0.34, 0.22, 0.22)),
       medBagMat
     );
-    medBag.position.set(0.45, 0.15, -0.2);
+    medBag.position.set(0.46, 0.15, -0.22);
+
+    const o2Bottle = new THREE.Mesh(
+      this.track(new THREE.CylinderGeometry(0.065, 0.065, 0.42, 12)),
+      oxygenMat
+    );
+    o2Bottle.rotation.x = Math.PI / 2;
+    o2Bottle.position.set(0.46, 0.12, 0.12);
 
     const ring = new THREE.Mesh(
       this.track(new THREE.RingGeometry(0.88, 1.08, 28)),
@@ -319,7 +408,7 @@ export class EmergencyOpsSystem {
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.03;
 
-    g.add(matPad, torso, head, legL, legR, maskMesh, medBag, ring);
+    g.add(matPad, torso, vestStripe, armL, armR, head, visor, legL, legR, bootL, bootR, maskMesh, medBag, o2Bottle, ring);
     this.rootGroup.add(g);
     return { ringMat, maskMesh };
   }

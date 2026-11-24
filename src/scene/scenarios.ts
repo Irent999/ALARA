@@ -190,24 +190,36 @@ function createBoratedParaffinWall(): THREE.Group {
  */
 function createContaminationSpillMesh(colorHex = 0x84cc16): THREE.Group {
   const group = new THREE.Group();
+  const stainMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.35,
+    metalness: 0.05,
+    transparent: true,
+    opacity: 0.42,
+    depthWrite: false
+  });
+  const outerStain = new THREE.Mesh(new THREE.CylinderGeometry(0.84, 0.88, 0.008, 28), stainMat);
+  outerStain.position.y = 0.006;
+  group.add(outerStain);
+
   const puddleMat = new THREE.MeshStandardMaterial({
     color: colorHex,
     emissive: colorHex,
-    emissiveIntensity: 0.45,
-    roughness: 0.25,
-    metalness: 0.1,
+    emissiveIntensity: 0.36,
+    roughness: 0.12,
+    metalness: 0.2,
     transparent: true,
-    opacity: 0.86
+    opacity: 0.84
   });
 
-  const mainDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.74, 0.025, 28), puddleMat);
-  mainDisc.position.y = 0.015;
+  const mainDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.74, 0.02, 28), puddleMat);
+  mainDisc.position.y = 0.014;
   group.add(mainDisc);
 
-  const lobe1 = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.022, 18), puddleMat);
-  lobe1.position.set(0.45, 0.013, 0.22);
-  const lobe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.30, 0.022, 18), puddleMat);
-  lobe2.position.set(-0.38, 0.013, -0.28);
+  const lobe1 = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.018, 18), puddleMat);
+  lobe1.position.set(0.45, 0.012, 0.22);
+  const lobe2 = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.30, 0.018, 18), puddleMat);
+  lobe2.position.set(-0.38, 0.012, -0.28);
   group.add(lobe1, lobe2);
 
   // Горка сорбента / песка (постепенно проявляется при засыпке лопатой БСЛ-110)
@@ -218,7 +230,7 @@ function createContaminationSpillMesh(colorHex = 0x84cc16): THREE.Group {
     transparent: true,
     opacity: 0.0
   });
-  const sorbentMound = new THREE.Mesh(new THREE.ConeGeometry(0.72, 0.22, 24), sorbentMat);
+  const sorbentMound = new THREE.Mesh(new THREE.ConeGeometry(0.76, 0.24, 24), sorbentMat);
   sorbentMound.position.y = 0.02;
   sorbentMound.scale.set(1, 0.05, 1);
   sorbentMound.visible = false;
@@ -226,7 +238,7 @@ function createContaminationSpillMesh(colorHex = 0x84cc16): THREE.Group {
 
   group.userData = {
     ...group.userData,
-    puddleMeshes: [mainDisc, lobe1, lobe2],
+    puddleMeshes: [mainDisc, lobe1, lobe2, outerStain],
     puddleMat,
     sorbentMound,
     sorbentMat,
@@ -240,49 +252,88 @@ function createContaminationSpillMesh(colorHex = 0x84cc16): THREE.Group {
  */
 function createExposedFuelPinMesh(): THREE.Group {
   const group = new THREE.Group();
-  const metalMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.88, roughness: 0.25 });
+  const metalMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.88, roughness: 0.24 });
+  const darkMetalMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.85, roughness: 0.32 });
   const glowMat = new THREE.MeshStandardMaterial({
     color: 0x38bdf8,
     emissive: 0x0ea5e9,
-    emissiveIntensity: 1.4,
-    roughness: 0.2
+    emissiveIntensity: 1.35,
+    roughness: 0.18
   });
-  const collarMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35 });
+  const collarMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.35, metalness: 0.25 });
 
-  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.34, 18), metalMat);
+  const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.36, 18), metalMat);
   rod.rotation.z = Math.PI / 2;
   rod.castShadow = true;
   group.add(rod);
 
-  const coreSlot = new THREE.Mesh(new THREE.CylinderGeometry(0.031, 0.031, 0.14, 18), glowMat);
+  // Концевые циркониевые заглушки
+  const capGeo = new THREE.ConeGeometry(0.026, 0.045, 14);
+  const capL = new THREE.Mesh(capGeo, darkMetalMat);
+  capL.rotation.z = Math.PI / 2;
+  capL.position.x = -0.20;
+  const capR = new THREE.Mesh(capGeo, darkMetalMat);
+  capR.rotation.z = -Math.PI / 2;
+  capR.position.x = 0.20;
+  group.add(capL, capR);
+
+  const coreSlot = new THREE.Mesh(new THREE.CylinderGeometry(0.029, 0.029, 0.14, 18), glowMat);
   coreSlot.rotation.z = Math.PI / 2;
   group.add(coreSlot);
 
-  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.04, 16), collarMat);
-  collar.rotation.z = Math.PI / 2;
-  collar.position.x = 0.11;
-  group.add(collar);
+  // Дистанционирующие кольца решётки ТВС
+  const ringGeo = new THREE.TorusGeometry(0.031, 0.005, 8, 18);
+  for (const xOff of [-0.11, 0.0, 0.11]) {
+    const ring = new THREE.Mesh(ringGeo, xOff === 0.11 ? collarMat : darkMetalMat);
+    ring.rotation.y = Math.PI / 2;
+    ring.position.x = xOff;
+    group.add(ring);
+  }
 
   return group;
 }
 
 /**
- * Создаёт повреждённую бочку РАО с утечкой
+ * Создаёт повреждённую бочку РАО с утечкой и рёбрами жёсткости
  */
 function createDamagedRaoDrumMesh(): THREE.Group {
   const group = new THREE.Group();
   const drumMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.42, metalness: 0.45 });
-  const dentMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7, metalness: 0.35 });
+  const dentMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.65, metalness: 0.45 });
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.35, metalness: 0.78 });
 
   const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.56, 22), drumMat);
   body.position.y = 0.28;
   body.castShadow = true;
   group.add(body);
 
-  const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.05, 22), dentMat);
+  // Закатные рёбра жёсткости бочки (200 л стандарт)
+  const ribGeo = new THREE.TorusGeometry(0.244, 0.013, 8, 22);
+  for (const ribY of [0.17, 0.39]) {
+    const rib = new THREE.Mesh(ribGeo, rimMat);
+    rib.rotation.x = Math.PI / 2;
+    rib.position.y = ribY;
+    group.add(rib);
+  }
+
+  const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.045, 22), dentMat);
   lid.position.set(0.03, 0.56, 0);
   lid.rotation.z = 0.12;
   group.add(lid);
+
+  const clampRing = new THREE.Mesh(new THREE.TorusGeometry(0.254, 0.012, 8, 22), rimMat);
+  clampRing.rotation.x = Math.PI / 2;
+  clampRing.position.set(0.03, 0.545, 0);
+  clampRing.rotation.y = 0.12;
+  group.add(clampRing);
+
+  // Следы подтёка у основания
+  const leakPuddle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.32, 0.34, 0.008, 18),
+    new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.18, transparent: true, opacity: 0.68 })
+  );
+  leakPuddle.position.set(0.04, 0.005, 0.06);
+  group.add(leakPuddle);
 
   const badge = new THREE.Mesh(
     new THREE.PlaneGeometry(0.28, 0.14),
@@ -290,43 +341,81 @@ function createDamagedRaoDrumMesh(): THREE.Group {
       map: createEquipmentLabelTexture('РАО 200л', 'ПОВРЕЖДЕНИЕ', '#451a03', '#facc15')
     })
   );
-  badge.position.set(0, 0.30, 0.245);
+  badge.position.set(0, 0.28, 0.246);
   group.add(badge);
 
   return group;
 }
 
 /**
- * Создаёт манекен пострадавшего оператора в СИЗ для эвакуации в безопасную зону
+ * Создаёт манекен пострадавшего оператора в СИЗ и с баллоном АСВ-2 для эвакуации
  */
 function createInjuredOperatorMesh(): THREE.Group {
   const group = new THREE.Group();
-  const suitMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.55, metalness: 0.1 });
-  const visorMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.2, metalness: 0.6 });
-  const bootMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
+  const suitMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.52, metalness: 0.08 });
+  const vestReflectMat = new THREE.MeshStandardMaterial({
+    color: 0xfef08a,
+    emissive: 0xca8a04,
+    emissiveIntensity: 0.18,
+    roughness: 0.32
+  });
+  const helmetMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.28, metalness: 0.12 });
+  const visorMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.14, metalness: 0.65 });
+  const bootMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.78 });
+  const tankMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.3, metalness: 0.55 });
 
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.22, 0.62), suitMat);
-  torso.position.set(0, 0.14, 0);
+  // Торс (капсула в положении лёжа) + светоотражающая полоса МЧС
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.36, 6, 14), suitMat);
+  torso.rotation.x = Math.PI / 2;
+  torso.position.set(0, 0.17, 0.02);
   torso.castShadow = true;
   group.add(torso);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16), suitMat);
-  head.position.set(0, 0.16, -0.42);
+  const vestBand = new THREE.Mesh(new THREE.CylinderGeometry(0.176, 0.176, 0.11, 14), vestReflectMat);
+  vestBand.rotation.x = Math.PI / 2;
+  vestBand.position.set(0, 0.175, -0.04);
+  group.add(vestBand);
+
+  // Каска и забрало
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.125, 16, 14), helmetMat);
+  head.position.set(0, 0.18, -0.39);
+  head.castShadow = true;
   group.add(head);
 
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.08, 0.06), visorMat);
-  visor.position.set(0, 0.24, -0.45);
+  const visor = new THREE.Mesh(new THREE.SphereGeometry(0.105, 14, 10, 0, Math.PI, 0, Math.PI * 0.55), visorMat);
+  visor.position.set(0, 0.21, -0.40);
+  visor.rotation.x = -0.35;
   group.add(visor);
 
-  const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.58, 12), suitMat);
+  // Руки
+  const armGeo = new THREE.CapsuleGeometry(0.055, 0.34, 4, 10);
+  const armL = new THREE.Mesh(armGeo, suitMat);
+  armL.rotation.x = Math.PI / 2;
+  armL.rotation.z = 0.22;
+  armL.position.set(-0.24, 0.13, 0.06);
+  const armR = new THREE.Mesh(armGeo, suitMat);
+  armR.rotation.x = Math.PI / 2;
+  armR.rotation.z = -0.22;
+  armR.position.set(0.24, 0.13, 0.06);
+  group.add(armL, armR);
+
+  // Кислородный баллон АСВ-2 сбоку на поясе
+  const airTank = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.34, 12), tankMat);
+  airTank.rotation.x = Math.PI / 2;
+  airTank.position.set(0.18, 0.24, -0.08);
+  group.add(airTank);
+
+  // Ноги и ботинки
+  const legGeo = new THREE.CapsuleGeometry(0.072, 0.44, 4, 10);
+  const legL = new THREE.Mesh(legGeo, suitMat);
   legL.rotation.x = Math.PI / 2;
-  legL.position.set(-0.11, 0.10, 0.58);
+  legL.position.set(-0.11, 0.10, 0.54);
   const legR = legL.clone();
   legR.position.x = 0.11;
   group.add(legL, legR);
 
-  const bootL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 0.18), bootMat);
-  bootL.position.set(-0.11, 0.08, 0.88);
+  const bootL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.19), bootMat);
+  bootL.position.set(-0.11, 0.08, 0.86);
   const bootR = bootL.clone();
   bootR.position.x = 0.11;
   group.add(bootL, bootR);
@@ -875,38 +964,62 @@ export const SCENARIOS: ScenarioDefinition[] = [
         isFireExtinguished: false
       };
 
-      // 1. Силовой шкаф-рубильник 6 кВ (слева)
+      // 1. Силовой шкаф-рубильник 6 кВ (слева) с цоколем, приборами контроля и рукояткой
       const breakerGroup = new THREE.Group();
       breakerGroup.position.set(-3.8, 0, -1.4);
+      const darkSteelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5, metalness: 0.72 });
+      const plinth = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.10, 0.68), darkSteelMat);
+      plinth.position.y = 0.05;
+      breakerGroup.add(plinth);
+
       const cabinet = new THREE.Mesh(
-        new THREE.BoxGeometry(0.85, 1.95, 0.62),
-        new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.45, metalness: 0.65 })
+        new THREE.BoxGeometry(0.85, 1.88, 0.62),
+        new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.44, metalness: 0.65 })
       );
-      cabinet.position.y = 0.975;
+      cabinet.position.y = 1.04;
       cabinet.castShadow = true;
       breakerGroup.add(cabinet);
 
+      const doorInset = new THREE.Mesh(
+        new THREE.BoxGeometry(0.74, 1.48, 0.03),
+        new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.42, metalness: 0.6 })
+      );
+      doorInset.position.set(0, 1.02, 0.305);
+      breakerGroup.add(doorInset);
+
+      const meterFace = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.24, 0.16),
+        new THREE.MeshBasicMaterial({ map: createEquipmentLabelTexture('6.0 кВ', 'ТОК 420 А', '#020617', '#38bdf8') })
+      );
+      meterFace.position.set(-0.16, 1.38, 0.326);
+      breakerGroup.add(meterFace);
+
       const breakerSign = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.72, 0.28),
+        new THREE.PlaneGeometry(0.72, 0.26),
         new THREE.MeshBasicMaterial({
           map: createEquipmentLabelTexture('РУБИЛЬНИК 6 кВ', 'ОТКЛЮЧИТЬ ПИТАНИЕ', '#0f172a', '#ef4444')
         })
       );
-      breakerSign.position.set(0, 1.62, 0.32);
+      breakerSign.position.set(0, 1.72, 0.326);
       breakerGroup.add(breakerSign);
 
+      const breakerHandleCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.08, 12), darkSteelMat);
+      breakerHandleCollar.rotation.x = Math.PI / 2;
+      breakerHandleCollar.position.set(0.24, 1.18, 0.32);
+      breakerGroup.add(breakerHandleCollar);
+
       const breakerHandle = new THREE.Mesh(
-        new THREE.BoxGeometry(0.10, 0.42, 0.14),
-        new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3, metalness: 0.4 })
+        new THREE.BoxGeometry(0.09, 0.42, 0.12),
+        new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.28, metalness: 0.4 })
       );
-      breakerHandle.position.set(0.24, 1.18, 0.34);
+      breakerHandle.position.set(0.24, 1.18, 0.35);
       breakerGroup.add(breakerHandle);
 
       const breakerLed = new THREE.Mesh(
-        new THREE.SphereGeometry(0.06, 16, 16),
+        new THREE.SphereGeometry(0.055, 16, 16),
         new THREE.MeshBasicMaterial({ color: 0xef4444 })
       );
-      breakerLed.position.set(-0.22, 1.32, 0.32);
+      breakerLed.position.set(0.18, 1.42, 0.33);
       breakerGroup.add(breakerLed);
       breakerGroup.userData = {
         ...breakerGroup.userData,
@@ -918,25 +1031,46 @@ export const SCENARIOS: ScenarioDefinition[] = [
       };
       envGroup.add(breakerGroup);
 
-      // 2. Углекислотный огнетушитель ОУ-5 (Диэлектрический)
+      // 2. Углекислотный огнетушитель ОУ-5 (Диэлектрический, с латунным затвором и шлангом)
       const co2Group = new THREE.Group();
       co2Group.position.set(-1.5, 0, 1.4);
-      const cylMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.28, metalness: 0.45 });
+      const cylMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.26, metalness: 0.45 });
+      const brassMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.28, metalness: 0.85 });
+      const rubberMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.72 });
+
+      const footRing = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.12, 0.05, 22), rubberMat);
+      footRing.position.y = 0.025;
+      co2Group.add(footRing);
+
       const cylBody = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.72, 24), cylMat);
-      cylBody.position.y = 0.38;
+      cylBody.position.y = 0.39;
       cylBody.castShadow = true;
       co2Group.add(cylBody);
 
       const cylNeck = new THREE.Mesh(new THREE.SphereGeometry(0.11, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), cylMat);
-      cylNeck.position.y = 0.74;
+      cylNeck.position.y = 0.75;
       co2Group.add(cylNeck);
 
+      const valveHead = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.032, 0.11, 12), brassMat);
+      valveHead.position.y = 0.89;
+      co2Group.add(valveHead);
+
+      const squeezeLever = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.025, 0.14), darkSteelMat);
+      squeezeLever.position.set(0, 0.94, 0.04);
+      squeezeLever.rotation.x = 0.22;
+      co2Group.add(squeezeLever);
+
+      const hose = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.28, 10), rubberMat);
+      hose.position.set(0.06, 0.84, -0.08);
+      hose.rotation.set(0.75, 0, -0.55);
+      co2Group.add(hose);
+
       const horn = new THREE.Mesh(
-        new THREE.ConeGeometry(0.09, 0.24, 18),
-        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6 })
+        new THREE.ConeGeometry(0.085, 0.24, 18),
+        rubberMat
       );
       horn.rotation.x = Math.PI / 3;
-      horn.position.set(0.12, 0.80, -0.18);
+      horn.position.set(0.12, 0.79, -0.20);
       co2Group.add(horn);
 
       const co2Tag = new THREE.Mesh(
@@ -945,7 +1079,7 @@ export const SCENARIOS: ScenarioDefinition[] = [
           map: createEquipmentLabelTexture('ОУ-5 (CO₂)', 'ДИЭЛЕКТРИК ДО 10 кВ', '#450a0a', '#4ade80')
         })
       );
-      co2Tag.position.set(0, 1.05, 0);
+      co2Tag.position.set(0, 1.08, 0);
       co2Group.add(co2Tag);
       co2Group.userData = {
         ...co2Group.userData,
@@ -955,24 +1089,45 @@ export const SCENARIOS: ScenarioDefinition[] = [
       };
       envGroup.add(co2Group);
 
-      // 3. Водяной пожарный кран-ствол ПК-50 (ОПАСНО при 6 кВ!)
+      // 3. Водяной пожарный шкаф ШПК / кран-ствол ПК-50 (с катушкой рукава и маховиком)
       const hydrantGroup = new THREE.Group();
       hydrantGroup.position.set(3.8, 0, 0.8);
       const hydBox = new THREE.Mesh(
-        new THREE.BoxGeometry(0.75, 1.15, 0.36),
-        new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.38, metalness: 0.3 })
+        new THREE.BoxGeometry(0.78, 1.25, 0.36),
+        new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.36, metalness: 0.32 })
       );
       hydBox.position.y = 0.72;
       hydBox.castShadow = true;
       hydrantGroup.add(hydBox);
 
+      const hydGlass = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.56, 0.56),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.18, metalness: 0.3 })
+      );
+      hydGlass.position.set(0, 0.56, 0.183);
+      hydrantGroup.add(hydGlass);
+
+      const hoseReel = new THREE.Mesh(
+        new THREE.TorusGeometry(0.18, 0.045, 10, 20),
+        new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.65 })
+      );
+      hoseReel.position.set(-0.08, 0.54, 0.21);
+      hydrantGroup.add(hoseReel);
+
+      const hydValveWheel = new THREE.Mesh(
+        new THREE.TorusGeometry(0.08, 0.015, 8, 14),
+        new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.35, metalness: 0.5 })
+      );
+      hydValveWheel.position.set(0.17, 0.68, 0.21);
+      hydrantGroup.add(hydValveWheel);
+
       const hydSign = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.66, 0.26),
+        new THREE.PlaneGeometry(0.68, 0.26),
         new THREE.MeshBasicMaterial({
           map: createEquipmentLabelTexture('ПОЖАРНЫЙ КРАН (ВОДА)', 'ЗАПРЕЩЕНО ПОД 6 кВ!', '#7f1d1d', '#fde047')
         })
       );
-      hydSign.position.set(0, 1.02, 0.19);
+      hydSign.position.set(0, 1.10, 0.19);
       hydrantGroup.add(hydSign);
       hydrantGroup.userData = {
         ...hydrantGroup.userData,
@@ -1171,33 +1326,88 @@ export const SCENARIOS: ScenarioDefinition[] = [
       const envGroup = new THREE.Group();
       buildIndustrialRoom(envGroup, 16, 14, 4.6);
 
-      // Главный пульт БПУ АЭС (П-образный операторский стол + вертикальное мнемотабло)
+      // Главный пульт БПУ АЭС (операторский стол с наклонным приборным фартуком + мнемотабло)
       const consoleBodyMat = new THREE.MeshStandardMaterial({
         color: 0x1e293b,
-        roughness: 0.5,
-        metalness: 0.45
+        roughness: 0.48,
+        metalness: 0.48
       });
-      const mainDesk = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.92, 1.15), consoleBodyMat);
-      mainDesk.position.set(0, 0.46, -2.5);
+      const consoleTopMat = new THREE.MeshStandardMaterial({
+        color: 0x334155,
+        roughness: 0.38,
+        metalness: 0.55
+      });
+      const mainDesk = new THREE.Mesh(new THREE.BoxGeometry(5.8, 0.86, 1.15), consoleBodyMat);
+      mainDesk.position.set(0, 0.43, -2.5);
       mainDesk.castShadow = true;
       envGroup.add(mainDesk);
 
-      const mimicPanel = new THREE.Mesh(new THREE.BoxGeometry(6.2, 2.2, 0.35), consoleBodyMat);
+      // Наклонный приборный фартук с клавиатурами и ключами управления
+      const slopedApron = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.16, 0.62), consoleTopMat);
+      slopedApron.position.set(0, 0.92, -2.62);
+      slopedApron.rotation.x = 0.26;
+      envGroup.add(slopedApron);
+
+      for (const kx of [-1.2, 1.2]) {
+        const keyBank = new THREE.Mesh(
+          new THREE.BoxGeometry(1.15, 0.04, 0.32),
+          new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6 })
+        );
+        keyBank.position.set(kx, 0.93, -2.28);
+        envGroup.add(keyBank);
+      }
+
+      // Операторское кресло справа от центрального блока (не перекрывает проход к задвижке)
+      const chairGroup = new THREE.Group();
+      chairGroup.position.set(1.55, 0, -1.65);
+      chairGroup.rotation.y = -0.35;
+      const chairMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.7 });
+      const chairSteelMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8, roughness: 0.3 });
+      const chairBase = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.05, 12), chairSteelMat);
+      chairBase.position.y = 0.03;
+      const chairStem = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.42, 10), chairSteelMat);
+      chairStem.position.y = 0.24;
+      const chairSeat = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.08, 0.44), chairMat);
+      chairSeat.position.y = 0.46;
+      const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.52, 0.07), chairMat);
+      chairBack.position.set(0, 0.74, 0.20);
+      chairBack.rotation.x = 0.12;
+      chairGroup.add(chairBase, chairStem, chairSeat, chairBack);
+      envGroup.add(chairGroup);
+
+      const mimicPanel = new THREE.Mesh(new THREE.BoxGeometry(6.2, 2.25, 0.35), consoleBodyMat);
       mimicPanel.position.set(0, 1.5, -4.1);
       mimicPanel.castShadow = true;
       envGroup.add(mimicPanel);
+
+      // Боковые экраны телеметрии мнемощита БПУ
+      const leftTelemetry = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.18, 1.15),
+        new THREE.MeshBasicMaterial({
+          map: createEquipmentLabelTexture('1 КОНТУР / ГЦН', 'Р = 15.7 МПа | T = 292°C', '#090d16', '#38bdf8')
+        })
+      );
+      leftTelemetry.position.set(-2.38, 1.65, -3.91);
+      const rightTelemetry = new THREE.Mesh(
+        new THREE.PlaneGeometry(1.18, 1.15),
+        new THREE.MeshBasicMaterial({
+          map: createEquipmentLabelTexture('СН / СБЭ 0.4 кВ', 'РЕЗЕРВ: МДНУ-150', '#090d16', '#f59e0b')
+        })
+      );
+      rightTelemetry.position.set(2.38, 1.65, -3.91);
+      envGroup.add(leftTelemetry, rightTelemetry);
 
       // Дисплеи БПУ (темные в режиме SBO, переключаются при восстановлении питания)
       const sboScreenMat = new THREE.MeshBasicMaterial({
         map: createEquipmentLabelTexture('БПУ • БЛОК №1', 'SBO: ПОТЕРЯ ПИТАНИЯ!', '#1f0808', '#ef4444')
       });
-      const sboScreenMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 1.25), sboScreenMat);
+      const sboScreenMesh = new THREE.Mesh(new THREE.PlaneGeometry(3.3, 1.25), sboScreenMat);
       sboScreenMesh.position.set(0, 1.65, -3.91);
       envGroup.add(sboScreenMesh);
 
       const deskIndicatorMat = new THREE.MeshBasicMaterial({ color: 0x991b1b });
-      const deskStrip = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.06, 0.25), deskIndicatorMat);
-      deskStrip.position.set(0, 0.94, -2.35);
+      const deskStrip = new THREE.Mesh(new THREE.BoxGeometry(5.4, 0.05, 0.22), deskIndicatorMat);
+      deskStrip.position.set(0, 0.99, -2.55);
       envGroup.add(deskStrip);
 
       // Аварийный мигающий маячок БПУ
@@ -1205,15 +1415,32 @@ export const SCENARIOS: ScenarioDefinition[] = [
       emergencyLight.position.set(0, 3.6, -2.2);
       envGroup.add(emergencyLight);
 
-      // 1. Шкаф ввода резервного кабеля 0.4 кВ (слева)
+      // 1. Шкаф ввода резервного кабеля 0.4 кВ (слева) с бухтой кабеля и вводной муфтой
       const cableBoxGroup = new THREE.Group();
       cableBoxGroup.position.set(-4.0, 0, -1.2);
       const boxMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.9, 1.7, 0.6),
+        new THREE.BoxGeometry(0.9, 1.72, 0.6),
         new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.4, metalness: 0.7 })
       );
-      boxMesh.position.y = 0.85;
+      boxMesh.position.y = 0.86;
+      boxMesh.castShadow = true;
       cableBoxGroup.add(boxMesh);
+
+      const cableCoil = new THREE.Mesh(
+        new THREE.TorusGeometry(0.28, 0.045, 10, 20),
+        new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.65 })
+      );
+      cableCoil.rotation.x = Math.PI / 2;
+      cableCoil.position.set(0.45, 0.05, 0.25);
+      cableBoxGroup.add(cableCoil);
+
+      const cableSocket = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 0.14, 14),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.45, metalness: 0.6 })
+      );
+      cableSocket.rotation.x = Math.PI / 2;
+      cableSocket.position.set(0, 0.72, 0.34);
+      cableBoxGroup.add(cableSocket);
 
       const cableLabel = new THREE.Mesh(
         new THREE.PlaneGeometry(0.76, 0.30),
@@ -1239,38 +1466,74 @@ export const SCENARIOS: ScenarioDefinition[] = [
       };
       envGroup.add(cableBoxGroup);
 
-      // 2. Мобильная дизель-насосная установка МДНУ-150 (справа)
+      // 2. Мобильная дизель-насосная установка МДНУ-150 (справа: рама, колёса, радиатор, глушитель)
       const mdnuGroup = new THREE.Group();
       mdnuGroup.position.set(3.8, 0, -1.4);
+      const mdnuFrameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.55, metalness: 0.75 });
+      const mdnuTireMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.85 });
+
+      const mdnuSkid = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.16, 2.34), mdnuFrameMat);
+      mdnuSkid.position.y = 0.24;
+      mdnuGroup.add(mdnuSkid);
+
+      const wheelGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.16, 16);
+      for (const [wx, wz] of [
+        [-0.78, -0.78],
+        [0.78, -0.78],
+        [-0.78, 0.78],
+        [0.78, 0.78]
+      ]) {
+        const wheel = new THREE.Mesh(wheelGeo, mdnuTireMat);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(wx, 0.22, wz);
+        wheel.castShadow = true;
+        mdnuGroup.add(wheel);
+      }
+
       const mdnuChassis = new THREE.Mesh(
-        new THREE.BoxGeometry(1.45, 1.25, 2.2),
-        new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.38, metalness: 0.42 })
+        new THREE.BoxGeometry(1.42, 1.12, 2.16),
+        new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.36, metalness: 0.42 })
       );
-      mdnuChassis.position.y = 0.72;
+      mdnuChassis.position.y = 0.88;
       mdnuChassis.castShadow = true;
       mdnuGroup.add(mdnuChassis);
 
+      const radiatorGrille = new THREE.Mesh(
+        new THREE.BoxGeometry(1.12, 0.58, 0.06),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6, metalness: 0.5 })
+      );
+      radiatorGrille.position.set(0, 0.72, 1.08);
+      mdnuGroup.add(radiatorGrille);
+
+      const muffler = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.13, 0.13, 0.55, 14),
+        new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.85, roughness: 0.3 })
+      );
+      muffler.rotation.x = Math.PI / 2;
+      muffler.position.set(0.42, 1.54, -0.45);
+      mdnuGroup.add(muffler);
+
       const exhaustPipe = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.08, 0.08, 0.85, 16),
+        new THREE.CylinderGeometry(0.065, 0.065, 0.55, 14),
         new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.85, roughness: 0.25 })
       );
-      exhaustPipe.position.set(0.45, 1.65, -0.6);
+      exhaustPipe.position.set(0.42, 1.82, -0.68);
       mdnuGroup.add(exhaustPipe);
 
       const mdnuLabel = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.2, 0.45),
+        new THREE.PlaneGeometry(1.16, 0.36),
         new THREE.MeshBasicMaterial({
           map: createEquipmentLabelTexture('МДНУ-150 МЧС', 'ПУСК ДИЗЕЛЬ-ГЕНЕРАТОРА', '#1e293b', '#f97316')
         })
       );
-      mdnuLabel.position.set(0, 0.92, 1.11);
+      mdnuLabel.position.set(0, 1.22, 1.09);
       mdnuGroup.add(mdnuLabel);
 
       const mdnuStatusLed = new THREE.Mesh(
         new THREE.SphereGeometry(0.08, 16, 16),
         new THREE.MeshBasicMaterial({ color: 0xef4444 })
       );
-      mdnuStatusLed.position.set(-0.48, 1.4, 0.8);
+      mdnuStatusLed.position.set(-0.48, 1.52, 0.8);
       mdnuGroup.add(mdnuStatusLed);
       mdnuGroup.userData = {
         ...mdnuGroup.userData,
@@ -1632,6 +1895,36 @@ export function buildIndustrialRoom(group: THREE.Group, width: number, depth: nu
   const backStripe = new THREE.Mesh(stripeGeo, stripeMat);
   backStripe.position.set(0, 0.2, -depth / 2 + 0.14);
   group.add(backStripe);
+
+  // Бетонный цоколь / отбойник по периметру стен и технологические трубопроводы вдоль боковых стен
+  const plinthMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.72, metalness: 0.25 });
+  const backPlinth = new THREE.Mesh(new THREE.BoxGeometry(safeW, 0.12, 0.18), plinthMat);
+  backPlinth.position.set(0, 0.06, -safeD / 2 + 0.14);
+  const frontPlinth = new THREE.Mesh(new THREE.BoxGeometry(safeW, 0.12, 0.18), plinthMat);
+  frontPlinth.position.set(0, 0.06, safeD / 2 - 0.14);
+  const leftPlinth = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, safeD), plinthMat);
+  leftPlinth.position.set(-safeW / 2 + 0.14, 0.06, 0);
+  const rightPlinth = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, safeD), plinthMat);
+  rightPlinth.position.set(safeW / 2 - 0.14, 0.06, 0);
+  group.add(backPlinth, frontPlinth, leftPlinth, rightPlinth);
+
+  const pipeConduitMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.38, metalness: 0.78 });
+  const pipeGeo = new THREE.CylinderGeometry(0.055, 0.055, safeD - 0.8, 10);
+  for (const px of [-safeW / 2 + 0.22, safeW / 2 - 0.22]) {
+    const wallPipe = new THREE.Mesh(pipeGeo, pipeConduitMat);
+    wallPipe.rotation.x = Math.PI / 2;
+    wallPipe.position.set(px, safeH * 0.68, 0);
+    group.add(wallPipe);
+  }
+
+  // Дренажный трап дезактивации в полу (смещение Y=0.004 исключает Z-fighting)
+  const drainGrate = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.9, 0.9),
+    new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.45, metalness: 0.82 })
+  );
+  drainGrate.rotation.x = -Math.PI / 2;
+  drainGrate.position.set(-2.4, 0.004, 2.4);
+  group.add(drainGrate);
 
   const colMat = new THREE.MeshStandardMaterial({
     color: 0x94a3b8,

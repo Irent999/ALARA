@@ -1113,9 +1113,10 @@ export default function App() {
           cameraRef.current.rotation.set(0, 0, 0);
         }
         if (playerGroupRef.current) {
+          const groundY = activeScenarioIdRef.current === 4 ? scenario4GroundYRef.current : 0;
           const eyeH = activeScenarioIdRef.current === 4 ? SCENARIO_4_CONFIG.PLAYER_EYE_HEIGHT : 1.65;
           playerGroupRef.current.position.y =
-            xrManagerRef.current?.activeReferenceSpaceType === 'local-floor' ? 0.0 : eyeH;
+            groundY + (xrManagerRef.current?.activeReferenceSpaceType === 'local-floor' ? 0.0 : eyeH);
         }
         playerAvatarRigRef.current?.setFirstPersonMode(true);
         // Активируем видимость VR UI в шлеме
@@ -1587,6 +1588,7 @@ export default function App() {
     // Главный цикл рендеринга Three.js (Zero-Allocation: все scratch-объекты вынесены за цикл)
     let lastTime = performance.now();
     let chartSecondTimer = 0;
+    let lastVrMirrorTimeMs = 0;
     const mirrorSavedProjMatrix = new THREE.Matrix4();
     const mirrorSavedProjMatrixInv = new THREE.Matrix4();
     const ctxRayOrigin = new THREE.Vector3();
@@ -2776,8 +2778,14 @@ export default function App() {
       // 7. Основной рендер сцены (в режиме WebXR рендерит стереопару в буфер VR-гарнитуры)
       renderer.render(scene, camera);
 
-      // 8. Display Mirroring: дублирование кадра на главный Canvas компьютера при активной WebXR-сессии
-      if (renderer.xr.isPresenting) {
+      // 8. Display Mirroring: дублирование кадра на главный Canvas ПК при активной WebXR-сессии
+      // В тяжёлом Сценарии 4 пропускаем 3-й проход рендера для удержания 90 FPS в HTC Vive; в 1–3 ограничиваем до ~15 Гц
+      if (
+        renderer.xr.isPresenting &&
+        activeScenarioIdRef.current !== 4 &&
+        now - lastVrMirrorTimeMs >= 66
+      ) {
+        lastVrMirrorTimeMs = now;
         try {
           const xrCam = renderer.xr.getCamera();
           const leftCam = xrCam?.cameras?.[0];
@@ -3183,6 +3191,7 @@ export default function App() {
       lastScen4StepNumRef.current = 1;
       desktopOverviewYRef.current = null;
       scenario4GroundYRef.current = 0;
+      xrManagerRef.current?.setGroundFloorY(0);
       if (scen.id === 4 && cameraRef.current && playerGroupRef.current) {
         try {
           const s4Ctrl = new Scenario4Controller({
@@ -3201,6 +3210,7 @@ export default function App() {
             onPlayerSpawnReady: (spawn, lookTarget, boundsSize) => {
               desktopOverviewYRef.current = null;
               scenario4GroundYRef.current = spawn.y;
+              xrManagerRef.current?.setGroundFloorY(spawn.y);
               const maxDim = Math.max(boundsSize[0], boundsSize[1], boundsSize[2], 30);
               if (cameraRef.current) {
                 cameraRef.current.far = Math.max(650, maxDim * 5);
@@ -3556,6 +3566,7 @@ export default function App() {
             'КАБЕЛЬНАЯ ТРАССА 6 кВ ОБЕСТОЧЕНА',
             'Напряжение 6 кВ снято! Теперь ликвидируйте возгорание огнетушителем ОУ-5 [4].'
           );
+          audioEngineRef.current?.playBreakerSwitch();
           audioEngineRef.current?.playTaskSuccess();
           return;
         }
@@ -3576,6 +3587,7 @@ export default function App() {
             'АВАРИЙНЫЙ КАБЕЛЬ 0.4 кВ ПОДКЛЮЧЕН',
             'Схема временного питания собрана. Запустите мобильную установку МДНУ-150!'
           );
+          audioEngineRef.current?.playBreakerSwitch();
           audioEngineRef.current?.playTaskSuccess();
           return;
         }
@@ -3617,6 +3629,7 @@ export default function App() {
           'МДНУ-150 ЗАПУЩЕНА',
           'Резервное питание подано на щит БПУ! Откройте задвижку аварийной подпитки ПГ у пульта.'
         );
+        audioEngineRef.current?.playDieselGeneratorStart();
         audioEngineRef.current?.playTaskSuccess();
         return;
       }
@@ -3665,6 +3678,7 @@ export default function App() {
             'АВАРИЙНОЕ РАСХОЛАЖИВАНИЕ ВОССТАНОВЛЕНО',
             'Отказ SBO ликвидирован! Теплоотвод от реакторной установки восстановлен.'
           );
+          audioEngineRef.current?.playBreakerSwitch();
           audioEngineRef.current?.playTaskSuccess();
           triggerSuccessModalRef.current();
           return;
